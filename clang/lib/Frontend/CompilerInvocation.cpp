@@ -685,15 +685,16 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   // At O0 we want to fully disable inlining outside of cases marked with
   // 'alwaysinline' that are required for correctness.
-  Opts.setInlining((Opts.OptimizationLevel == 0)
-                       ? CodeGenOptions::OnlyAlwaysInlining
-                       : CodeGenOptions::NormalInlining);
+  Opts.setInlining(
+      (!Args.hasArg(OPT_disable_O0_noinline) && Opts.OptimizationLevel == 0)
+          ? CodeGenOptions::OnlyAlwaysInlining
+          : CodeGenOptions::NormalInlining);
   // Explicit inlining flags can disable some or all inlining even at
   // optimization levels above zero.
   if (Arg *InlineArg = Args.getLastArg(
           options::OPT_finline_functions, options::OPT_finline_hint_functions,
           options::OPT_fno_inline_functions, options::OPT_fno_inline)) {
-    if (Opts.OptimizationLevel > 0) {
+    if (Args.hasArg(OPT_disable_O0_noinline) || Opts.OptimizationLevel > 0) {
       const Option &InlineOpt = InlineArg->getOption();
       if (InlineOpt.matches(options::OPT_finline_functions))
         Opts.setInlining(CodeGenOptions::NormalInlining);
@@ -3243,6 +3244,11 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.SanitizeAddressFieldPadding =
       getLastArgIntValue(Args, OPT_fsanitize_address_field_padding, 0, Diags);
   Opts.SanitizerBlacklistFiles = Args.getAllArgValues(OPT_fsanitize_blacklist);
+  std::vector<std::string> systemBlacklists =
+      Args.getAllArgValues(OPT_fsanitize_system_blacklist);
+  Opts.SanitizerBlacklistFiles.insert(Opts.SanitizerBlacklistFiles.end(),
+                                      systemBlacklists.begin(),
+                                      systemBlacklists.end());
 
   // -fxray-instrument
   Opts.XRayInstrument =
@@ -3741,34 +3747,7 @@ std::string CompilerInvocation::getModuleHash() const {
   return llvm::APInt(64, code).toString(36, /*Signed=*/false);
 }
 
-template<typename IntTy>
-static IntTy getLastArgIntValueImpl(const ArgList &Args, OptSpecifier Id,
-                                    IntTy Default,
-                                    DiagnosticsEngine *Diags) {
-  IntTy Res = Default;
-  if (Arg *A = Args.getLastArg(Id)) {
-    if (StringRef(A->getValue()).getAsInteger(10, Res)) {
-      if (Diags)
-        Diags->Report(diag::err_drv_invalid_int_value) << A->getAsString(Args)
-                                                       << A->getValue();
-    }
-  }
-  return Res;
-}
-
 namespace clang {
-
-// Declared in clang/Frontend/Utils.h.
-int getLastArgIntValue(const ArgList &Args, OptSpecifier Id, int Default,
-                       DiagnosticsEngine *Diags) {
-  return getLastArgIntValueImpl<int>(Args, Id, Default, Diags);
-}
-
-uint64_t getLastArgUInt64Value(const ArgList &Args, OptSpecifier Id,
-                               uint64_t Default,
-                               DiagnosticsEngine *Diags) {
-  return getLastArgIntValueImpl<uint64_t>(Args, Id, Default, Diags);
-}
 
 IntrusiveRefCntPtr<llvm::vfs::FileSystem>
 createVFSFromCompilerInvocation(const CompilerInvocation &CI,
