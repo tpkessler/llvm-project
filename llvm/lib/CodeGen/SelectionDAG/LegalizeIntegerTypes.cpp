@@ -592,8 +592,9 @@ SDValue DAGTypeLegalizer::PromoteIntRes_MLOAD(MaskedLoadSDNode *N) {
 
   SDLoc dl(N);
   SDValue Res = DAG.getMaskedLoad(NVT, dl, N->getChain(), N->getBasePtr(),
-                                  N->getMask(), ExtPassThru, N->getMemoryVT(),
-                                  N->getMemOperand(), ISD::EXTLOAD);
+                                  N->getOffset(), N->getMask(), ExtPassThru,
+                                  N->getMemoryVT(), N->getMemOperand(),
+                                  N->getAddressingMode(), ISD::EXTLOAD);
   // Legalize the chain result - switch anything that used the old chain to
   // use the new one.
   ReplaceValueWith(SDValue(N, 1), Res.getValue(1));
@@ -1485,11 +1486,11 @@ SDValue DAGTypeLegalizer::PromoteIntOp_MSTORE(MaskedStoreSDNode *N,
   SDLoc dl(N);
 
   bool TruncateStore = false;
-  if (OpNo == 3) {
+  if (OpNo == 4) {
     Mask = PromoteTargetBoolean(Mask, DataVT);
     // Update in place.
     SmallVector<SDValue, 4> NewOps(N->op_begin(), N->op_end());
-    NewOps[3] = Mask;
+    NewOps[4] = Mask;
     return SDValue(DAG.UpdateNodeOperands(N, NewOps), 0);
   } else { // Data operand
     assert(OpNo == 1 && "Unexpected operand for promotion");
@@ -1497,14 +1498,15 @@ SDValue DAGTypeLegalizer::PromoteIntOp_MSTORE(MaskedStoreSDNode *N,
     TruncateStore = true;
   }
 
-  return DAG.getMaskedStore(N->getChain(), dl, DataOp, N->getBasePtr(), Mask,
-                            N->getMemoryVT(), N->getMemOperand(),
+  return DAG.getMaskedStore(N->getChain(), dl, DataOp, N->getBasePtr(),
+                            N->getOffset(), Mask, N->getMemoryVT(),
+                            N->getMemOperand(), N->getAddressingMode(),
                             TruncateStore, N->isCompressingStore());
 }
 
 SDValue DAGTypeLegalizer::PromoteIntOp_MLOAD(MaskedLoadSDNode *N,
                                              unsigned OpNo) {
-  assert(OpNo == 2 && "Only know how to promote the mask!");
+  assert(OpNo == 3 && "Only know how to promote the mask!");
   EVT DataVT = N->getValueType(0);
   SDValue Mask = PromoteTargetBoolean(N->getOperand(OpNo), DataVT);
   SmallVector<SDValue, 4> NewOps(N->op_begin(), N->op_end());
@@ -1818,7 +1820,11 @@ std::pair <SDValue, SDValue> DAGTypeLegalizer::ExpandAtomic(SDNode *Node) {
   RTLIB::Libcall LC = RTLIB::getSYNC(Opc, VT);
   assert(LC != RTLIB::UNKNOWN_LIBCALL && "Unexpected atomic op or value type!");
 
-  return TLI.ExpandChainLibCall(DAG, LC, Node, false);
+  EVT RetVT = Node->getValueType(0);
+  SmallVector<SDValue, 4> Ops(Node->op_begin() + 1, Node->op_end());
+  TargetLowering::MakeLibCallOptions CallOptions;
+  return TLI.makeLibCall(DAG, LC, RetVT, Ops, CallOptions, SDLoc(Node),
+                         Node->getOperand(0));
 }
 
 /// N is a shift by a value that needs to be expanded,
@@ -2627,18 +2633,17 @@ void DAGTypeLegalizer::ExpandIntRes_LLROUND_LLRINT(SDNode *N, SDValue &Lo,
 
   SDLoc dl(N);
   EVT RetVT = N->getValueType(0);
-
-  if (N->isStrictFPOpcode()) {
-    std::pair<SDValue, SDValue> Tmp = TLI.ExpandChainLibCall(DAG, LC, N, true);
-    SplitInteger(Tmp.first, Lo, Hi);
-    ReplaceValueWith(SDValue(N, 1), Tmp.second);
-    return;
-  }
+  SDValue Chain = N->isStrictFPOpcode() ? N->getOperand(0) : SDValue();
 
   TargetLowering::MakeLibCallOptions CallOptions;
   CallOptions.setSExt(true);
-  SplitInteger(TLI.makeLibCall(DAG, LC, RetVT, Op, CallOptions, dl).first,
-               Lo, Hi);
+  std::pair<SDValue, SDValue> Tmp = TLI.makeLibCall(DAG, LC, RetVT,
+                                                    Op, CallOptions, dl,
+                                                    Chain);
+  SplitInteger(Tmp.first, Lo, Hi);
+
+  if (N->isStrictFPOpcode())
+    ReplaceValueWith(SDValue(N, 1), Tmp.second);
 }
 
 void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,

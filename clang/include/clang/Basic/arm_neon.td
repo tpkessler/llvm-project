@@ -109,7 +109,8 @@ def OP_OR       : Op<(op "|", $p0, $p1)>;
 def OP_XOR      : Op<(op "^", $p0, $p1)>;
 def OP_ANDN     : Op<(op "&", $p0, (op "~", $p1))>;
 def OP_ORN      : Op<(op "|", $p0, (op "~", $p1))>;
-def OP_CAST     : Op<(cast "R", $p0)>;
+def OP_CAST     : LOp<[(save_temp $promote, $p0),
+                       (cast "R", $promote)]>;
 def OP_HI       : Op<(shuffle $p0, $p0, (highhalf mask0))>;
 def OP_LO       : Op<(shuffle $p0, $p0, (lowhalf mask0))>;
 def OP_CONC     : Op<(shuffle $p0, $p1, (add mask0, mask1))>;
