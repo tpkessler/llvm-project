@@ -886,6 +886,7 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
 
   FD->ODRHash = Record.readInt();
   FD->setHasODRHash(true);
+  FD->setUsesFPIntrin(Record.readInt());
 
   switch ((FunctionDecl::TemplatedKind)Record.readInt()) {
   case FunctionDecl::TK_NonTemplate:
@@ -1016,9 +1017,9 @@ void ASTDeclReader::VisitObjCMethodDecl(ObjCMethodDecl *MD) {
     // definitions rarely show up in headers.
     Reader.PendingBodies[MD] = GetCurrentCursorOffset();
     HasPendingBody = true;
-    MD->setSelfDecl(ReadDeclAs<ImplicitParamDecl>());
-    MD->setCmdDecl(ReadDeclAs<ImplicitParamDecl>());
   }
+  MD->setSelfDecl(ReadDeclAs<ImplicitParamDecl>());
+  MD->setCmdDecl(ReadDeclAs<ImplicitParamDecl>());
   MD->setInstanceMethod(Record.readInt());
   MD->setVariadic(Record.readInt());
   MD->setPropertyAccessor(Record.readInt());
