@@ -44,6 +44,7 @@ class GlobalValue;
 class DataLayout;
 class FunctionType;
 class LLVMContext;
+class OpenMPIRBuilder;
 class IndexedInstrProfReader;
 }
 
@@ -322,6 +323,7 @@ private:
   std::unique_ptr<CGObjCRuntime> ObjCRuntime;
   std::unique_ptr<CGOpenCLRuntime> OpenCLRuntime;
   std::unique_ptr<CGOpenMPRuntime> OpenMPRuntime;
+  std::unique_ptr<llvm::OpenMPIRBuilder> OMPBuilder;
   std::unique_ptr<CGCUDARuntime> CUDARuntime;
   std::unique_ptr<CGAMPRuntime> AMPRuntime;
   std::unique_ptr<CGDebugInfo> DebugInfo;
@@ -589,6 +591,9 @@ public:
     assert(OpenMPRuntime != nullptr);
     return *OpenMPRuntime;
   }
+
+  /// Return a pointer to the configured OpenMPIRBuilder, if any.
+  llvm::OpenMPIRBuilder *getOpenMPIRBuilder() { return OMPBuilder.get(); }
 
   /// Return a reference to the configured CUDA runtime.
   CGCUDARuntime &getCUDARuntime() {
@@ -1174,6 +1179,8 @@ public:
 
   void EmitTentativeDefinition(const VarDecl *D);
 
+  void EmitExternalDeclaration(const VarDecl *D);
+
   void EmitVTable(CXXRecordDecl *Class);
 
   void RefreshTypeCacheForClass(const CXXRecordDecl *Class);
@@ -1409,6 +1416,7 @@ private:
   void EmitMultiVersionFunctionDefinition(GlobalDecl GD, llvm::GlobalValue *GV);
 
   void EmitGlobalVarDefinition(const VarDecl *D, bool IsTentative = false);
+  void EmitExternalVarDeclaration(const VarDecl *D);
   void EmitAliasDefinition(GlobalDecl GD);
   void emitIFuncDefinition(GlobalDecl GD);
   void emitCPUDispatchDefinition(GlobalDecl GD);

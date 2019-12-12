@@ -48,6 +48,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
@@ -223,6 +224,14 @@ void CodeGenModule::createOpenMPRuntime() {
     else
       OpenMPRuntime.reset(new CGOpenMPRuntime(*this));
     break;
+  }
+
+  // The OpenMP-IR-Builder should eventually replace the above runtime codegens
+  // but we are not there yet so they both reside in CGModule for now and the
+  // OpenMP-IR-Builder is opt-in only.
+  if (LangOpts.OpenMPIRBuilder) {
+    OMPBuilder.reset(new llvm::OpenMPIRBuilder(TheModule));
+    OMPBuilder->initialize();
   }
 }
 
@@ -2234,14 +2243,20 @@ llvm::Constant *CodeGenModule::EmitAnnotateAttr(llvm::GlobalValue *GV,
                  *UnitGV = EmitAnnotationUnit(L),
                  *LineNoCst = EmitAnnotationLineNo(L);
 
+  llvm::Constant *ASZeroGV = GV;
+  if (GV->getAddressSpace() != 0) {
+    ASZeroGV = llvm::ConstantExpr::getAddrSpaceCast(
+                   GV, GV->getValueType()->getPointerTo(0));
+  }
+
   // Create the ConstantStruct for the global annotation.
   unsigned AS = GV->getType()->getAddressSpace();
   llvm::PointerType *I8PTy = (AS == Int8PtrTy->getAddressSpace()) ?
     Int8PtrTy : Int8Ty->getPointerTo(AS);
   llvm::Constant *Fields[4] = {
-    llvm::ConstantExpr::getPointerCast(GV, I8PTy),
-    llvm::ConstantExpr::getPointerCast(AnnoGV, I8PTy),
-    llvm::ConstantExpr::getPointerCast(UnitGV, I8PTy),
+    llvm::ConstantExpr::getBitCast(ASZeroGV, Int8PtrTy),
+    llvm::ConstantExpr::getBitCast(AnnoGV, Int8PtrTy),
+    llvm::ConstantExpr::getBitCast(UnitGV, Int8PtrTy),
     LineNoCst
   };
   return llvm::ConstantStruct::getAnon(Fields);
@@ -3863,6 +3878,10 @@ void CodeGenModule::EmitTentativeDefinition(const VarDecl *D) {
   EmitGlobalVarDefinition(D);
 }
 
+void CodeGenModule::EmitExternalDeclaration(const VarDecl *D) {
+  EmitExternalVarDeclaration(D);
+}
+
 CharUnits CodeGenModule::GetTargetTypeStoreSize(llvm::Type *Ty) const {
   return Context.toCharUnitsFromBits(
       getDataLayout().getTypeStoreSizeInBits(Ty));
@@ -4251,6 +4270,19 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
   if (CGDebugInfo *DI = getModuleDebugInfo())
     if (getCodeGenOpts().getDebugInfo() >= codegenoptions::LimitedDebugInfo)
       DI->EmitGlobalVariable(GV, D);
+}
+
+void CodeGenModule::EmitExternalVarDeclaration(const VarDecl *D) {
+  if (CGDebugInfo *DI = getModuleDebugInfo())
+    if (getCodeGenOpts().getDebugInfo() >= codegenoptions::LimitedDebugInfo) {
+      QualType ASTTy = D->getType();
+      llvm::Type *Ty = getTypes().ConvertTypeForMem(D->getType());
+      llvm::PointerType *PTy =
+          llvm::PointerType::get(Ty, getContext().getTargetAddressSpace(ASTTy));
+      llvm::Constant *GV = GetOrCreateLLVMGlobal(D->getName(), PTy, D);
+      DI->EmitExternalVariable(
+          cast<llvm::GlobalVariable>(GV->stripPointerCasts()), D);
+    }
 }
 
 static bool isVarDeclStrongDefinition(const ASTContext &Context,

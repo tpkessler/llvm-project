@@ -1396,6 +1396,9 @@ public:
 
   virtual void setAuxTarget(const TargetInfo *Aux) {}
 
+  /// Whether target allows debuginfo types for decl only variables.
+  virtual bool allowDebugInfoForExternalVar() const { return false; }
+
 protected:
   /// Copy type and layout related info.
   void copyAuxTarget(const TargetInfo *Aux);

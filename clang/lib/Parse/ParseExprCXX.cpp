@@ -1967,9 +1967,11 @@ Parser::ParseCXXTypeConstructExpression(const DeclSpec &DS) {
     CommaLocsTy CommaLocs;
 
     auto RunSignatureHelp = [&]() {
-      QualType PreferredType = Actions.ProduceConstructorSignatureHelp(
-          getCurScope(), TypeRep.get()->getCanonicalTypeInternal(),
-          DS.getEndLoc(), Exprs, T.getOpenLocation());
+      QualType PreferredType;
+      if (TypeRep)
+        PreferredType = Actions.ProduceConstructorSignatureHelp(
+            getCurScope(), TypeRep.get()->getCanonicalTypeInternal(),
+            DS.getEndLoc(), Exprs, T.getOpenLocation());
       CalledSignatureHelp = true;
       return PreferredType;
     };
@@ -3143,6 +3145,7 @@ Parser::ParseCXXNewExpression(bool UseGlobal, SourceLocation Start) {
       auto RunSignatureHelp = [&]() {
         ParsedType TypeRep =
             Actions.ActOnTypeName(getCurScope(), DeclaratorInfo).get();
+        assert(TypeRep && "invalid types should be handled before");
         QualType PreferredType = Actions.ProduceConstructorSignatureHelp(
             getCurScope(), TypeRep.get()->getCanonicalTypeInternal(),
             DeclaratorInfo.getEndLoc(), ConstructorArgs, ConstructorLParen);

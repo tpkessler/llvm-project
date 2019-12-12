@@ -108,13 +108,8 @@ if ((NOT MSVC) OR MSVC12)
   add_definitions( -DHAVE_ROUND )
 endif()
 
-if (LLDB_DISABLE_CURSES)
-  add_definitions( -DLLDB_DISABLE_CURSES )
-endif()
 
-if (LLDB_DISABLE_LIBEDIT)
-  add_definitions( -DLLDB_DISABLE_LIBEDIT )
-else()
+if (NOT LLDB_DISABLE_LIBEDIT)
   find_package(LibEdit REQUIRED)
 
   # Check if we libedit capable of handling wide characters (built with
@@ -291,7 +286,6 @@ if (NOT LLDB_DISABLE_PYTHON)
   if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
     if (NOT LLDB_RELOCATABLE_PYTHON)
       file(TO_CMAKE_PATH "${PYTHON_HOME}" LLDB_PYTHON_HOME)
-      add_definitions( -DLLDB_PYTHON_HOME="${LLDB_PYTHON_HOME}" )
     endif()
   else()
     find_package(PythonInterp REQUIRED)
@@ -321,7 +315,6 @@ if (LLDB_DISABLE_PYTHON)
   unset(PYTHON_INCLUDE_DIR)
   unset(PYTHON_LIBRARY)
   unset(PYTHON_EXECUTABLE)
-  add_definitions( -DLLDB_DISABLE_PYTHON )
 endif()
 
 if (LLVM_EXTERNAL_CLANG_SOURCE_DIR)
@@ -450,10 +443,8 @@ if (APPLE)
   find_library(FOUNDATION_LIBRARY Foundation)
   find_library(CORE_FOUNDATION_LIBRARY CoreFoundation)
   find_library(SECURITY_LIBRARY Security)
-
-  add_definitions( -DLIBXML2_DEFINED )
+  set(LLDB_ENABLE_LIBXML2 ON)
   list(APPEND system_libs xml2
-       ${CURSES_LIBRARIES}
        ${FOUNDATION_LIBRARY}
        ${CORE_FOUNDATION_LIBRARY}
        ${CORE_SERVICES_LIBRARY}
@@ -461,7 +452,7 @@ if (APPLE)
        ${DEBUG_SYMBOLS_LIBRARY})
   include_directories(${LIBXML2_INCLUDE_DIR})
 elseif(LIBXML2_FOUND AND LIBXML2_VERSION_STRING VERSION_GREATER 2.8)
-  add_definitions( -DLIBXML2_DEFINED )
+  set(LLDB_ENABLE_LIBXML2 ON)
   list(APPEND system_libs ${LIBXML2_LIBRARIES})
   include_directories(${LIBXML2_INCLUDE_DIR})
 endif()
@@ -496,17 +487,10 @@ endif()
 
 if (NOT LLDB_DISABLE_CURSES)
     find_package(Curses REQUIRED)
-
     find_library(CURSES_PANEL_LIBRARY NAMES panel DOC "The curses panel library")
     if (NOT CURSES_PANEL_LIBRARY)
         message(FATAL_ERROR "A required curses' panel library not found.")
     endif ()
-
-    # Add panels to the library path
-    set (CURSES_LIBRARIES ${CURSES_LIBRARIES} ${CURSES_PANEL_LIBRARY})
-
-    list(APPEND system_libs ${CURSES_LIBRARIES})
-    include_directories(${CURSES_INCLUDE_DIR})
 endif ()
 
 if ((CMAKE_SYSTEM_NAME MATCHES "Android") AND LLVM_BUILD_STATIC AND
