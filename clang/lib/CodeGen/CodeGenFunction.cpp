@@ -1015,9 +1015,28 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
         if (!CGM.getCodeGenOpts().CallFEntry)
           CGM.getDiags().Report(diag::err_opt_not_valid_without_opt)
             << "-mnop-mcount" << "-mfentry";
-        Fn->addFnAttr("mnop-mcount", "true");
+        Fn->addFnAttr("mnop-mcount");
+      }
+
+      if (CGM.getCodeGenOpts().RecordMCount) {
+        if (getContext().getTargetInfo().getTriple().getArch() !=
+            llvm::Triple::systemz)
+          CGM.getDiags().Report(diag::err_opt_not_valid_on_target)
+            << "-mrecord-mcount";
+        if (!CGM.getCodeGenOpts().CallFEntry)
+          CGM.getDiags().Report(diag::err_opt_not_valid_without_opt)
+            << "-mrecord-mcount" << "-mfentry";
+        Fn->addFnAttr("mrecord-mcount");
       }
     }
+  }
+
+  if (CGM.getCodeGenOpts().PackedStack) {
+    if (getContext().getTargetInfo().getTriple().getArch() !=
+        llvm::Triple::systemz)
+      CGM.getDiags().Report(diag::err_opt_not_valid_on_target)
+        << "-mpacked-stack";
+    Fn->addFnAttr("packed-stack");
   }
 
   if (RetTy->isVoidType()) {

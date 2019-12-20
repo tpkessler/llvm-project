@@ -48,10 +48,13 @@ const LangASMap AMDGPUTargetInfo::AMDGPUDefIsGenMap = {
     Generic,  // opencl_generic
     Global,   // cuda_device
     Constant, // cuda_constant
-    Local,     // cuda_shared
-    Local,     // hcc_tilestatic
-    Generic,   // hcc_generic
-    Global     // hcc_global
+    Local,    // cuda_shared
+    Generic,  // ptr32_sptr
+    Generic,  // ptr32_uptr
+    Generic,  // ptr64
+    Local,    // hcc_tilestatic
+    Generic,  // hcc_generic
+    Global    // hcc_global
 };
 
 const LangASMap AMDGPUTargetInfo::AMDGPUDefIsPrivMap = {
@@ -64,6 +67,9 @@ const LangASMap AMDGPUTargetInfo::AMDGPUDefIsPrivMap = {
     Global,   // cuda_device
     Constant, // cuda_constant
     Local,    // cuda_shared
+    Generic,  // ptr32_sptr
+    Generic,  // ptr32_uptr
+    Generic,  // ptr64
     Local,    // hcc_tilestatic
     Generic,  // hcc_generic
     Global    // hcc_global

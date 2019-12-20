@@ -19,9 +19,14 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTTypeTraits.h"
+#include "clang/AST/Decl.h"
+#include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/Index/IndexSymbol.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clang {
@@ -72,12 +77,17 @@ std::string getLocalScope(const Decl *D) {
 std::string getNamespaceScope(const Decl *D) {
   const DeclContext *DC = D->getDeclContext();
 
-  if (const TypeDecl *TD = dyn_cast<TypeDecl>(DC))
+  if (const TagDecl *TD = dyn_cast<TagDecl>(DC))
     return getNamespaceScope(TD);
   if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(DC))
     return getNamespaceScope(FD);
+  if (const NamespaceDecl *NSD = dyn_cast<NamespaceDecl>(DC)) {
+    // Skip inline/anon namespaces.
+    if (NSD->isInline() || NSD->isAnonymousNamespace())
+      return getNamespaceScope(NSD);
+  }
   if (const NamedDecl *ND = dyn_cast<NamedDecl>(DC))
-    return ND->getQualifiedNameAsString();
+    return printQualifiedName(*ND);
 
   return "";
 }
@@ -174,15 +184,29 @@ const FunctionDecl *getUnderlyingFunction(const Decl *D) {
   return D->getAsFunction();
 }
 
+// Returns the decl that should be used for querying comments, either from index
+// or AST.
+const NamedDecl *getDeclForComment(const NamedDecl *D) {
+  if (auto *CTSD = llvm::dyn_cast<ClassTemplateSpecializationDecl>(D))
+    if (!CTSD->isExplicitInstantiationOrSpecialization())
+      return CTSD->getTemplateInstantiationPattern();
+  if (auto *VTSD = llvm::dyn_cast<VarTemplateSpecializationDecl>(D))
+    if (!VTSD->isExplicitInstantiationOrSpecialization())
+      return VTSD->getTemplateInstantiationPattern();
+  if (auto *FD = D->getAsFunction())
+    if (FD->isTemplateInstantiation())
+      return FD->getTemplateSpecializationInfo()->getTemplate();
+  return D;
+}
+
 // Look up information about D from the index, and add it to Hover.
-void enhanceFromIndex(HoverInfo &Hover, const Decl *D,
+void enhanceFromIndex(HoverInfo &Hover, const NamedDecl &ND,
                       const SymbolIndex *Index) {
-  if (!Index || !llvm::isa<NamedDecl>(D))
-    return;
-  const NamedDecl &ND = *cast<NamedDecl>(D);
+  assert(&ND == getDeclForComment(&ND));
   // We only add documentation, so don't bother if we already have some.
-  if (!Hover.Documentation.empty())
+  if (!Hover.Documentation.empty() || !Index)
     return;
+
   // Skip querying for non-indexable symbols, there's no point.
   // We're searching for symbols that might be indexed outside this main file.
   if (!SymbolCollector::shouldCollectSymbol(ND, ND.getASTContext(),
@@ -298,8 +322,10 @@ HoverInfo getHoverContents(const Decl *D, const SymbolIndex *Index) {
 
   PrintingPolicy Policy = printingPolicyForDecls(Ctx.getPrintingPolicy());
   if (const NamedDecl *ND = llvm::dyn_cast<NamedDecl>(D)) {
-    HI.Documentation = getDeclComment(Ctx, *ND);
     HI.Name = printName(Ctx, *ND);
+    ND = getDeclForComment(ND);
+    HI.Documentation = getDeclComment(Ctx, *ND);
+    enhanceFromIndex(HI, *ND, Index);
   }
 
   HI.Kind = index::getSymbolInfo(D).Kind;
@@ -337,22 +363,26 @@ HoverInfo getHoverContents(const Decl *D, const SymbolIndex *Index) {
   }
 
   HI.Definition = printDefinition(D);
-  enhanceFromIndex(HI, D, Index);
   return HI;
 }
 
 /// Generate a \p Hover object given the type \p T.
-HoverInfo getHoverContents(QualType T, const Decl *D, ASTContext &ASTCtx,
-                                  const SymbolIndex *Index) {
+HoverInfo getHoverContents(QualType T, ASTContext &ASTCtx,
+                           const SymbolIndex *Index) {
   HoverInfo HI;
-  llvm::raw_string_ostream OS(HI.Name);
-  PrintingPolicy Policy = printingPolicyForDecls(ASTCtx.getPrintingPolicy());
-  T.print(OS, Policy);
-  OS.flush();
 
-  if (D) {
+  if (const auto *D = T->getAsTagDecl()) {
+    HI.Name = printName(ASTCtx, *D);
     HI.Kind = index::getSymbolInfo(D).Kind;
-    enhanceFromIndex(HI, D, Index);
+
+    const auto *CommentD = getDeclForComment(D);
+    HI.Documentation = getDeclComment(ASTCtx, *CommentD);
+    enhanceFromIndex(HI, *CommentD, Index);
+  } else {
+    // Builtin types
+    llvm::raw_string_ostream OS(HI.Name);
+    PrintingPolicy Policy = printingPolicyForDecls(ASTCtx.getPrintingPolicy());
+    T.print(OS, Policy);
   }
   return HI;
 }
@@ -384,7 +414,6 @@ HoverInfo getHoverContents(const DefinedMacro &Macro, ParsedAST &AST) {
   }
   return HI;
 }
-
 } // namespace
 
 llvm::Optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
@@ -396,12 +425,7 @@ llvm::Optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
       getBeginningOfIdentifier(Pos, SM, AST.getLangOpts()));
 
   if (auto Deduced = getDeducedType(AST.getASTContext(), SourceLocationBeg)) {
-    // Find the corresponding decl to populate kind and fetch documentation.
-    DeclRelationSet Rel = DeclRelation::TemplatePattern | DeclRelation::Alias;
-    auto Decls =
-        targetDecl(ast_type_traits::DynTypedNode::create(*Deduced), Rel);
-    HI = getHoverContents(*Deduced, Decls.empty() ? nullptr : Decls.front(),
-                          AST.getASTContext(), Index);
+    HI = getHoverContents(*Deduced, AST.getASTContext(), Index);
   } else if (auto M = locateMacroAt(SourceLocationBeg, AST.getPreprocessor())) {
     HI = getHoverContents(*M, AST);
   } else {
@@ -413,8 +437,7 @@ llvm::Optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
     SelectionTree Selection(AST.getASTContext(), AST.getTokens(), *Offset);
     std::vector<const Decl *> Result;
     if (const SelectionTree::Node *N = Selection.commonAncestor()) {
-      DeclRelationSet Rel = DeclRelation::TemplatePattern | DeclRelation::Alias;
-      auto Decls = targetDecl(N->ASTNode, Rel);
+      auto Decls = explicitReferenceTargets(N->ASTNode, DeclRelation::Alias);
       if (!Decls.empty()) {
         HI = getHoverContents(Decls.front(), Index);
         // Look for a close enclosing expression to show the value of.

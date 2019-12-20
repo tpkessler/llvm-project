@@ -438,17 +438,8 @@ targetDecl(const ast_type_traits::DynTypedNode &N, DeclRelationSet Mask) {
   return Result;
 }
 
-namespace {
-/// Find declarations explicitly referenced in the source code defined by \p N.
-/// For templates, will prefer to return a template instantiation whenever
-/// possible. However, can also return a template pattern if the specialization
-/// cannot be picked, e.g. in dependent code or when there is no corresponding
-/// Decl for a template instantitation, e.g. for templated using decls:
-///    template <class T> using Ptr = T*;
-///    Ptr<int> x;
-///    ^~~ there is no Decl for 'Ptr<int>', so we return the template pattern.
 llvm::SmallVector<const NamedDecl *, 1>
-explicitReferenceTargets(DynTypedNode N, DeclRelationSet Mask = {}) {
+explicitReferenceTargets(DynTypedNode N, DeclRelationSet Mask) {
   assert(!(Mask & (DeclRelation::TemplatePattern |
                    DeclRelation::TemplateInstantiation)) &&
          "explicitRefenceTargets handles templates on its own");
@@ -478,6 +469,7 @@ explicitReferenceTargets(DynTypedNode N, DeclRelationSet Mask = {}) {
   return Targets;
 }
 
+namespace {
 llvm::SmallVector<ReferenceLoc, 2> refInDecl(const Decl *D) {
   struct Visitor : ConstDeclVisitor<Visitor> {
     llvm::SmallVector<ReferenceLoc, 2> Refs;
@@ -649,10 +641,10 @@ llvm::SmallVector<ReferenceLoc, 2> refInTypeLoc(TypeLoc L) {
   return {*V.Ref};
 }
 
-class ExplicitReferenceColletor
-    : public RecursiveASTVisitor<ExplicitReferenceColletor> {
+class ExplicitReferenceCollector
+    : public RecursiveASTVisitor<ExplicitReferenceCollector> {
 public:
-  ExplicitReferenceColletor(llvm::function_ref<void(ReferenceLoc)> Out)
+  ExplicitReferenceCollector(llvm::function_ref<void(ReferenceLoc)> Out)
       : Out(Out) {
     assert(Out);
   }
@@ -798,16 +790,16 @@ private:
 void findExplicitReferences(const Stmt *S,
                             llvm::function_ref<void(ReferenceLoc)> Out) {
   assert(S);
-  ExplicitReferenceColletor(Out).TraverseStmt(const_cast<Stmt *>(S));
+  ExplicitReferenceCollector(Out).TraverseStmt(const_cast<Stmt *>(S));
 }
 void findExplicitReferences(const Decl *D,
                             llvm::function_ref<void(ReferenceLoc)> Out) {
   assert(D);
-  ExplicitReferenceColletor(Out).TraverseDecl(const_cast<Decl *>(D));
+  ExplicitReferenceCollector(Out).TraverseDecl(const_cast<Decl *>(D));
 }
 void findExplicitReferences(const ASTContext &AST,
                             llvm::function_ref<void(ReferenceLoc)> Out) {
-  ExplicitReferenceColletor(Out).TraverseAST(const_cast<ASTContext &>(AST));
+  ExplicitReferenceCollector(Out).TraverseAST(const_cast<ASTContext &>(AST));
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, DeclRelation R) {

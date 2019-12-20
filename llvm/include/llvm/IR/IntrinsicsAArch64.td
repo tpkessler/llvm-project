@@ -804,6 +804,12 @@ let TargetPrefix = "aarch64" in {  // All intrinsics start with "llvm.aarch64.".
                  llvm_i32_ty],
                 [IntrNoMem]>;
 
+  class AdvSIMD_Pred1VectorArg_Intrinsic
+    : Intrinsic<[llvm_anyvector_ty],
+                [LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>,
+                 LLVMMatchType<0>],
+                [IntrNoMem]>;
+
   class AdvSIMD_Pred2VectorArg_Intrinsic
     : Intrinsic<[llvm_anyvector_ty],
                 [LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>,
@@ -923,6 +929,11 @@ let TargetPrefix = "aarch64" in {  // All intrinsics start with "llvm.aarch64.".
                  LLVMVectorElementType<0>],
                 [IntrNoMem]>;
 
+  class AdvSIMD_SVE_PTRUE_Intrinsic
+    : Intrinsic<[llvm_anyvector_ty],
+                [llvm_i32_ty],
+                [IntrNoMem, ImmArg<0>]>;
+
   class AdvSIMD_SVE_PUNPKHI_Intrinsic
     : Intrinsic<[LLVMHalfElementsVectorType<0>],
                 [llvm_anyvector_ty],
@@ -951,7 +962,7 @@ let TargetPrefix = "aarch64" in {  // All intrinsics start with "llvm.aarch64.".
   class AdvSIMD_SVE_CNTB_Intrinsic
     : Intrinsic<[llvm_i64_ty],
                 [llvm_i32_ty],
-                [IntrNoMem]>;
+                [IntrNoMem, ImmArg<0>]>;
 
   class AdvSIMD_SVE_CNTP_Intrinsic
     : Intrinsic<[llvm_i64_ty],
@@ -998,6 +1009,17 @@ let TargetPrefix = "aarch64" in {  // All intrinsics start with "llvm.aarch64.".
                 [LLVMSubdivide2VectorType<0>,
                  llvm_anyvector_ty],
                 [IntrNoMem]>;
+  class SVE2_2VectorArg_Narrowing_Intrinsic
+      : Intrinsic<
+            [LLVMSubdivide2VectorType<0>],
+            [llvm_anyvector_ty, LLVMMatchType<0>],
+            [IntrNoMem]>;
+
+  class SVE2_Merged2VectorArg_Narrowing_Intrinsic
+      : Intrinsic<
+            [LLVMSubdivide2VectorType<0>],
+            [LLVMSubdivide2VectorType<0>, llvm_anyvector_ty, LLVMMatchType<0>],
+            [IntrNoMem]>;
 
   // NOTE: There is no relationship between these intrinsics beyond an attempt
   // to reuse currently identical class definitions.
@@ -1062,6 +1084,41 @@ class AdvSIMD_1VectorArg_Imm_Intrinsic
     : Intrinsic<[llvm_anyvector_ty],
                 [LLVMMatchType<0>,
                  llvm_i32_ty],
+                [IntrNoMem, ImmArg<1>]>;
+
+class AdvSIMD_ScatterStore_64bitOffset_Intrinsic
+    : Intrinsic<[],
+               [
+                 llvm_anyvector_ty,
+                 LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>,
+                 LLVMPointerToElt<0>,
+                 LLVMScalarOrSameVectorWidth<0, llvm_i64_ty>
+               ],
+               [IntrWriteMem, IntrArgMemOnly]>;
+
+class AdvSIMD_ScatterStore_32bitOffset_Intrinsic
+    : Intrinsic<[],
+               [
+                 llvm_anyvector_ty,
+                 LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>,
+                 LLVMPointerToElt<0>,
+                 LLVMScalarOrSameVectorWidth<0, llvm_i32_ty>
+               ],
+               [IntrWriteMem, IntrArgMemOnly]>;
+
+class AdvSIMD_ScatterStore_VectorBase_Intrinsic
+    : Intrinsic<[],
+               [
+                 llvm_anyvector_ty,
+                 LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>,
+                 llvm_anyvector_ty, llvm_i64_ty
+               ],
+               [IntrWriteMem, IntrArgMemOnly, ImmArg<3>]>;
+
+class AdvSIMD_1VectorArg_Imm64_Intrinsic
+    : Intrinsic<[llvm_anyvector_ty],
+                [LLVMMatchType<0>,
+                 llvm_i64_ty],
                 [IntrNoMem, ImmArg<1>]>;
 
 //
@@ -1231,6 +1288,10 @@ def int_aarch64_sve_orns        : AdvSIMD_Pred2VectorArg_Intrinsic;
 def int_aarch64_sve_nors        : AdvSIMD_Pred2VectorArg_Intrinsic;
 def int_aarch64_sve_nands       : AdvSIMD_Pred2VectorArg_Intrinsic;
 
+def int_aarch64_sve_orr_imm  : AdvSIMD_1VectorArg_Imm64_Intrinsic;
+def int_aarch64_sve_eor_imm  : AdvSIMD_1VectorArg_Imm64_Intrinsic;
+def int_aarch64_sve_and_imm  : AdvSIMD_1VectorArg_Imm64_Intrinsic;
+
 //
 // Conversion
 //
@@ -1377,9 +1438,17 @@ def int_aarch64_sve_ucvtf_f32i64    : Builtin_SVCVT<"svcvt_f32_u64_m", llvm_nxv4
 def int_aarch64_sve_ucvtf_f64i32    : Builtin_SVCVT<"svcvt_f64_u32_m", llvm_nxv2f64_ty, llvm_nxv4i32_ty>;
 
 //
+// Predicate creation
+//
+
+def int_aarch64_sve_ptrue : AdvSIMD_SVE_PTRUE_Intrinsic;
+
+//
 // Predicate operations
 //
 
+def int_aarch64_sve_pfirst  : AdvSIMD_Pred1VectorArg_Intrinsic;
+def int_aarch64_sve_pnext   : AdvSIMD_Pred1VectorArg_Intrinsic;
 def int_aarch64_sve_punpkhi : AdvSIMD_SVE_PUNPKHI_Intrinsic;
 def int_aarch64_sve_punpklo : AdvSIMD_SVE_PUNPKHI_Intrinsic;
 
@@ -1405,6 +1474,36 @@ def int_aarch64_sve_ld1_gather_uxtw_index : AdvSIMD_GatherLoad_32bitOffset_Intri
 
 // vector base + immediate index
 def int_aarch64_sve_ld1_gather_imm : AdvSIMD_GatherLoad_VecTorBase_Intrinsic;
+
+//
+// Scatter stores:
+//
+
+// scalar + vector, 64 bit unscaled offsets
+def int_aarch64_sve_st1_scatter : AdvSIMD_ScatterStore_64bitOffset_Intrinsic;
+
+// scalar + vector, 64 bit scaled offsets
+def int_aarch64_sve_st1_scatter_index
+    : AdvSIMD_ScatterStore_64bitOffset_Intrinsic;
+
+//  scalar + vector, 32 bit unscaled offsets, sign (sxtw) or zero (zxtw)
+//  extended to 64 bits
+def int_aarch64_sve_st1_scatter_sxtw
+    : AdvSIMD_ScatterStore_32bitOffset_Intrinsic;
+
+def int_aarch64_sve_st1_scatter_uxtw
+    : AdvSIMD_ScatterStore_32bitOffset_Intrinsic;
+
+//  scalar + vector, 32 bit scaled offsets, sign (sxtw) or zero (zxtw) extended
+//  to 64 bits
+def int_aarch64_sve_st1_scatter_sxtw_index
+    : AdvSIMD_ScatterStore_32bitOffset_Intrinsic;
+
+def int_aarch64_sve_st1_scatter_uxtw_index
+    : AdvSIMD_ScatterStore_32bitOffset_Intrinsic;
+
+// vector base + immediate index
+def int_aarch64_sve_st1_scatter_imm : AdvSIMD_ScatterStore_VectorBase_Intrinsic;
 
 //
 // SVE2 - Non-widening pairwise arithmetic
@@ -1445,4 +1544,19 @@ def int_aarch64_sve_sqxtunb : SVE2_1VectorArg_Narrowing_Intrinsic;
 def int_aarch64_sve_sqxtunt : SVE2_Merged1VectorArg_Narrowing_Intrinsic;
 def int_aarch64_sve_uqxtnb  : SVE2_1VectorArg_Narrowing_Intrinsic;
 def int_aarch64_sve_uqxtnt  : SVE2_Merged1VectorArg_Narrowing_Intrinsic;
+
+//
+// SVE2 - Binary narrowing DSP operations
+//
+def int_aarch64_sve_addhnb    : SVE2_2VectorArg_Narrowing_Intrinsic;
+def int_aarch64_sve_addhnt    : SVE2_Merged2VectorArg_Narrowing_Intrinsic;
+
+def int_aarch64_sve_raddhnb   : SVE2_2VectorArg_Narrowing_Intrinsic;
+def int_aarch64_sve_raddhnt   : SVE2_Merged2VectorArg_Narrowing_Intrinsic;
+
+def int_aarch64_sve_subhnb    : SVE2_2VectorArg_Narrowing_Intrinsic;
+def int_aarch64_sve_subhnt    : SVE2_Merged2VectorArg_Narrowing_Intrinsic;
+
+def int_aarch64_sve_rsubhnb   : SVE2_2VectorArg_Narrowing_Intrinsic;
+def int_aarch64_sve_rsubhnt   : SVE2_Merged2VectorArg_Narrowing_Intrinsic;
 }
