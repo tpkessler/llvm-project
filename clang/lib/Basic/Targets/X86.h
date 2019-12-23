@@ -35,7 +35,7 @@ static const unsigned X86AddrSpaceMap[] = {
     270, // ptr32_sptr
     271, // ptr32_uptr
     272, // ptr64
-    0,   // hcc_tilestatic 
+    0,   // hcc_tilestatic
     0,   // hcc_generic
     0,   // hcc_global
 };
