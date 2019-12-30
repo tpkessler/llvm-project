@@ -137,10 +137,6 @@ extern cl::opt<bool> ANDIGlueBug;
 PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
                                      const PPCSubtarget &STI)
     : TargetLowering(TM), Subtarget(STI) {
-  // Use _setjmp/_longjmp instead of setjmp/longjmp.
-  setUseUnderscoreSetJmp(true);
-  setUseUnderscoreLongJmp(true);
-
   // On PPC32/64, arguments smaller than 4/8 bytes are extended, so all
   // arguments are at least 4/8 bytes aligned.
   bool isPPC64 = Subtarget.isPPC64();
@@ -394,6 +390,16 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setOperationAction(ISD::BITCAST, MVT::i32, Legal);
     setOperationAction(ISD::BITCAST, MVT::i64, Legal);
     setOperationAction(ISD::BITCAST, MVT::f64, Legal);
+    if (TM.Options.UnsafeFPMath) {
+      setOperationAction(ISD::LRINT, MVT::f64, Legal);
+      setOperationAction(ISD::LRINT, MVT::f32, Legal);
+      setOperationAction(ISD::LLRINT, MVT::f64, Legal);
+      setOperationAction(ISD::LLRINT, MVT::f32, Legal);
+      setOperationAction(ISD::LROUND, MVT::f64, Legal);
+      setOperationAction(ISD::LROUND, MVT::f32, Legal);
+      setOperationAction(ISD::LLROUND, MVT::f64, Legal);
+      setOperationAction(ISD::LLROUND, MVT::f32, Legal);
+    }
   } else {
     setOperationAction(ISD::BITCAST, MVT::f32, Expand);
     setOperationAction(ISD::BITCAST, MVT::i32, Expand);
@@ -781,8 +787,13 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
       setOperationAction(ISD::FTRUNC, MVT::v2f64, Legal);
       setOperationAction(ISD::FNEARBYINT, MVT::v2f64, Legal);
       setOperationAction(ISD::FROUND, MVT::v2f64, Legal);
+      setOperationAction(ISD::FNEARBYINT, MVT::f64, Legal);
+      setOperationAction(ISD::FROUND, MVT::f64, Legal);
 
+      setOperationAction(ISD::FNEARBYINT, MVT::v4f32, Legal);
       setOperationAction(ISD::FROUND, MVT::v4f32, Legal);
+      setOperationAction(ISD::FNEARBYINT, MVT::f32, Legal);
+      setOperationAction(ISD::FROUND, MVT::f32, Legal);
 
       setOperationAction(ISD::MUL, MVT::v2f64, Legal);
       setOperationAction(ISD::FMA, MVT::v2f64, Legal);
@@ -15133,6 +15144,9 @@ bool PPCTargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
   // boundaries.
 
   if (!VT.isSimple())
+    return false;
+
+  if (VT.isFloatingPoint() && !Subtarget.allowsUnalignedFPAccess())
     return false;
 
   if (VT.getSimpleVT().isVector()) {

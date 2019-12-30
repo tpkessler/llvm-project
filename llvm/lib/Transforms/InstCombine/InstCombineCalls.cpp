@@ -2302,6 +2302,16 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
                                                  II->getArgOperand(0), II);
       return replaceInstUsesWith(*II, Builder.CreateFNegFMF(Fabs, II));
     }
+
+    // Propagate sign argument through nested calls:
+    // copysign X, (copysign ?, SignArg) --> copysign X, SignArg
+    Value *SignArg;
+    if (match(II->getArgOperand(1),
+              m_Intrinsic<Intrinsic::copysign>(m_Value(), m_Value(SignArg)))) {
+      II->setArgOperand(1, SignArg);
+      return II;
+    }
+
     break;
   }
   case Intrinsic::fabs: {
@@ -3951,7 +3961,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
             return eraseInstFromFunction(CI);
 
           // Bail if we cross over an intrinsic with side effects, such as
-          // llvm.stacksave, llvm.read_register, or llvm.setjmp.
+          // llvm.stacksave, or llvm.read_register.
           if (II2->mayHaveSideEffects()) {
             CannotRemove = true;
             break;

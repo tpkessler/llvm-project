@@ -1769,15 +1769,11 @@ bool TargetLowering::SimplifyDemandedBits(
           // undesirable.
           break;
 
-        auto *ShAmt = dyn_cast<ConstantSDNode>(Src.getOperand(1));
-        if (!ShAmt || ShAmt->getAPIntValue().uge(BitWidth))
+        SDValue ShAmt = Src.getOperand(1);
+        auto *ShAmtC = dyn_cast<ConstantSDNode>(ShAmt);
+        if (!ShAmtC || ShAmtC->getAPIntValue().uge(BitWidth))
           break;
-
-        SDValue Shift = Src.getOperand(1);
-        uint64_t ShVal = ShAmt->getZExtValue();
-
-        if (TLO.LegalTypes())
-          Shift = TLO.DAG.getConstant(ShVal, dl, getShiftAmountTy(VT, DL));
+        uint64_t ShVal = ShAmtC->getZExtValue();
 
         APInt HighBits =
             APInt::getHighBitsSet(OperandBitWidth, OperandBitWidth - BitWidth);
@@ -1787,10 +1783,12 @@ bool TargetLowering::SimplifyDemandedBits(
         if (!(HighBits & DemandedBits)) {
           // None of the shifted in bits are needed.  Add a truncate of the
           // shift input, then shift it.
+          if (TLO.LegalTypes())
+            ShAmt = TLO.DAG.getConstant(ShVal, dl, getShiftAmountTy(VT, DL));
           SDValue NewTrunc =
               TLO.DAG.getNode(ISD::TRUNCATE, dl, VT, Src.getOperand(0));
           return TLO.CombineTo(
-              Op, TLO.DAG.getNode(ISD::SRL, dl, VT, NewTrunc, Shift));
+              Op, TLO.DAG.getNode(ISD::SRL, dl, VT, NewTrunc, ShAmt));
         }
         break;
       }
@@ -4500,6 +4498,12 @@ static void ChooseConstraint(TargetLowering::AsmOperandInfo &OpInfo,
     TargetLowering::ConstraintType CType =
       TLI.getConstraintType(OpInfo.Codes[i]);
 
+    // Indirect 'other' or 'immediate' constraints are not allowed.
+    if (OpInfo.isIndirect && !(CType == TargetLowering::C_Memory ||
+                               CType == TargetLowering::C_Register ||
+                               CType == TargetLowering::C_RegisterClass))
+      continue;
+
     // If this is an 'other' or 'immediate' constraint, see if the operand is
     // valid for it. For example, on X86 we might have an 'rI' constraint. If
     // the operand is an integer in the range [0..31] we want to use I (saving a
@@ -6074,7 +6078,13 @@ bool TargetLowering::expandFP_TO_UINT(SDNode *Node, SDValue &Result,
   }
 
   SDValue Cst = DAG.getConstantFP(APF, dl, SrcVT);
-  SDValue Sel = DAG.getSetCC(dl, SetCCVT, Src, Cst, ISD::SETLT);
+  SDValue Sel;
+
+  if (Node->isStrictFPOpcode())
+    Sel = DAG.getSetCC(dl, SetCCVT, Src, Cst, ISD::SETLT,
+                       Node->getOperand(0), /*IsSignaling*/ true);
+  else
+    Sel = DAG.getSetCC(dl, SetCCVT, Src, Cst, ISD::SETLT);
 
   bool Strict = Node->isStrictFPOpcode() ||
                 shouldUseStrictFP_TO_INT(SrcVT, DstVT, /*IsSigned*/ false);
@@ -6148,32 +6158,7 @@ bool TargetLowering::expandUINT_TO_FP(SDNode *Node, SDValue &Result,
       return false;
 
     // For unsigned conversions, convert them to signed conversions using the
-    // algorithm from the x86_64 __floatundidf in compiler_rt.
-    SDValue Fast;
-    if (Node->isStrictFPOpcode()) {
-      Fast = DAG.getNode(ISD::STRICT_SINT_TO_FP, dl, {DstVT, MVT::Other},
-                         {Node->getOperand(0), Src});
-      Chain = SDValue(Fast.getNode(), 1);
-    } else
-      Fast = DAG.getNode(ISD::SINT_TO_FP, dl, DstVT, Src);
-
-    SDValue ShiftConst = DAG.getConstant(1, dl, ShiftVT);
-    SDValue Shr = DAG.getNode(ISD::SRL, dl, SrcVT, Src, ShiftConst);
-    SDValue AndConst = DAG.getConstant(1, dl, SrcVT);
-    SDValue And = DAG.getNode(ISD::AND, dl, SrcVT, Src, AndConst);
-    SDValue Or = DAG.getNode(ISD::OR, dl, SrcVT, And, Shr);
-
-    SDValue Slow;
-    if (Node->isStrictFPOpcode()) {
-      SDValue SignCvt = DAG.getNode(ISD::STRICT_SINT_TO_FP, dl,
-                                    {DstVT, MVT::Other}, {Chain, Or});
-      Slow = DAG.getNode(ISD::STRICT_FADD, dl, { DstVT, MVT::Other },
-                         { SignCvt.getValue(1), SignCvt, SignCvt });
-      Chain = Slow.getValue(1);
-    } else {
-      SDValue SignCvt = DAG.getNode(ISD::SINT_TO_FP, dl, DstVT, Or);
-      Slow = DAG.getNode(ISD::FADD, dl, DstVT, SignCvt, SignCvt);
-    }
+    // algorithm from the x86_64 __floatundisf in compiler_rt.
 
     // TODO: This really should be implemented using a branch rather than a
     // select.  We happen to get lucky and machinesink does the right
@@ -6184,6 +6169,35 @@ bool TargetLowering::expandUINT_TO_FP(SDNode *Node, SDValue &Result,
 
     SDValue SignBitTest = DAG.getSetCC(
         dl, SetCCVT, Src, DAG.getConstant(0, dl, SrcVT), ISD::SETLT);
+
+    SDValue ShiftConst = DAG.getConstant(1, dl, ShiftVT);
+    SDValue Shr = DAG.getNode(ISD::SRL, dl, SrcVT, Src, ShiftConst);
+    SDValue AndConst = DAG.getConstant(1, dl, SrcVT);
+    SDValue And = DAG.getNode(ISD::AND, dl, SrcVT, Src, AndConst);
+    SDValue Or = DAG.getNode(ISD::OR, dl, SrcVT, And, Shr);
+
+    SDValue Slow, Fast;
+    if (Node->isStrictFPOpcode()) {
+      // In strict mode, we must avoid spurious exceptions, and therefore
+      // must make sure to only emit a single STRICT_SINT_TO_FP.
+      SDValue InCvt = DAG.getSelect(dl, SrcVT, SignBitTest, Or, Src);
+      Fast = DAG.getNode(ISD::STRICT_SINT_TO_FP, dl, { DstVT, MVT::Other },
+                         { Node->getOperand(0), InCvt });
+      Slow = DAG.getNode(ISD::STRICT_FADD, dl, { DstVT, MVT::Other },
+                         { Fast.getValue(1), Fast, Fast });
+      Chain = Slow.getValue(1);
+      // The STRICT_SINT_TO_FP inherits the exception mode from the
+      // incoming STRICT_UINT_TO_FP node; the STRICT_FADD node can
+      // never raise any exception.
+      SDNodeFlags Flags;
+      Flags.setFPExcept(Node->getFlags().hasFPExcept());
+      Fast->setFlags(Flags);
+    } else {
+      SDValue SignCvt = DAG.getNode(ISD::SINT_TO_FP, dl, DstVT, Or);
+      Slow = DAG.getNode(ISD::FADD, dl, DstVT, SignCvt, SignCvt);
+      Fast = DAG.getNode(ISD::SINT_TO_FP, dl, DstVT, Src);
+    }
+
     Result = DAG.getSelect(dl, DstVT, SignBitTest, Slow, Fast);
     return true;
   }

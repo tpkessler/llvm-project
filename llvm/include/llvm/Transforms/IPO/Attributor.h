@@ -823,6 +823,54 @@ struct Attributor {
     return true;
   }
 
+  /// Helper function to replace all uses of \p V with \p NV. Return true if
+  /// there is any change.
+  bool changeValueAfterManifest(Value &V, Value &NV) {
+    bool Changed = false;
+    for (auto &U : V.uses())
+      Changed |= changeUseAfterManifest(U, NV);
+
+    return Changed;
+  }
+
+  /// Get pointer operand of memory accessing instruction. If \p I is
+  /// not a memory accessing instruction, return nullptr. If \p AllowVolatile,
+  /// is set to false and the instruction is volatile, return nullptr.
+  static const Value *getPointerOperand(const Instruction *I,
+                                        bool AllowVolatile) {
+    if (auto *LI = dyn_cast<LoadInst>(I)) {
+      if (!AllowVolatile && LI->isVolatile())
+        return nullptr;
+      return LI->getPointerOperand();
+    }
+
+    if (auto *SI = dyn_cast<StoreInst>(I)) {
+      if (!AllowVolatile && SI->isVolatile())
+        return nullptr;
+      return SI->getPointerOperand();
+    }
+
+    if (auto *CXI = dyn_cast<AtomicCmpXchgInst>(I)) {
+      if (!AllowVolatile && CXI->isVolatile())
+        return nullptr;
+      return CXI->getPointerOperand();
+    }
+
+    if (auto *RMWI = dyn_cast<AtomicRMWInst>(I)) {
+      if (!AllowVolatile && RMWI->isVolatile())
+        return nullptr;
+      return RMWI->getPointerOperand();
+    }
+
+    return nullptr;
+  }
+
+  /// Record that \p I is to be replaced with `unreachable` after information
+  /// was manifested.
+  void changeToUnreachableAfterManifest(Instruction *I) {
+    ToBeChangedToUnreachableInsts.insert(I);
+  }
+
   /// Record that \p I is deleted after information was manifested. This also
   /// triggers deletion of trivially dead istructions.
   void deleteAfterManifest(Instruction &I) { ToBeDeletedInsts.insert(&I); }
@@ -1030,6 +1078,9 @@ private:
   /// Uses we replace with a new value after manifest is done. We will remove
   /// then trivially dead instructions as well.
   DenseMap<Use *, Value *> ToBeChangedUses;
+
+  /// Instructions we replace with `unreachable` insts after manifest is done.
+  SmallPtrSet<Instruction *, 8> ToBeChangedToUnreachableInsts;
 
   /// Functions, blocks, and instructions we delete after manifest is done.
   ///
@@ -1681,6 +1732,35 @@ struct AAWillReturn
 
   /// Create an abstract attribute view for the position \p IRP.
   static AAWillReturn &createForPosition(const IRPosition &IRP, Attributor &A);
+
+  /// Unique ID (due to the unique address)
+  static const char ID;
+};
+
+/// An abstract attribute for undefined behavior.
+struct AAUndefinedBehavior
+    : public StateWrapper<BooleanState, AbstractAttribute>,
+      public IRPosition {
+  AAUndefinedBehavior(const IRPosition &IRP) : IRPosition(IRP) {}
+
+  /// Return true if "undefined behavior" is assumed.
+  bool isAssumedToCauseUB() const { return getAssumed(); }
+
+  /// Return true if "undefined behavior" is assumed for a specific instruction.
+  virtual bool isAssumedToCauseUB(Instruction *I) const = 0;
+
+  /// Return true if "undefined behavior" is known.
+  bool isKnownToCauseUB() const { return getKnown(); }
+
+  /// Return true if "undefined behavior" is known for a specific instruction.
+  virtual bool isKnownToCauseUB(Instruction *I) const = 0;
+
+  /// Return an IR position, see struct IRPosition.
+  const IRPosition &getIRPosition() const override { return *this; }
+
+  /// Create an abstract attribute view for the position \p IRP.
+  static AAUndefinedBehavior &createForPosition(const IRPosition &IRP,
+                                                Attributor &A);
 
   /// Unique ID (due to the unique address)
   static const char ID;

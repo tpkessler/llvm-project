@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/GlobalDecl.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/TargetInfo.h"
@@ -272,6 +273,9 @@ StmtResult Sema::ActOnGCCAsmStmt(SourceLocation AsmLoc, bool IsSimple,
         Constraints, Exprs.data(), AsmString, NumClobbers, Clobbers, NumLabels, RParenLoc);
     return NS;
   }
+  FunctionDecl *FD = dyn_cast<FunctionDecl>(getCurLexicalContext());
+  llvm::StringMap<bool> FeatureMap;
+  Context.getFunctionFeatureMap(FeatureMap, FD);
 
   for (unsigned i = 0; i != NumOutputs; i++) {
     StringLiteral *Literal = Constraints[i];
@@ -343,8 +347,8 @@ StmtResult Sema::ActOnGCCAsmStmt(SourceLocation AsmLoc, bool IsSimple,
     }
 
     unsigned Size = Context.getTypeSize(OutputExpr->getType());
-    if (!Context.getTargetInfo().validateOutputSize(Literal->getString(),
-                                                    Size)) {
+    if (!Context.getTargetInfo().validateOutputSize(
+            FeatureMap, Literal->getString(), Size)) {
       targetDiag(OutputExpr->getBeginLoc(), diag::err_asm_invalid_output_size)
           << Info.getConstraintStr();
       return new (Context)
@@ -445,8 +449,8 @@ StmtResult Sema::ActOnGCCAsmStmt(SourceLocation AsmLoc, bool IsSimple,
         return StmtError();
 
     unsigned Size = Context.getTypeSize(Ty);
-    if (!Context.getTargetInfo().validateInputSize(Literal->getString(),
-                                                   Size))
+    if (!Context.getTargetInfo().validateInputSize(FeatureMap,
+                                                   Literal->getString(), Size))
       return StmtResult(
           targetDiag(InputExpr->getBeginLoc(), diag::err_asm_invalid_input_size)
           << Info.getConstraintStr());

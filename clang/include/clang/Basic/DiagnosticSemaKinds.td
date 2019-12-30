@@ -1933,8 +1933,7 @@ def err_lvalue_reference_bind_to_unrelated : Error<
   "cannot bind to a value of unrelated type}1,2">;
 def err_reference_bind_drops_quals : Error<
   "binding reference %diff{of type $ to value of type $|to value}0,1 "
-  "%select{drops %3 qualifier%plural{1:|2:|4:|:s}4|changes address space|"
-  "not permitted due to incompatible qualifiers}2">;
+  "%select{drops %3 qualifier%plural{1:|2:|4:|:s}4|changes address space}2">;
 def err_reference_bind_failed : Error<
   "reference %diff{to %select{type|incomplete type}1 $ could not bind to an "
   "%select{rvalue|lvalue}2 of type $|could not bind to %select{rvalue|lvalue}2 of "
@@ -9848,6 +9847,9 @@ def warn_omp_declare_variant_marked_as_declare_variant : Warning<
 def note_omp_marked_declare_variant_here : Note<"marked as 'declare variant' here">;
 def err_omp_one_defaultmap_each_category: Error<
   "at most one defaultmap clause for each variable-category can appear on the directive">;
+def err_omp_lastprivate_conditional_non_scalar : Error<
+  "expected list item of scalar type in 'lastprivate' clause with 'conditional' modifier"
+  >;
 } // end of OpenMP category
 
 let CategoryName = "Related Result Type Issue" in {

@@ -255,7 +255,8 @@ TypeSP DWARFASTParserClang::ParseTypeFromClangModule(const SymbolContext &sc,
   return type_sp;
 }
 
-static void CompleteExternalTagDeclType(ClangASTImporter &ast_importer,
+static void CompleteExternalTagDeclType(ClangASTContext &ast,
+                                        ClangASTImporter &ast_importer,
                                         clang::DeclContext *decl_ctx,
                                         DWARFDIE die,
                                         const char *type_name_cstr) {
@@ -264,7 +265,7 @@ static void CompleteExternalTagDeclType(ClangASTImporter &ast_importer,
     return;
 
   // If this type was not imported from an external AST, there's nothing to do.
-  CompilerType type = ClangASTContext::GetTypeForDecl(tag_decl_ctx);
+  CompilerType type = ast.GetTypeForDecl(tag_decl_ctx);
   if (!type || !ast_importer.CanImport(type))
     return;
 
@@ -598,7 +599,7 @@ DWARFASTParserClang::ParseTypeModifier(const SymbolContext &sc,
   case DW_TAG_base_type:
     resolve_state = Type::ResolveState::Full;
     clang_type = m_ast.GetBuiltinTypeForDWARFEncodingAndBitSize(
-        attrs.name.GetCString(), attrs.encoding,
+        attrs.name.GetStringRef(), attrs.encoding,
         attrs.byte_size.getValueOr(0) * 8);
     break;
 
@@ -809,7 +810,7 @@ TypeSP DWARFASTParserClang::ParseEnum(const SymbolContext &sc,
     if (!enumerator_clang_type) {
       if (attrs.byte_size) {
         enumerator_clang_type = m_ast.GetBuiltinTypeForDWARFEncodingAndBitSize(
-            NULL, DW_ATE_signed, *attrs.byte_size * 8);
+            "", DW_ATE_signed, *attrs.byte_size * 8);
       } else {
         enumerator_clang_type = m_ast.GetBasicType(eBasicTypeInt);
       }
@@ -1594,7 +1595,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
     // backing the Decl is complete before adding children to it. This is
     // not an issue in the non-gmodules case because the debug info will
     // always contain a full definition of parent types in that case.
-    CompleteExternalTagDeclType(GetClangASTImporter(), decl_ctx, die,
+    CompleteExternalTagDeclType(m_ast, GetClangASTImporter(), decl_ctx, die,
                                 attrs.name.GetCString());
 
     if (attrs.accessibility == eAccessNone && decl_ctx) {
