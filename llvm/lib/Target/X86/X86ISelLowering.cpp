@@ -2993,11 +2993,17 @@ SDValue X86TargetLowering::LowerCallResult(
     if ((CopyVT == MVT::f32 || CopyVT == MVT::f64 || CopyVT == MVT::f128) &&
         ((Is64Bit || Ins[InsIndex].Flags.isInReg()) && !Subtarget.hasSSE1())) {
       errorUnsupported(DAG, dl, "SSE register return with SSE disabled");
-      VA.convertToReg(X86::FP0); // Set reg to FP0, avoid hitting asserts.
+      if (VA.getLocReg() == X86::XMM1)
+        VA.convertToReg(X86::FP1); // Set reg to FP1, avoid hitting asserts.
+      else
+        VA.convertToReg(X86::FP0); // Set reg to FP0, avoid hitting asserts.
     } else if (CopyVT == MVT::f64 &&
                (Is64Bit && !Subtarget.hasSSE2())) {
       errorUnsupported(DAG, dl, "SSE2 register return with SSE2 disabled");
-      VA.convertToReg(X86::FP0); // Set reg to FP0, avoid hitting asserts.
+      if (VA.getLocReg() == X86::XMM1)
+        VA.convertToReg(X86::FP1); // Set reg to FP1, avoid hitting asserts.
+      else
+        VA.convertToReg(X86::FP0); // Set reg to FP0, avoid hitting asserts.
     }
 
     // If we prefer to use the value in xmm registers, copy it out as f80 and
@@ -35913,6 +35919,13 @@ SDValue X86TargetLowering::SimplifyMultipleUseDemandedBitsForTargetNode(
       return Vec;
      break;
   }
+  case X86ISD::PCMPGT:
+    // icmp sgt(0, R) == ashr(R, BitWidth-1).
+    // iff we only need the sign bit then we can use R directly.
+    if (DemandedBits.isSignMask() &&
+        ISD::isBuildVectorAllZeros(Op.getOperand(0).getNode()))
+      return Op.getOperand(1);
+    break;
   }
 
   APInt ShuffleUndef, ShuffleZero;
