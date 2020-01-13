@@ -2809,6 +2809,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.Coroutines = Opts.CPlusPlus2a || Args.hasArg(OPT_fcoroutines_ts);
 
   Opts.ConvergentFunctions = Opts.OpenCL || (Opts.CUDA && Opts.CUDAIsDevice) ||
+    (Opts.CPlusPlusAMP && Args.hasArg(OPT_famp_is_device)) ||
     Args.hasArg(OPT_fconvergent_functions);
 
   Opts.DoubleSquareBracketAttributes =
