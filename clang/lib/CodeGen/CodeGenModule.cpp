@@ -1862,6 +1862,11 @@ void CodeGenModule::SetFunctionAttributes(GlobalDecl GD, llvm::Function *F,
           F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
   }
 
+  if (FD->isInlineBuiltinDeclaration()) {
+    F->addAttribute(llvm::AttributeList::FunctionIndex,
+                    llvm::Attribute::NoBuiltin);
+  }
+
   if (FD->isReplaceableGlobalAllocationFunction()) {
     // A replaceable global allocation function does not act like a builtin by
     // default, only if it is invoked by a new-expression or delete-expression.
@@ -4268,13 +4273,13 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
 
   // Emit global variable debug information.
   if (CGDebugInfo *DI = getModuleDebugInfo())
-    if (getCodeGenOpts().getDebugInfo() >= codegenoptions::LimitedDebugInfo)
+    if (getCodeGenOpts().hasReducedDebugInfo())
       DI->EmitGlobalVariable(GV, D);
 }
 
 void CodeGenModule::EmitExternalVarDeclaration(const VarDecl *D) {
   if (CGDebugInfo *DI = getModuleDebugInfo())
-    if (getCodeGenOpts().getDebugInfo() >= codegenoptions::LimitedDebugInfo) {
+    if (getCodeGenOpts().hasReducedDebugInfo()) {
       QualType ASTTy = D->getType();
       llvm::Type *Ty = getTypes().ConvertTypeForMem(D->getType());
       llvm::PointerType *PTy =
@@ -5532,7 +5537,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     ObjCRuntime->GenerateClass(OMD);
     // Emit global variable debug information.
     if (CGDebugInfo *DI = getModuleDebugInfo())
-      if (getCodeGenOpts().getDebugInfo() >= codegenoptions::LimitedDebugInfo)
+      if (getCodeGenOpts().hasReducedDebugInfo())
         DI->getOrCreateInterfaceType(getContext().getObjCInterfaceType(
             OMD->getClassInterface()), OMD->getLocation());
     break;

@@ -177,7 +177,9 @@ handleTlsRelocation(RelType type, Symbol &sym, InputSectionBase &c,
     return 1;
   }
 
-  bool canRelax = config->emachine != EM_ARM && config->emachine != EM_RISCV;
+  bool canRelax = config->emachine != EM_ARM &&
+                  config->emachine != EM_HEXAGON &&
+                  config->emachine != EM_RISCV;
 
   // If we are producing an executable and the symbol is non-preemptable, it
   // must be defined and the code sequence can be relaxed to use Local-Exec.
@@ -1248,8 +1250,8 @@ static void scanReloc(InputSectionBase &sec, OffsetGetter &getOffset, RelTy *&i,
   const uint8_t *relocatedAddr = sec.data().begin() + rel.r_offset;
   RelExpr expr = target->getRelExpr(type, sym, relocatedAddr);
 
-  // Ignore "hint" relocations because they are only markers for relaxation.
-  if (oneof<R_HINT, R_NONE>(expr))
+  // Ignore R_*_NONE and other marker relocations.
+  if (expr == R_NONE)
     return;
 
   // We can separate the small code model relocations into 2 categories:

@@ -733,10 +733,6 @@ enum OpenMPRTLFunction {
   OMPRTL__tgt_target_teams_nowait,
   // Call to void __tgt_register_requires(int64_t flags);
   OMPRTL__tgt_register_requires,
-  // Call to void __tgt_register_lib(__tgt_bin_desc *desc);
-  OMPRTL__tgt_register_lib,
-  // Call to void __tgt_unregister_lib(__tgt_bin_desc *desc);
-  OMPRTL__tgt_unregister_lib,
   // Call to void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
   // void** args_base, void **args, int64_t *arg_sizes, int64_t *arg_types);
   OMPRTL__tgt_target_data_begin,
@@ -1442,6 +1438,7 @@ CGOpenMPRuntime::getUserDefinedReduction(const OMPDeclareReductionDecl *D) {
   return UDRMap.lookup(D);
 }
 
+namespace {
 // Temporary RAII solution to perform a push/pop stack event on the OpenMP IR
 // Builder if one is present.
 struct PushAndPopStackRAII {
@@ -1485,6 +1482,7 @@ struct PushAndPopStackRAII {
   }
   llvm::OpenMPIRBuilder *OMPBuilder;
 };
+} // namespace
 
 static llvm::Function *emitParallelOrTeamsOutlinedFunction(
     CodeGenModule &CGM, const OMPExecutableDirective &D, const CapturedStmt *CS,
@@ -2476,26 +2474,6 @@ llvm::FunctionCallee CGOpenMPRuntime::createRuntimeFunction(unsigned Function) {
     auto *FnTy =
         llvm::FunctionType::get(CGM.VoidTy, TypeParams, /*isVarArg*/ false);
     RTLFn = CGM.CreateRuntimeFunction(FnTy, "__tgt_register_requires");
-    break;
-  }
-  case OMPRTL__tgt_register_lib: {
-    // Build void __tgt_register_lib(__tgt_bin_desc *desc);
-    QualType ParamTy =
-        CGM.getContext().getPointerType(getTgtBinaryDescriptorQTy());
-    llvm::Type *TypeParams[] = {CGM.getTypes().ConvertTypeForMem(ParamTy)};
-    auto *FnTy =
-        llvm::FunctionType::get(CGM.Int32Ty, TypeParams, /*isVarArg*/ false);
-    RTLFn = CGM.CreateRuntimeFunction(FnTy, "__tgt_register_lib");
-    break;
-  }
-  case OMPRTL__tgt_unregister_lib: {
-    // Build void __tgt_unregister_lib(__tgt_bin_desc *desc);
-    QualType ParamTy =
-        CGM.getContext().getPointerType(getTgtBinaryDescriptorQTy());
-    llvm::Type *TypeParams[] = {CGM.getTypes().ConvertTypeForMem(ParamTy)};
-    auto *FnTy =
-        llvm::FunctionType::get(CGM.Int32Ty, TypeParams, /*isVarArg*/ false);
-    RTLFn = CGM.CreateRuntimeFunction(FnTy, "__tgt_unregister_lib");
     break;
   }
   case OMPRTL__tgt_target_data_begin: {
@@ -4376,57 +4354,6 @@ QualType CGOpenMPRuntime::getTgtOffloadEntryQTy() {
     TgtOffloadEntryQTy = C.getRecordType(RD);
   }
   return TgtOffloadEntryQTy;
-}
-
-QualType CGOpenMPRuntime::getTgtDeviceImageQTy() {
-  // These are the types we need to build:
-  // struct __tgt_device_image{
-  // void   *ImageStart;       // Pointer to the target code start.
-  // void   *ImageEnd;         // Pointer to the target code end.
-  // // We also add the host entries to the device image, as it may be useful
-  // // for the target runtime to have access to that information.
-  // __tgt_offload_entry  *EntriesBegin;   // Begin of the table with all
-  //                                       // the entries.
-  // __tgt_offload_entry  *EntriesEnd;     // End of the table with all the
-  //                                       // entries (non inclusive).
-  // };
-  if (TgtDeviceImageQTy.isNull()) {
-    ASTContext &C = CGM.getContext();
-    RecordDecl *RD = C.buildImplicitRecord("__tgt_device_image");
-    RD->startDefinition();
-    addFieldToRecordDecl(C, RD, C.VoidPtrTy);
-    addFieldToRecordDecl(C, RD, C.VoidPtrTy);
-    addFieldToRecordDecl(C, RD, C.getPointerType(getTgtOffloadEntryQTy()));
-    addFieldToRecordDecl(C, RD, C.getPointerType(getTgtOffloadEntryQTy()));
-    RD->completeDefinition();
-    TgtDeviceImageQTy = C.getRecordType(RD);
-  }
-  return TgtDeviceImageQTy;
-}
-
-QualType CGOpenMPRuntime::getTgtBinaryDescriptorQTy() {
-  // struct __tgt_bin_desc{
-  //   int32_t              NumDevices;      // Number of devices supported.
-  //   __tgt_device_image   *DeviceImages;   // Arrays of device images
-  //                                         // (one per device).
-  //   __tgt_offload_entry  *EntriesBegin;   // Begin of the table with all the
-  //                                         // entries.
-  //   __tgt_offload_entry  *EntriesEnd;     // End of the table with all the
-  //                                         // entries (non inclusive).
-  // };
-  if (TgtBinaryDescriptorQTy.isNull()) {
-    ASTContext &C = CGM.getContext();
-    RecordDecl *RD = C.buildImplicitRecord("__tgt_bin_desc");
-    RD->startDefinition();
-    addFieldToRecordDecl(
-        C, RD, C.getIntTypeForBitwidth(/*DestWidth=*/32, /*Signed=*/true));
-    addFieldToRecordDecl(C, RD, C.getPointerType(getTgtDeviceImageQTy()));
-    addFieldToRecordDecl(C, RD, C.getPointerType(getTgtOffloadEntryQTy()));
-    addFieldToRecordDecl(C, RD, C.getPointerType(getTgtOffloadEntryQTy()));
-    RD->completeDefinition();
-    TgtBinaryDescriptorQTy = C.getRecordType(RD);
-  }
-  return TgtBinaryDescriptorQTy;
 }
 
 namespace {
@@ -11190,14 +11117,15 @@ bool checkContext<OMP_CTX_SET_device, OMP_CTX_kind, CodeGenModule &>(
     case llvm::Triple::wasm64:
     case llvm::Triple::renderscript32:
     case llvm::Triple::renderscript64:
+    case llvm::Triple::ve:
       return false;
     }
   }
   return true;
 }
 
-bool matchesContext(CodeGenModule &CGM,
-                    const CompleteOMPContextSelectorData &ContextData) {
+static bool matchesContext(CodeGenModule &CGM,
+                           const CompleteOMPContextSelectorData &ContextData) {
   for (const OMPContextSelectorData &Data : ContextData) {
     switch (Data.Ctx) {
     case OMP_CTX_vendor:

@@ -1851,6 +1851,18 @@ void Verifier::verifyFunctionAttrs(FunctionType *FT, AttributeList Attrs,
     if (FP != "all" && FP != "non-leaf" && FP != "none")
       CheckFailed("invalid value for 'frame-pointer' attribute: " + FP, V);
   }
+
+  if (Attrs.hasFnAttribute("patchable-function-entry")) {
+    StringRef S0 = Attrs
+                       .getAttribute(AttributeList::FunctionIndex,
+                                     "patchable-function-entry")
+                       .getValueAsString();
+    StringRef S = S0;
+    unsigned N;
+    if (S.getAsInteger(10, N))
+      CheckFailed(
+          "\"patchable-function-entry\" takes an unsigned integer: " + S0, V);
+  }
 }
 
 void Verifier::verifyFunctionMetadata(
@@ -4779,7 +4791,7 @@ void Verifier::visitConstrainedFPIntrinsic(ConstrainedFPIntrinsic &FPI) {
 
   case Intrinsic::experimental_constrained_fcmp:
   case Intrinsic::experimental_constrained_fcmps: {
-    auto Pred = dyn_cast<ConstrainedFPCmpIntrinsic>(&FPI)->getPredicate();
+    auto Pred = cast<ConstrainedFPCmpIntrinsic>(&FPI)->getPredicate();
     Assert(CmpInst::isFPPredicate(Pred),
            "invalid predicate for constrained FP comparison intrinsic", &FPI);
     break;

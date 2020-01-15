@@ -1459,10 +1459,6 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
         DeclEndLoc = Range.getEnd();
     }
 
-    PrototypeScope.Exit();
-
-    WarnIfHasCUDATargetAttr();
-
     SourceLocation NoLoc;
     D.AddTypeInfo(DeclaratorChunk::getFunction(
                       /*HasProto=*/true,
@@ -1477,13 +1473,22 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                       /*DeclsInPrototype=*/None, LParenLoc, FunLocalRangeEnd, D,
                       TrailingReturnType, &DS),
                   std::move(Attr), DeclEndLoc);
+
+    // Parse requires-clause[opt].
+    if (Tok.is(tok::kw_requires))
+      ParseTrailingRequiresClause(D);
+
+    PrototypeScope.Exit();
+
+    WarnIfHasCUDATargetAttr();
   } else if (Tok.isOneOf(tok::kw_mutable, tok::arrow, tok::kw___attribute,
                          tok::kw_constexpr, tok::kw_consteval,
                          tok::kw___private, tok::kw___global, tok::kw___local,
-                         tok::kw___constant, tok::kw___generic) ||
+                         tok::kw___constant, tok::kw___generic,
+                         tok::kw_requires) ||
              (Tok.is(tok::l_square) && NextToken().is(tok::l_square))) {
     // It's common to forget that one needs '()' before 'mutable', an attribute
-    // specifier, or the result type. Deal with this.
+    // specifier, the result type, or the requires clause. Deal with this.
     unsigned TokKind = 0;
     switch (Tok.getKind()) {
     case tok::kw_mutable: TokKind = 0; break;
@@ -1497,6 +1502,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     case tok::l_square: TokKind = 2; break;
     case tok::kw_constexpr: TokKind = 3; break;
     case tok::kw_consteval: TokKind = 4; break;
+    case tok::kw_requires: TokKind = 5; break;
     default: llvm_unreachable("Unknown token kind");
     }
 
@@ -1527,8 +1533,6 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
       if (Range.getEnd().isValid())
         DeclEndLoc = Range.getEnd();
     }
-
-    WarnIfHasCUDATargetAttr();
 
     SourceLocation NoLoc;
     D.AddTypeInfo(DeclaratorChunk::getFunction(
@@ -1567,6 +1571,12 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
       D.getAttributes().addAll(Attr.begin(), Attr.end());
       D.getAttributePool().takeAllFrom(Attr.getPool());
     }
+
+    // Parse the requires-clause, if present.
+    if (Tok.is(tok::kw_requires))
+      ParseTrailingRequiresClause(D);
+
+    WarnIfHasCUDATargetAttr();
   }
 
   // FIXME: Rename BlockScope -> ClosureScope if we decide to continue using
@@ -3343,7 +3353,7 @@ Parser::ParseCXXDeleteExpression(bool UseGlobal, SourceLocation Start) {
       return ExprError();
   }
 
-  ExprResult Operand(ParseCastExpression(false));
+  ExprResult Operand(ParseCastExpression(AnyCastExpr));
   if (Operand.isInvalid())
     return Operand;
 
@@ -3574,7 +3584,7 @@ Parser::ParseCXXAmbiguousParenExpression(ParenParseOption &ExprType,
       // If it is not a cast-expression, NotCastExpr will be true and no token
       // will be consumed.
       ColonProt.restore();
-      Result = ParseCastExpression(false/*isUnaryExpression*/,
+      Result = ParseCastExpression(AnyCastExpr,
                                    false/*isAddressofOperand*/,
                                    NotCastExpr,
                                    // type-id has priority.

@@ -3878,9 +3878,6 @@ ResolveConstructorOverload(Sema &S, SourceLocation DeclLoc,
     if (!Info.Constructor || Info.Constructor->isInvalidDecl())
       continue;
 
-    if (!AllowExplicit && Info.Constructor->isExplicit())
-      continue;
-
     if (OnlyListConstructors && !S.isInitListConstructor(Info.Constructor))
       continue;
 
@@ -3952,18 +3949,16 @@ ResolveConstructorOverload(Sema &S, SourceLocation DeclLoc,
         else
           Conv = cast<CXXConversionDecl>(D);
 
-        if (AllowExplicit || !Conv->isExplicit()) {
-          if (ConvTemplate)
-            S.AddTemplateConversionCandidate(
-                ConvTemplate, I.getPair(), ActingDC, Initializer, DestType,
-                CandidateSet, AllowExplicit, AllowExplicit,
-                /*AllowResultConversion*/ false);
-          else
-            S.AddConversionCandidate(Conv, I.getPair(), ActingDC, Initializer,
-                                     DestType, CandidateSet, AllowExplicit,
-                                     AllowExplicit,
-                                     /*AllowResultConversion*/ false);
-        }
+        if (ConvTemplate)
+          S.AddTemplateConversionCandidate(
+              ConvTemplate, I.getPair(), ActingDC, Initializer, DestType,
+              CandidateSet, AllowExplicit, AllowExplicit,
+              /*AllowResultConversion*/ false);
+        else
+          S.AddConversionCandidate(Conv, I.getPair(), ActingDC, Initializer,
+                                   DestType, CandidateSet, AllowExplicit,
+                                   AllowExplicit,
+                                   /*AllowResultConversion*/ false);
       }
     }
   }
@@ -5205,7 +5200,7 @@ static OverloadingResult TryRefInitWithConversionFunction(
         continue;
 
       if (!Info.Constructor->isInvalidDecl() &&
-          Info.Constructor->isConvertingConstructor(AllowExplicitCtors)) {
+          Info.Constructor->isConvertingConstructor(/*AllowExplicit*/true)) {
         if (Info.ConstructorTmpl)
           S.AddTemplateOverloadCandidate(
               Info.ConstructorTmpl, Info.FoundDecl,
@@ -5250,8 +5245,7 @@ static OverloadingResult TryRefInitWithConversionFunction(
       // FIXME: Do we need to make sure that we only consider conversion
       // candidates with reference-compatible results? That might be needed to
       // break recursion.
-      if ((AllowExplicitConvs || !Conv->isExplicit()) &&
-          (AllowRValues ||
+      if ((AllowRValues ||
            Conv->getConversionType()->isLValueReferenceType())) {
         if (ConvTemplate)
           S.AddTemplateConversionCandidate(
@@ -5896,7 +5890,7 @@ static void TryUserDefinedConversion(Sema &S,
           continue;
 
         if (!Info.Constructor->isInvalidDecl() &&
-            Info.Constructor->isConvertingConstructor(AllowExplicit)) {
+            Info.Constructor->isConvertingConstructor(/*AllowExplicit*/true)) {
           if (Info.ConstructorTmpl)
             S.AddTemplateOverloadCandidate(
                 Info.ConstructorTmpl, Info.FoundDecl,
@@ -5940,16 +5934,14 @@ static void TryUserDefinedConversion(Sema &S,
         else
           Conv = cast<CXXConversionDecl>(D);
 
-        if (AllowExplicit || !Conv->isExplicit()) {
-          if (ConvTemplate)
-            S.AddTemplateConversionCandidate(
-                ConvTemplate, I.getPair(), ActingDC, Initializer, DestType,
-                CandidateSet, AllowExplicit, AllowExplicit);
-          else
-            S.AddConversionCandidate(Conv, I.getPair(), ActingDC, Initializer,
-                                     DestType, CandidateSet, AllowExplicit,
-                                     AllowExplicit);
-        }
+        if (ConvTemplate)
+          S.AddTemplateConversionCandidate(
+              ConvTemplate, I.getPair(), ActingDC, Initializer, DestType,
+              CandidateSet, AllowExplicit, AllowExplicit);
+        else
+          S.AddConversionCandidate(Conv, I.getPair(), ActingDC, Initializer,
+                                   DestType, CandidateSet, AllowExplicit,
+                                   AllowExplicit);
       }
     }
   }
@@ -9669,11 +9661,17 @@ bool InitializationSequence::Diagnose(Sema &S,
       S.Diag(Kind.getLocation(), diag::err_reference_bind_drops_quals)
           << NonRefType << SourceType << 1 /*addr space*/
           << Args[0]->getSourceRange();
-    else
+    else if (DroppedQualifiers.hasQualifiers())
       S.Diag(Kind.getLocation(), diag::err_reference_bind_drops_quals)
           << NonRefType << SourceType << 0 /*cv quals*/
           << Qualifiers::fromCVRMask(DroppedQualifiers.getCVRQualifiers())
           << DroppedQualifiers.getCVRQualifiers() << Args[0]->getSourceRange();
+    else
+      // FIXME: Consider decomposing the type and explaining which qualifiers
+      // were dropped where, or on which level a 'const' is missing, etc.
+      S.Diag(Kind.getLocation(), diag::err_reference_bind_drops_quals)
+          << NonRefType << SourceType << 2 /*incompatible quals*/
+          << Args[0]->getSourceRange();
     break;
   }
 
@@ -10540,9 +10538,8 @@ QualType Sema::DeduceTemplateSpecializationFromInitializer(
       // C++ [over.match.copy]p1: (non-list copy-initialization from class)
       //   The converting constructors of T are candidate functions.
       if (!AllowExplicit) {
-        // Only consider converting constructors.
-        if (GD->isExplicit())
-          continue;
+        // Overload resolution checks whether the deduction guide is declared
+        // explicit for us.
 
         // When looking for a converting constructor, deduction guides that
         // could never be called with one argument are not interesting to

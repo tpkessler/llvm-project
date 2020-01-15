@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy %s readability-misleading-indentation %t
+// RUN: %check_clang_tidy %s readability-misleading-indentation %t -- -- -fno-delayed-template-parsing
 
 void foo1();
 void foo2();

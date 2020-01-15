@@ -3389,11 +3389,6 @@ Sema::TemplateDeductionResult Sema::FinishTemplateArgumentDeduction(
           PartialOverloading))
     return Result;
 
-  if (TemplateDeductionResult Result
-        = CheckDeducedArgumentConstraints(*this, FunctionTemplate, Builder,
-                                          Info))
-    return Result;
-
   // C++ [temp.deduct.call]p10: [DR1391]
   //   If deduction succeeds for all parameters that contain
   //   template-parameters that participate in template argument deduction,
@@ -3437,6 +3432,23 @@ Sema::TemplateDeductionResult Sema::FinishTemplateArgumentDeduction(
   if (Trap.hasErrorOccurred()) {
     Specialization->setInvalidDecl(true);
     return TDK_SubstitutionFailure;
+  }
+
+  // C++2a [temp.deduct]p5
+  //   [...] When all template arguments have been deduced [...] all uses of
+  //   template parameters [...] are replaced with the corresponding deduced
+  //   or default argument values.
+  //   [...] If the function template has associated constraints
+  //   ([temp.constr.decl]), those constraints are checked for satisfaction
+  //   ([temp.constr.constr]). If the constraints are not satisfied, type
+  //   deduction fails.
+  if (CheckInstantiatedFunctionTemplateConstraints(Info.getLocation(),
+          Specialization, Builder, Info.AssociatedConstraintsSatisfaction))
+    return TDK_MiscellaneousDeductionFailure;
+
+  if (!Info.AssociatedConstraintsSatisfaction.IsSatisfied) {
+    Info.reset(TemplateArgumentList::CreateCopy(Context, Builder));
+    return TDK_ConstraintsNotSatisfied;
   }
 
   if (OriginalCallArgs) {
@@ -3559,7 +3571,7 @@ ResolveOverloadForDeduction(Sema &S, TemplateParameterList *TemplateParams,
 
     DeclAccessPair DAP;
     if (FunctionDecl *Viable =
-            S.resolveAddressOfOnlyViableOverloadCandidate(Arg, DAP))
+            S.resolveAddressOfSingleOverloadCandidate(Arg, DAP))
       return GetTypeOfFunction(S, R, Viable);
 
     return {};
@@ -5372,46 +5384,40 @@ bool Sema::isTemplateTemplateParameterAtLeastAsSpecializedAs(
   return isAtLeastAsSpecializedAs(*this, PType, AType, AArg, Info);
 }
 
-struct OccurringTemplateParameterFinder :
-    RecursiveASTVisitor<OccurringTemplateParameterFinder> {
-  llvm::SmallBitVector &OccurringIndices;
+namespace {
+struct MarkUsedTemplateParameterVisitor :
+    RecursiveASTVisitor<MarkUsedTemplateParameterVisitor> {
+  llvm::SmallBitVector &Used;
+  unsigned Depth;
 
-  OccurringTemplateParameterFinder(llvm::SmallBitVector &OccurringIndices)
-      : OccurringIndices(OccurringIndices) { }
+  MarkUsedTemplateParameterVisitor(llvm::SmallBitVector &Used,
+                                   unsigned Depth)
+      : Used(Used), Depth(Depth) { }
 
   bool VisitTemplateTypeParmType(TemplateTypeParmType *T) {
-    assert(T->getDepth() == 0 && "This assumes that we allow concepts at "
-                                 "namespace scope only");
-    noteParameter(T->getIndex());
+    if (T->getDepth() == Depth)
+      Used[T->getIndex()] = true;
     return true;
   }
 
   bool TraverseTemplateName(TemplateName Template) {
     if (auto *TTP =
-            dyn_cast<TemplateTemplateParmDecl>(Template.getAsTemplateDecl())) {
-      assert(TTP->getDepth() == 0 && "This assumes that we allow concepts at "
-                                     "namespace scope only");
-      noteParameter(TTP->getIndex());
-    }
-    RecursiveASTVisitor<OccurringTemplateParameterFinder>::
+            dyn_cast<TemplateTemplateParmDecl>(Template.getAsTemplateDecl()))
+      if (TTP->getDepth() == Depth)
+        Used[TTP->getIndex()] = true;
+    RecursiveASTVisitor<MarkUsedTemplateParameterVisitor>::
         TraverseTemplateName(Template);
     return true;
   }
 
   bool VisitDeclRefExpr(DeclRefExpr *E) {
-    if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(E->getDecl())) {
-      assert(NTTP->getDepth() == 0 && "This assumes that we allow concepts at "
-                                      "namespace scope only");
-      noteParameter(NTTP->getIndex());
-    }
+    if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(E->getDecl()))
+      if (NTTP->getDepth() == Depth)
+        Used[NTTP->getIndex()] = true;
     return true;
   }
-
-protected:
-  void noteParameter(unsigned Index) {
-    OccurringIndices.set(Index);
-  }
 };
+}
 
 /// Mark the template parameters that are used by the given
 /// expression.
@@ -5422,7 +5428,8 @@ MarkUsedTemplateParameters(ASTContext &Ctx,
                            unsigned Depth,
                            llvm::SmallBitVector &Used) {
   if (!OnlyDeduced) {
-    OccurringTemplateParameterFinder(Used).TraverseStmt(const_cast<Expr *>(E));
+    MarkUsedTemplateParameterVisitor(Used, Depth)
+        .TraverseStmt(const_cast<Expr *>(E));
     return;
   }
 
