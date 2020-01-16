@@ -264,6 +264,10 @@ def err_amdgpu_no_agent_available : Error<
     "ROCm agent detector could not identify any valid targets; please specify "
     "the target explicitly by passing a valid value to -amdgpu-target">;
 def warn_amdgpu_target_invalid : Warning<"-amdgpu-target argument '%0' is not recognized; using gfx803 instead">, InGroup<InvalidCommandLineArgument>;
+
+def err_drv_invalid_malign_branch_EQ : Error<
+  "invalid argument '%0' to -malign-branch=; each element must be one of: %1">;
+
 def warn_O4_is_O3 : Warning<"-O4 is equivalent to -O3">, InGroup<Deprecated>;
 def warn_drv_optimization_value : Warning<"optimization level '%0' is not supported; using '%1%2' instead">,
   InGroup<InvalidCommandLineArgument>;
