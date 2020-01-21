@@ -1327,7 +1327,10 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 }
 
 // Op supports operand broadcast behavior.
-def Broadcastable  : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
+def ResultsBroadcastableShape :
+  NativeOpTrait<"ResultsBroadcastableShape">;
+// TODO: Alias of the above, remove post integrate.
+def Broadcastable : NativeOpTrait<"ResultsBroadcastableShape">;
 // X op Y == Y op X
 def Commutative  : NativeOpTrait<"IsCommutative">;
 // Op behaves like a function.
@@ -1539,7 +1542,7 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // following signatures:
   //
   // ```c++
-  // static void build(Builder *, OperationState &tblgen_state,
+  // static void build(Builder *, OperationState &odsState,
   //                   Type <result0-name>, Type <result1-name>, ...,
   //                   Value <arg0-name>, Value <arg1-name>, ...,
   //                   Attribute <attr0-name>, Attribute <attr1-name>, ...);
@@ -1547,7 +1550,7 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // * where the attributes follow the same declaration order as in the op.
   //
   // ```c++
-  // static void build(Builder *, OperationState &tblgen_state,
+  // static void build(Builder *, OperationState &odsState,
   //                   ArrayRef<Type> resultTypes,
   //                   ArrayRef<Value> operands,
   //                   ArrayRef<NamedAttribute> attributes);

@@ -170,7 +170,7 @@ public:
         if(EnableFunctionCalls) return false;
 
         const auto It = std::find_if(M.begin(), M.end(), [](Function& F) {
-            return !isInlineViable(F) && !F.isIntrinsic();
+            return !isInlineViable(F).isSuccess() && !F.isIntrinsic();
         });
 
         if (It != M.end()) {

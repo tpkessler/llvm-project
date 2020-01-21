@@ -567,6 +567,12 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
   }
 
   if (Subtarget.hasAltivec()) {
+    for (MVT VT : { MVT::v16i8, MVT::v8i16, MVT::v4i32 }) {
+      setOperationAction(ISD::SADDSAT, VT, Legal);
+      setOperationAction(ISD::SSUBSAT, VT, Legal);
+      setOperationAction(ISD::UADDSAT, VT, Legal);
+      setOperationAction(ISD::USUBSAT, VT, Legal);
+    }
     // First set operation action for all vector types to expand. Then we
     // will selectively turn on ones that can be effectively codegen'd.
     for (MVT VT : MVT::fixedlen_vector_valuetypes()) {
@@ -10139,9 +10145,8 @@ SDValue PPCTargetLowering::LowerVectorStore(SDValue Op,
 
     SDValue Stores[4];
     for (unsigned Idx = 0; Idx < 4; ++Idx) {
-      SDValue Ex = DAG.getNode(
-          ISD::EXTRACT_VECTOR_ELT, dl, ScalarVT, Value,
-          DAG.getConstant(Idx, dl, getVectorIdxTy(DAG.getDataLayout())));
+      SDValue Ex = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, ScalarVT, Value,
+                               DAG.getVectorIdxConstant(Idx, dl));
       SDValue Store;
       if (ScalarVT != ScalarMemVT)
         Store =
