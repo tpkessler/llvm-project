@@ -6081,6 +6081,28 @@ static unsigned getBufferOffsetForMMO(SDValue VOffset,
          cast<ConstantSDNode>(Offset)->getSExtValue();
 }
 
+static unsigned getDSShaderTypeValue(const MachineFunction &MF) {
+  switch (MF.getFunction().getCallingConv()) {
+  case CallingConv::AMDGPU_PS:
+    return 1;
+  case CallingConv::AMDGPU_VS:
+    return 2;
+  case CallingConv::AMDGPU_GS:
+    return 3;
+  case CallingConv::AMDGPU_HS:
+  case CallingConv::AMDGPU_LS:
+  case CallingConv::AMDGPU_ES:
+    report_fatal_error("ds_ordered_count unsupported for this calling conv");
+  case CallingConv::AMDGPU_CS:
+  case CallingConv::AMDGPU_KERNEL:
+  case CallingConv::C:
+  case CallingConv::Fast:
+  default:
+    // Assume other calling conventions are various compute callable functions
+    return 0;
+  }
+}
+
 SDValue SITargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
                                                  SelectionDAG &DAG) const {
   unsigned IntrID = cast<ConstantSDNode>(Op.getOperand(1))->getZExtValue();
@@ -6096,8 +6118,6 @@ SDValue SITargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
     unsigned IndexOperand = M->getConstantOperandVal(7);
     unsigned WaveRelease = M->getConstantOperandVal(8);
     unsigned WaveDone = M->getConstantOperandVal(9);
-    unsigned ShaderType;
-    unsigned Instruction;
 
     unsigned OrderedCountIndex = IndexOperand & 0x3f;
     IndexOperand &= ~0x3f;
@@ -6116,36 +6136,11 @@ SDValue SITargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
     if (IndexOperand)
       report_fatal_error("ds_ordered_count: bad index operand");
 
-    switch (IntrID) {
-    case Intrinsic::amdgcn_ds_ordered_add:
-      Instruction = 0;
-      break;
-    case Intrinsic::amdgcn_ds_ordered_swap:
-      Instruction = 1;
-      break;
-    }
-
     if (WaveDone && !WaveRelease)
       report_fatal_error("ds_ordered_count: wave_done requires wave_release");
 
-    switch (DAG.getMachineFunction().getFunction().getCallingConv()) {
-    case CallingConv::AMDGPU_CS:
-    case CallingConv::AMDGPU_KERNEL:
-      ShaderType = 0;
-      break;
-    case CallingConv::AMDGPU_PS:
-      ShaderType = 1;
-      break;
-    case CallingConv::AMDGPU_VS:
-      ShaderType = 2;
-      break;
-    case CallingConv::AMDGPU_GS:
-      ShaderType = 3;
-      break;
-    default:
-      report_fatal_error("ds_ordered_count unsupported for this calling conv");
-    }
-
+    unsigned Instruction = IntrID == Intrinsic::amdgcn_ds_ordered_add ? 0 : 1;
+    unsigned ShaderType = getDSShaderTypeValue(DAG.getMachineFunction());
     unsigned Offset0 = OrderedCountIndex << 2;
     unsigned Offset1 = WaveRelease | (WaveDone << 1) | (ShaderType << 2) |
                        (Instruction << 4);
@@ -7474,49 +7469,54 @@ SDValue SITargetLowering::lowerFastUnsafeFDIV(SDValue Op,
   SDValue RHS = Op.getOperand(1);
   EVT VT = Op.getValueType();
   const SDNodeFlags Flags = Op->getFlags();
-  bool Unsafe = DAG.getTarget().Options.UnsafeFPMath || Flags.hasAllowReciprocal();
 
-  if (!Unsafe && VT == MVT::f32 && hasFP32Denormals(DAG.getMachineFunction()))
+  bool FastUnsafeRcpLegal = DAG.getTarget().Options.UnsafeFPMath ||
+         (Flags.hasAllowReciprocal() &&
+          ((VT == MVT::f32 && hasFP32Denormals(DAG.getMachineFunction())) ||
+            VT == MVT::f16 ||
+            Flags.hasApproximateFuncs()));
+
+  // Do rcp optimization only when fast unsafe rcp is legal here.
+  // NOTE: We already performed RCP optimization to insert intrinsics in
+  // AMDGPUCodeGenPrepare. Ideally there should have no opportunity here to
+  // rcp optimization.
+  //   However, there are cases like FREM, which is expended into a sequence
+  // of instructions including FDIV, which may expose new opportunities.
+  if (!FastUnsafeRcpLegal)
     return SDValue();
 
   if (const ConstantFPSDNode *CLHS = dyn_cast<ConstantFPSDNode>(LHS)) {
-    if (Unsafe || VT == MVT::f32 || VT == MVT::f16) {
-      if (CLHS->isExactlyValue(1.0)) {
-        // v_rcp_f32 and v_rsq_f32 do not support denormals, and according to
-        // the CI documentation has a worst case error of 1 ulp.
-        // OpenCL requires <= 2.5 ulp for 1.0 / x, so it should always be OK to
-        // use it as long as we aren't trying to use denormals.
-        //
-        // v_rcp_f16 and v_rsq_f16 DO support denormals.
+    if (CLHS->isExactlyValue(1.0)) {
+      // v_rcp_f32 and v_rsq_f32 do not support denormals, and according to
+      // the CI documentation has a worst case error of 1 ulp.
+      // OpenCL requires <= 2.5 ulp for 1.0 / x, so it should always be OK to
+      // use it as long as we aren't trying to use denormals.
+      //
+      // v_rcp_f16 and v_rsq_f16 DO support denormals.
 
-        // 1.0 / sqrt(x) -> rsq(x)
+      // 1.0 / sqrt(x) -> rsq(x)
 
-        // XXX - Is UnsafeFPMath sufficient to do this for f64? The maximum ULP
-        // error seems really high at 2^29 ULP.
-        if (RHS.getOpcode() == ISD::FSQRT)
-          return DAG.getNode(AMDGPUISD::RSQ, SL, VT, RHS.getOperand(0));
+      // XXX - Is UnsafeFPMath sufficient to do this for f64? The maximum ULP
+      // error seems really high at 2^29 ULP.
+      if (RHS.getOpcode() == ISD::FSQRT)
+        return DAG.getNode(AMDGPUISD::RSQ, SL, VT, RHS.getOperand(0));
 
-        // 1.0 / x -> rcp(x)
-        return DAG.getNode(AMDGPUISD::RCP, SL, VT, RHS);
-      }
+      // 1.0 / x -> rcp(x)
+      return DAG.getNode(AMDGPUISD::RCP, SL, VT, RHS);
+    }
 
-      // Same as for 1.0, but expand the sign out of the constant.
-      if (CLHS->isExactlyValue(-1.0)) {
-        // -1.0 / x -> rcp (fneg x)
-        SDValue FNegRHS = DAG.getNode(ISD::FNEG, SL, VT, RHS);
-        return DAG.getNode(AMDGPUISD::RCP, SL, VT, FNegRHS);
-      }
+    // Same as for 1.0, but expand the sign out of the constant.
+    if (CLHS->isExactlyValue(-1.0)) {
+      // -1.0 / x -> rcp (fneg x)
+      SDValue FNegRHS = DAG.getNode(ISD::FNEG, SL, VT, RHS);
+      return DAG.getNode(AMDGPUISD::RCP, SL, VT, FNegRHS);
     }
   }
 
-  if (Unsafe) {
-    // Turn into multiply by the reciprocal.
-    // x / y -> x * (1.0 / y)
-    SDValue Recip = DAG.getNode(AMDGPUISD::RCP, SL, VT, RHS);
-    return DAG.getNode(ISD::FMUL, SL, VT, LHS, Recip, Flags);
-  }
-
-  return SDValue();
+  // Turn into multiply by the reciprocal.
+  // x / y -> x * (1.0 / y)
+  SDValue Recip = DAG.getNode(AMDGPUISD::RCP, SL, VT, RHS);
+  return DAG.getNode(ISD::FMUL, SL, VT, LHS, Recip, Flags);
 }
 
 static SDValue getFPBinOp(SelectionDAG &DAG, unsigned Opcode, const SDLoc &SL,
@@ -8661,6 +8661,11 @@ SDValue SITargetLowering::performRcpCombine(SDNode *N,
                          N0.getOpcode() == ISD::SINT_TO_FP)) {
     return DCI.DAG.getNode(AMDGPUISD::RCP_IFLAG, SDLoc(N), VT, N0,
                            N->getFlags());
+  }
+
+  if ((VT == MVT::f32 || VT == MVT::f16) && N0.getOpcode() == ISD::FSQRT) {
+    return DCI.DAG.getNode(AMDGPUISD::RSQ, SDLoc(N), VT,
+                           N0.getOperand(0), N->getFlags());
   }
 
   return AMDGPUTargetLowering::performRcpCombine(N, DCI);

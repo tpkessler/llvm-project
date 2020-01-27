@@ -241,8 +241,6 @@ static void getCLEnvVarOptions(std::string &EnvValue, llvm::StringSaver &Saver,
       *NumberSignPtr = '=';
 }
 
-static int ExecuteCC1Tool(ArrayRef<const char *> argv);
-
 static void SetBackdoorDriverOutputsFromEnvVars(Driver &TheDriver) {
   // Handle CC_PRINT_OPTIONS and CC_PRINT_OPTIONS_FILE.
   TheDriver.CCPrintOptions = !!::getenv("CC_PRINT_OPTIONS");
@@ -272,21 +270,16 @@ static void FixupDiagPrefixExeName(TextDiagnosticPrinter *DiagClient,
 
 // This lets us create the DiagnosticsEngine with a properly-filled-out
 // DiagnosticOptions instance.
-static DiagnosticOptions *
-CreateAndPopulateDiagOpts(ArrayRef<const char *> argv, bool &UseNewCC1Process) {
+static DiagnosticOptions *CreateAndPopulateDiagOpts(ArrayRef<const char *> argv,
+                                                    InputArgList &Args) {
   auto *DiagOpts = new DiagnosticOptions;
   unsigned MissingArgIndex, MissingArgCount;
-  InputArgList Args = getDriverOptTable().ParseArgs(
-      argv.slice(1), MissingArgIndex, MissingArgCount);
+  Args = getDriverOptTable().ParseArgs(argv.slice(1), MissingArgIndex,
+                                       MissingArgCount);
   // We ignore MissingArgCount and the return value of ParseDiagnosticArgs.
   // Any errors that would be diagnosed here will also be diagnosed later,
   // when the DiagnosticsEngine actually exists.
   (void)ParseDiagnosticArgs(*DiagOpts, Args);
-
-  UseNewCC1Process =
-      Args.hasFlag(clang::driver::options::OPT_fno_integrated_cc1,
-                   clang::driver::options::OPT_fintegrated_cc1,
-                   /*Default=*/CLANG_SPAWN_CC1);
 
   return DiagOpts;
 }
@@ -313,21 +306,27 @@ static void SetInstallDir(SmallVectorImpl<const char *> &argv,
     TheDriver.setInstalledDir(InstalledPathParent);
 }
 
-static int ExecuteCC1Tool(ArrayRef<const char *> argv) {
+static int ExecuteCC1Tool(SmallVectorImpl<const char *> &ArgV) {
   // If we call the cc1 tool from the clangDriver library (through
   // Driver::CC1Main), we need to clean up the options usage count. The options
   // are currently global, and they might have been used previously by the
   // driver.
   llvm::cl::ResetAllOptionOccurrences();
-  StringRef Tool = argv[1];
-  void *GetExecutablePathVP = (void *)(intptr_t) GetExecutablePath;
-  if (Tool == "-cc1")
-    return cc1_main(argv.slice(2), argv[0], GetExecutablePathVP);
-  if (Tool == "-cc1as")
-    return cc1as_main(argv.slice(2), argv[0], GetExecutablePathVP);
-  if (Tool == "-cc1gen-reproducer")
-    return cc1gen_reproducer_main(argv.slice(2), argv[0], GetExecutablePathVP);
 
+  llvm::BumpPtrAllocator A;
+  llvm::StringSaver Saver(A);
+  llvm::cl::ExpandResponseFiles(Saver, &llvm::cl::TokenizeGNUCommandLine, ArgV,
+                                /*MarkEOLs=*/false);
+  StringRef Tool = ArgV[1];
+  void *GetExecutablePathVP = (void *)(intptr_t)GetExecutablePath;
+  if (Tool == "-cc1")
+    return cc1_main(makeArrayRef(ArgV).slice(2), ArgV[0], GetExecutablePathVP);
+  if (Tool == "-cc1as")
+    return cc1as_main(makeArrayRef(ArgV).slice(2), ArgV[0],
+                      GetExecutablePathVP);
+  if (Tool == "-cc1gen-reproducer")
+    return cc1gen_reproducer_main(makeArrayRef(ArgV).slice(2), ArgV[0],
+                                  GetExecutablePathVP);
   // Reject unknown tools.
   llvm::errs() << "error: unknown integrated tool '" << Tool << "'. "
                << "Valid tools include '-cc1' and '-cc1as'.\n";
@@ -449,9 +448,10 @@ int main(int argc_, const char **argv_) {
   // Not having an additional process saves some execution time of Windows,
   // and makes debugging and profiling easier.
   bool UseNewCC1Process;
+  InputArgList Args;
 
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts =
-      CreateAndPopulateDiagOpts(argv, UseNewCC1Process);
+      CreateAndPopulateDiagOpts(argv, Args);
 
   TextDiagnosticPrinter *DiagClient
     = new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
@@ -460,6 +460,12 @@ int main(int argc_, const char **argv_) {
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
+  unsigned NumParallelJobs =
+      getLastArgIntValue(Args, options::OPT_parallel_jobs_EQ, 1, Diags);
+  UseNewCC1Process =
+      Args.hasFlag(clang::driver::options::OPT_fno_integrated_cc1,
+                   clang::driver::options::OPT_fintegrated_cc1,
+                   /*Default=*/NumParallelJobs > 1 ? true : CLANG_SPAWN_CC1);
 
   if (!DiagOpts->DiagnosticSerializationFile.empty()) {
     auto SerializedConsumer =

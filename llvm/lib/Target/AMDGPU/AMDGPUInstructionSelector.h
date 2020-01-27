@@ -80,6 +80,8 @@ private:
   MachineOperand getSubOperand64(MachineOperand &MO,
                                  const TargetRegisterClass &SubRC,
                                  unsigned SubIdx) const;
+
+  bool constrainCopyLikeIntrin(MachineInstr &MI, unsigned NewOpc) const;
   bool selectCOPY(MachineInstr &I) const;
   bool selectPHI(MachineInstr &I) const;
   bool selectG_TRUNC(MachineInstr &I) const;
@@ -101,6 +103,7 @@ private:
   std::tuple<Register, unsigned, unsigned>
   splitBufferOffsets(MachineIRBuilder &B, Register OrigOffset) const;
 
+  bool selectEndCfIntrinsic(MachineInstr &MI) const;
   bool selectStoreIntrinsic(MachineInstr &MI, bool IsFormat) const;
   bool selectDSOrderedIntrinsic(MachineInstr &MI, Intrinsic::ID IID) const;
   bool selectDSGWSIntrinsic(MachineInstr &MI, Intrinsic::ID IID) const;

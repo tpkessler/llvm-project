@@ -1,6 +1,6 @@
 //===- SymbolTable.cpp - MLIR Symbol Table Class --------------------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -18,23 +18,6 @@ using namespace mlir;
 /// symbol table.
 static bool isPotentiallyUnknownSymbolTable(Operation *op) {
   return !op->getDialect() && op->getNumRegions() == 1;
-}
-
-/// Returns the nearest symbol table from a given operation `from`. Returns
-/// nullptr if no valid parent symbol table could be found.
-static Operation *getNearestSymbolTable(Operation *from) {
-  assert(from && "expected valid operation");
-  if (isPotentiallyUnknownSymbolTable(from))
-    return nullptr;
-
-  while (!from->hasTrait<OpTrait::SymbolTable>()) {
-    from = from->getParentOp();
-
-    // Check that this is a valid op and isn't an unknown symbol table.
-    if (!from || isPotentiallyUnknownSymbolTable(from))
-      return nullptr;
-  }
-  return from;
 }
 
 /// Returns the string name of the given symbol, or None if this is not a
@@ -210,6 +193,23 @@ void SymbolTable::setSymbolVisibility(Operation *symbol, Visibility vis) {
 
   StringRef visName = vis == Visibility::Private ? "private" : "nested";
   symbol->setAttr(getVisibilityAttrName(), StringAttr::get(visName, ctx));
+}
+
+/// Returns the nearest symbol table from a given operation `from`. Returns
+/// nullptr if no valid parent symbol table could be found.
+Operation *SymbolTable::getNearestSymbolTable(Operation *from) {
+  assert(from && "expected valid operation");
+  if (isPotentiallyUnknownSymbolTable(from))
+    return nullptr;
+
+  while (!from->hasTrait<OpTrait::SymbolTable>()) {
+    from = from->getParentOp();
+
+    // Check that this is a valid op and isn't an unknown symbol table.
+    if (!from || isPotentiallyUnknownSymbolTable(from))
+      return nullptr;
+  }
+  return from;
 }
 
 /// Returns the operation registered with the given symbol name with the
@@ -466,7 +466,7 @@ static Optional<WalkResult> walkSymbolScopes(
     if (limitAncestor == symbol) {
       // Check that the nearest symbol table is 'symbol's parent. SymbolRefAttr
       // doesn't support parent references.
-      if (getNearestSymbolTable(limit) != symbol->getParentOp())
+      if (SymbolTable::getNearestSymbolTable(limit) != symbol->getParentOp())
         return WalkResult::advance();
       return callback(SymbolRefAttr::get(symbolName, symbol->getContext()),
                       limit);

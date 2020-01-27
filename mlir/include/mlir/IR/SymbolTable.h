@@ -1,6 +1,6 @@
 //===- SymbolTable.h - MLIR Symbol Table Class ------------------*- C++ -*-===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -83,6 +83,10 @@ public:
   static Visibility getSymbolVisibility(Operation *symbol);
   /// Sets the visibility of the given symbol operation.
   static void setSymbolVisibility(Operation *symbol, Visibility vis);
+
+  /// Returns the nearest symbol table from a given operation `from`. Returns
+  /// nullptr if no valid parent symbol table could be found.
+  static Operation *getNearestSymbolTable(Operation *from);
 
   /// Returns the operation registered with the given symbol name with the
   /// regions of 'symbolTableOp'. 'symbolTableOp' is required to be an operation

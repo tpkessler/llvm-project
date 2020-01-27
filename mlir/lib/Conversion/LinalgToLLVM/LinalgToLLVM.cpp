@@ -1,6 +1,6 @@
 //===- LinalgToLLVM.cpp - conversion from Linalg to LLVM dialect ----------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -70,8 +70,6 @@ using urem = ValueBuilder<mlir::LLVM::URemOp>;
 using llvm_alloca = ValueBuilder<LLVM::AllocaOp>;
 using llvm_return = OperationBuilder<LLVM::ReturnOp>;
 
-namespace {
-
 template <typename T>
 static LLVMType getPtrToElementType(T containerType,
                                     LLVMTypeConverter &lowering) {
@@ -106,6 +104,7 @@ static Type convertLinalgType(Type t, LLVMTypeConverter &lowering) {
   return Type();
 }
 
+namespace {
 /// EDSC-compatible wrapper for MemRefDescriptor.
 class BaseViewConversionHelper {
 public:
@@ -364,6 +363,7 @@ public:
     return matchSuccess();
   }
 };
+} // namespace
 
 template <typename LinalgOp>
 static SmallVector<Type, 4> ExtractOperandTypes(Operation *op) {
@@ -420,8 +420,6 @@ static FlatSymbolRefAttr getLibraryCallSymbolRef(Operation *op,
                           ArrayRef<NamedAttribute>{});
   return fnNameAttr;
 }
-
-} // namespace
 
 Type LinalgTypeConverter::convertType(Type t) {
   if (auto result = LLVMTypeConverter::convertType(t))

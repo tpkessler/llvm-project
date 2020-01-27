@@ -1,6 +1,6 @@
 //===- LinalgToLoops.cpp - conversion from Linalg library ops to loops-----===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -37,8 +37,6 @@ using IndexedAffineValue = TemplatedIndexedValue<affine_load, affine_store>;
 
 using edsc::op::operator+;
 using edsc::op::operator==;
-
-namespace {
 
 static SmallVector<ValueHandle, 8>
 makeCanonicalAffineApplies(OpBuilder &b, Location loc, AffineMap map,
@@ -84,6 +82,7 @@ SmallVector<Value, 4> emitLoopRanges(OpBuilder &b, Location loc, AffineMap map,
   return res;
 }
 
+namespace {
 template <typename IndexedValueType, typename LinalgOpType>
 class LinalgScopedEmitter {};
 
@@ -542,6 +541,7 @@ struct FoldAffineOp : public RewritePattern {
     return matchFailure();
   }
 };
+} // namespace
 
 template <typename LoopType, typename IndexedValueType>
 void LowerLinalgToLoopsPass<LoopType, IndexedValueType>::runOnFunction() {
@@ -557,8 +557,6 @@ void LowerLinalgToLoopsPass<LoopType, IndexedValueType>::runOnFunction() {
   // Just apply the patterns greedily.
   applyPatternsGreedily(this->getFunction(), patterns);
 }
-
-} // namespace
 
 /// Create a pass to convert Linalg operations to loop.for loops and
 /// std.load/std.store accesses.
