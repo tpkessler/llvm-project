@@ -1078,6 +1078,8 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
       setOperationAction(ISD::STRICT_FRINT,      RoundedTy,  Legal);
       setOperationAction(ISD::FNEARBYINT,        RoundedTy,  Legal);
       setOperationAction(ISD::STRICT_FNEARBYINT, RoundedTy,  Legal);
+
+      setOperationAction(ISD::FROUND,            RoundedTy,  Custom);
     }
 
     setOperationAction(ISD::SMAX,               MVT::v16i8, Legal);
@@ -1170,6 +1172,9 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
       setOperationAction(ISD::STRICT_FRINT,      VT, Legal);
       setOperationAction(ISD::FNEARBYINT,        VT, Legal);
       setOperationAction(ISD::STRICT_FNEARBYINT, VT, Legal);
+
+      setOperationAction(ISD::FROUND,            VT, Custom);
+
       setOperationAction(ISD::FNEG,              VT, Custom);
       setOperationAction(ISD::FABS,              VT, Custom);
       setOperationAction(ISD::FCOPYSIGN,         VT, Custom);
@@ -1534,6 +1539,8 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
       setOperationAction(ISD::STRICT_FRINT,      VT, Legal);
       setOperationAction(ISD::FNEARBYINT,        VT, Legal);
       setOperationAction(ISD::STRICT_FNEARBYINT, VT, Legal);
+
+      setOperationAction(ISD::FROUND,            VT, Custom);
 
       setOperationAction(ISD::SELECT,           VT, Custom);
     }
@@ -2238,34 +2245,23 @@ unsigned X86TargetLowering::getByValTypeAlignment(Type *Ty,
   return Align;
 }
 
-/// Returns the target specific optimal type for load
-/// and store operations as a result of memset, memcpy, and memmove
-/// lowering. If DstAlign is zero that means it's safe to destination
-/// alignment can satisfy any constraint. Similarly if SrcAlign is zero it
-/// means there isn't a need to check it against alignment requirement,
-/// probably because the source does not need to be loaded. If 'IsMemset' is
-/// true, that means it's expanding a memset. If 'ZeroMemset' is true, that
-/// means it's a memset of zero. 'MemcpyStrSrc' indicates whether the memcpy
-/// source is constant so it does not need to be loaded.
 /// It returns EVT::Other if the type should be determined using generic
 /// target-independent logic.
 /// For vector ops we check that the overall size isn't larger than our
 /// preferred vector width.
 EVT X86TargetLowering::getOptimalMemOpType(
-    uint64_t Size, unsigned DstAlign, unsigned SrcAlign, bool IsMemset,
-    bool ZeroMemset, bool MemcpyStrSrc,
-    const AttributeList &FuncAttributes) const {
+    const MemOp &Op, const AttributeList &FuncAttributes) const {
   if (!FuncAttributes.hasFnAttribute(Attribute::NoImplicitFloat)) {
-    if (Size >= 16 && (!Subtarget.isUnalignedMem16Slow() ||
-                       ((DstAlign == 0 || DstAlign >= 16) &&
-                        (SrcAlign == 0 || SrcAlign >= 16)))) {
+    if (Op.Size >= 16 && (!Subtarget.isUnalignedMem16Slow() ||
+                          ((Op.DstAlign == 0 || Op.DstAlign >= 16) &&
+                           (Op.SrcAlign == 0 || Op.SrcAlign >= 16)))) {
       // FIXME: Check if unaligned 64-byte accesses are slow.
-      if (Size >= 64 && Subtarget.hasAVX512() &&
+      if (Op.Size >= 64 && Subtarget.hasAVX512() &&
           (Subtarget.getPreferVectorWidth() >= 512)) {
         return Subtarget.hasBWI() ? MVT::v64i8 : MVT::v16i32;
       }
       // FIXME: Check if unaligned 32-byte accesses are slow.
-      if (Size >= 32 && Subtarget.hasAVX() &&
+      if (Op.Size >= 32 && Subtarget.hasAVX() &&
           (Subtarget.getPreferVectorWidth() >= 256)) {
         // Although this isn't a well-supported type for AVX1, we'll let
         // legalization and shuffle lowering produce the optimal codegen. If we
@@ -2281,8 +2277,8 @@ EVT X86TargetLowering::getOptimalMemOpType(
       if (Subtarget.hasSSE1() && (Subtarget.is64Bit() || Subtarget.hasX87()) &&
           (Subtarget.getPreferVectorWidth() >= 128))
         return MVT::v4f32;
-    } else if ((!IsMemset || ZeroMemset) && !MemcpyStrSrc && Size >= 8 &&
-               !Subtarget.is64Bit() && Subtarget.hasSSE2()) {
+    } else if ((!Op.IsMemset || Op.ZeroMemset) && !Op.MemcpyStrSrc &&
+               Op.Size >= 8 && !Subtarget.is64Bit() && Subtarget.hasSSE2()) {
       // Do not use f64 to lower memcpy if source is string constant. It's
       // better to use i32 to avoid the loads.
       // Also, do not use f64 to lower memset unless this is a memset of zeros.
@@ -2295,7 +2291,7 @@ EVT X86TargetLowering::getOptimalMemOpType(
   // This is a compromise. If we reach here, unaligned accesses may be slow on
   // this target. However, creating smaller, aligned accesses could be even
   // slower and would certainly be a lot more code.
-  if (Subtarget.is64Bit() && Size >= 8)
+  if (Subtarget.is64Bit() && Op.Size >= 8)
     return MVT::i64;
   return MVT::i32;
 }
@@ -20450,6 +20446,30 @@ SDValue X86TargetLowering::lowerFaddFsub(SDValue Op, SelectionDAG &DAG) const {
   return lowerAddSubToHorizontalOp(Op, DAG, Subtarget);
 }
 
+/// ISD::FROUND is defined to round to nearest with ties rounding away from 0.
+/// This mode isn't supported in hardware on X86. But as long as we aren't
+/// compiling with trapping math, we can emulate this with
+/// floor(X + copysign(nextafter(0.5, 0.0), X)).
+static SDValue LowerFROUND(SDValue Op, SelectionDAG &DAG) {
+  SDValue N0 = Op.getOperand(0);
+  SDLoc dl(Op);
+  MVT VT = Op.getSimpleValueType();
+
+  // N0 += copysign(nextafter(0.5, 0.0), N0)
+  const fltSemantics &Sem = SelectionDAG::EVTToAPFloatSemantics(VT);
+  bool Ignored;
+  APFloat Point5Pred = APFloat(0.5f);
+  Point5Pred.convert(Sem, APFloat::rmNearestTiesToEven, &Ignored);
+  Point5Pred.next(/*nextDown*/true);
+
+  SDValue Adder = DAG.getNode(ISD::FCOPYSIGN, dl, VT,
+                              DAG.getConstantFP(Point5Pred, dl, VT), N0);
+  N0 = DAG.getNode(ISD::FADD, dl, VT, N0, Adder);
+
+  // Truncate the result to remove fraction.
+  return DAG.getNode(ISD::FTRUNC, dl, VT, N0);
+}
+
 /// The only differences between FABS and FNEG are the mask and the logic op.
 /// FNEG also has a folding opportunity for FNEG(FABS(x)).
 static SDValue LowerFABSorFNEG(SDValue Op, SelectionDAG &DAG) {
@@ -25427,8 +25447,11 @@ SDValue X86TargetLowering::LowerFLT_ROUNDS_(SDValue Op,
      2 Round to +inf
      3 Round to -inf
 
-  To perform the conversion, we do:
-    (((((FPSR & 0x800) >> 11) | ((FPSR & 0x400) >> 9)) + 1) & 3)
+  To perform the conversion, we use a packed lookup table of the four 2-bit
+  values that we can index by FPSP[11:10]
+    0x2d --> (0b00,10,11,01) --> (0,2,3,1) >> FPSR[11:10]
+
+    (0x2d >> ((FPSR & 0xc00) >> 9)) & 3
   */
 
   MachineFunction &MF = DAG.getMachineFunction();
@@ -25456,27 +25479,21 @@ SDValue X86TargetLowering::LowerFLT_ROUNDS_(SDValue Op,
   SDValue CWD =
       DAG.getLoad(MVT::i16, DL, Chain, StackSlot, MachinePointerInfo());
 
-  // Transform as necessary
-  SDValue CWD1 =
+  // Mask and turn the control bits into a shift for the lookup table.
+  SDValue Shift =
     DAG.getNode(ISD::SRL, DL, MVT::i16,
                 DAG.getNode(ISD::AND, DL, MVT::i16,
-                            CWD, DAG.getConstant(0x800, DL, MVT::i16)),
-                DAG.getConstant(11, DL, MVT::i8));
-  SDValue CWD2 =
-    DAG.getNode(ISD::SRL, DL, MVT::i16,
-                DAG.getNode(ISD::AND, DL, MVT::i16,
-                            CWD, DAG.getConstant(0x400, DL, MVT::i16)),
+                            CWD, DAG.getConstant(0xc00, DL, MVT::i16)),
                 DAG.getConstant(9, DL, MVT::i8));
+  Shift = DAG.getNode(ISD::TRUNCATE, DL, MVT::i8, Shift);
 
+  SDValue LUT = DAG.getConstant(0x2d, DL, MVT::i32);
   SDValue RetVal =
-    DAG.getNode(ISD::AND, DL, MVT::i16,
-                DAG.getNode(ISD::ADD, DL, MVT::i16,
-                            DAG.getNode(ISD::OR, DL, MVT::i16, CWD1, CWD2),
-                            DAG.getConstant(1, DL, MVT::i16)),
-                DAG.getConstant(3, DL, MVT::i16));
+    DAG.getNode(ISD::AND, DL, MVT::i32,
+                DAG.getNode(ISD::SRL, DL, MVT::i32, LUT, Shift),
+                DAG.getConstant(3, DL, MVT::i32));
 
-  return DAG.getNode((VT.getSizeInBits() < 16 ?
-                      ISD::TRUNCATE : ISD::ZERO_EXTEND), DL, VT, RetVal);
+  return DAG.getZExtOrTrunc(RetVal, DL, VT);
 }
 
 // Split an unary integer op into 2 half sized ops.
@@ -28626,6 +28643,7 @@ SDValue X86TargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::STORE:              return LowerStore(Op, Subtarget, DAG);
   case ISD::FADD:
   case ISD::FSUB:               return lowerFaddFsub(Op, DAG);
+  case ISD::FROUND:             return LowerFROUND(Op, DAG);
   case ISD::FABS:
   case ISD::FNEG:               return LowerFABSorFNEG(Op, DAG);
   case ISD::FCOPYSIGN:          return LowerFCOPYSIGN(Op, DAG);
@@ -36423,7 +36441,14 @@ static SDValue combineBitcastvxi1(SelectionDAG &DAG, EVT VT, SDValue Src,
   case MVT::v64i1:
     // If we have AVX512F, but not AVX512BW and the input is truncated from
     // v64i8 checked earlier. Then split the input and make two pmovmskbs.
-    if (Subtarget.hasAVX512() && !Subtarget.hasBWI()) {
+    if (Subtarget.hasAVX512()) {
+      if (Subtarget.hasBWI())
+        return SDValue();
+      SExtVT = MVT::v64i8;
+      break;
+    }
+    // Split if this is a <64 x i8> comparison result.
+    if (checkBitcastSrcVectorSize(Src, 512)) {
       SExtVT = MVT::v64i8;
       break;
     }

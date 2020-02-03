@@ -935,6 +935,15 @@ Value *InstCombiner::freelyNegateValue(Value *V) {
       return Builder.CreateTrunc(NegA, I->getType(), I->getName() + ".neg");
     return nullptr;
 
+  // 0-(A*B)  =>  (0-A)*B
+  // 0-(A*B)  =>  A*(0-B)
+  case Instruction::Mul:
+    if (Value *NegA = freelyNegateValue(I->getOperand(0)))
+      return Builder.CreateMul(NegA, I->getOperand(1), V->getName() + ".neg");
+    if (Value *NegB = freelyNegateValue(I->getOperand(1)))
+      return Builder.CreateMul(I->getOperand(0), NegB, V->getName() + ".neg");
+    return nullptr;
+
   default:
     return nullptr;
   }
@@ -3499,6 +3508,7 @@ bool InstCombiner::run() {
       }
       MadeIRChange = true;
     }
+    Worklist.AddDeferredInstructions();
   }
 
   Worklist.Zap();
@@ -3560,10 +3570,20 @@ static bool AddReachableCodeToWorklist(BasicBlock *BB, const DataLayout &DL,
 
       // See if we can constant fold its operands.
       for (Use &U : Inst->operands()) {
-        if (!isa<ConstantVector>(U) && !isa<ConstantExpr>(U))
+        bool WrapAsMetadata = false;
+        auto *V = cast<Value>(U);
+
+        // Look through metadata wrappers.
+        if (auto *MAV = dyn_cast<MetadataAsValue>(V))
+          if (auto *VAM = dyn_cast<ValueAsMetadata>(MAV->getMetadata())) {
+            V = VAM->getValue();
+            WrapAsMetadata = true;
+          }
+
+        if (!isa<ConstantVector>(V) && !isa<ConstantExpr>(V))
           continue;
 
-        auto *C = cast<Constant>(U);
+        auto *C = cast<Constant>(V);
         Constant *&FoldRes = FoldedConstants[C];
         if (!FoldRes)
           FoldRes = ConstantFoldConstant(C, DL, TLI);
@@ -3574,7 +3594,11 @@ static bool AddReachableCodeToWorklist(BasicBlock *BB, const DataLayout &DL,
           LLVM_DEBUG(dbgs() << "IC: ConstFold operand of: " << *Inst
                             << "\n    Old = " << *C
                             << "\n    New = " << *FoldRes << '\n');
-          U = FoldRes;
+          if (WrapAsMetadata)
+            U = MetadataAsValue::get(Inst->getContext(),
+                                     ValueAsMetadata::get(FoldRes));
+          else
+            U = FoldRes;
           MadeIRChange = true;
         }
       }
@@ -3664,7 +3688,7 @@ static bool combineInstructionsOverFunction(
   IRBuilder<TargetFolder, IRBuilderCallbackInserter> Builder(
       F.getContext(), TargetFolder(DL),
       IRBuilderCallbackInserter([&Worklist, &AC](Instruction *I) {
-        Worklist.Add(I);
+        Worklist.AddDeferred(I);
         if (match(I, m_Intrinsic<Intrinsic::assume>()))
           AC.registerAssumption(cast<CallInst>(I));
       }));

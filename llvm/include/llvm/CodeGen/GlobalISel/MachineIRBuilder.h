@@ -847,8 +847,8 @@ public:
   MachineInstrBuilder buildConcatVectors(const DstOp &Res,
                                          ArrayRef<Register> Ops);
 
-  MachineInstrBuilder buildInsert(Register Res, Register Src,
-                                  Register Op, unsigned Index);
+  MachineInstrBuilder buildInsert(const DstOp &Res, const SrcOp &Src,
+                                  const SrcOp &Op, unsigned Index);
 
   /// Build and insert either a G_INTRINSIC (if \p HasSideEffects is false) or
   /// G_INTRINSIC_W_SIDE_EFFECTS instruction. Its first operand will be the
@@ -1418,6 +1418,24 @@ public:
   MachineInstrBuilder buildIntrinsicTrunc(const DstOp &Dst, const SrcOp &Src0,
                                          Optional<unsigned> Flags = None) {
     return buildInstr(TargetOpcode::G_INTRINSIC_TRUNC, {Dst}, {Src0}, Flags);
+  }
+
+  /// Build and insert \p Res = GFFLOOR \p Op0, \p Op1
+  MachineInstrBuilder buildFFloor(const DstOp &Dst, const SrcOp &Src0,
+                                          Optional<unsigned> Flags = None) {
+    return buildInstr(TargetOpcode::G_FFLOOR, {Dst}, {Src0}, Flags);
+  }
+
+  /// Build and insert \p Dst = G_FLOG \p Src
+  MachineInstrBuilder buildFLog(const DstOp &Dst, const SrcOp &Src,
+                                Optional<unsigned> Flags = None) {
+    return buildInstr(TargetOpcode::G_FLOG, {Dst}, {Src}, Flags);
+  }
+
+  /// Build and insert \p Dst = G_FLOG2 \p Src
+  MachineInstrBuilder buildFLog2(const DstOp &Dst, const SrcOp &Src,
+                                Optional<unsigned> Flags = None) {
+    return buildInstr(TargetOpcode::G_FLOG2, {Dst}, {Src}, Flags);
   }
 
   /// Build and insert \p Res = G_FCOPYSIGN \p Op0, \p Op1

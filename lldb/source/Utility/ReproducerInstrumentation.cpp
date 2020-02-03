@@ -9,6 +9,7 @@
 #include "lldb/Utility/ReproducerInstrumentation.h"
 #include "lldb/Utility/Reproducer.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 using namespace lldb_private;
 using namespace lldb_private::repro;
@@ -27,12 +28,28 @@ template <> char *Deserializer::Deserialize<char *>() {
 }
 
 template <> const char *Deserializer::Deserialize<const char *>() {
-  auto pos = m_buffer.find('\0');
-  if (pos == llvm::StringRef::npos)
+  const size_t size = Deserialize<size_t>();
+  if (size == std::numeric_limits<size_t>::max())
     return nullptr;
+  assert(HasData(size + 1));
   const char *str = m_buffer.data();
-  m_buffer = m_buffer.drop_front(pos + 1);
+  m_buffer = m_buffer.drop_front(size + 1);
+#ifdef LLDB_REPRO_INSTR_TRACE
+  llvm::errs() << "Deserializing with " << LLVM_PRETTY_FUNCTION << " -> \""
+               << str << "\"\n";
+#endif
   return str;
+}
+
+template <> const char **Deserializer::Deserialize<const char **>() {
+  const size_t size = Deserialize<size_t>();
+  if (size == 0)
+    return nullptr;
+  const char **r =
+      reinterpret_cast<const char **>(calloc(size + 1, sizeof(char *)));
+  for (size_t i = 0; i < size; ++i)
+    r[i] = Deserialize<const char *>();
+  return r;
 }
 
 bool Registry::Replay(const FileSpec &file) {
