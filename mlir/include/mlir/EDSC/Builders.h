@@ -340,7 +340,8 @@ struct OperationHandle : public CapturableHandle {
   /// of MLIR without duplicating the type system or the op definitions.
   template <typename Op, typename... Args>
   static OperationHandle create(Args... args);
-  template <typename Op, typename... Args> static Op createOp(Args... args);
+  template <typename Op, typename... Args>
+  static Op createOp(Args... args);
 
   /// Generic create for a named operation.
   static OperationHandle create(StringRef name, ArrayRef<ValueHandle> operands,
@@ -355,7 +356,8 @@ private:
 };
 
 /// Simple wrapper to build a generic operation without successor blocks.
-template <typename HandleType> struct CustomOperation {
+template <typename HandleType>
+struct CustomOperation {
   CustomOperation(StringRef name) : name(name) {
     static_assert(std::is_same<HandleType, ValueHandle>() ||
                       std::is_same<HandleType, OperationHandle>(),
@@ -436,8 +438,9 @@ struct StructuredIndexed : public ValueHandle {
   StructuredIndexed(Value v, ArrayRef<AffineExpr> indexings)
       : ValueHandle(v), exprs(indexings.begin(), indexings.end()) {
     assert((v.getType().isa<MemRefType>() ||
-            v.getType().isa<RankedTensorType>()) &&
-           "MemRef or RankedTensor expected");
+            v.getType().isa<RankedTensorType>() ||
+            v.getType().isa<VectorType>()) &&
+           "MemRef, RankedTensor or Vector expected");
   }
   StructuredIndexed(ValueHandle vh, ArrayRef<AffineExpr> indexings)
       : ValueHandle(vh), exprs(indexings.begin(), indexings.end()) {}
@@ -489,7 +492,8 @@ inline SmallVector<ValueHandle, 8> makeValueHandles(Container values) {
 /// Store parameters. Assigning to an IndexedValue emits an actual `Store`
 /// operation, while converting an IndexedValue to a ValueHandle emits an actual
 /// `Load` operation.
-template <typename Load, typename Store> class TemplatedIndexedValue {
+template <typename Load, typename Store>
+class TemplatedIndexedValue {
 public:
   explicit TemplatedIndexedValue(Type t) : base(t) {}
   explicit TemplatedIndexedValue(Value v)
@@ -528,7 +532,7 @@ public:
   }
 
   /// Emits a `load` when converting to a Value.
-  Value operator*(void) const {
+  Value operator*(void)const {
     return Load(getBase(), {indices.begin(), indices.end()}).getValue();
   }
 

@@ -361,8 +361,12 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::ADDRSPACECAST, MVT::i64, Custom);
   }
 
-  setOperationAction(ISD::BSWAP, MVT::i32, Legal);
   setOperationAction(ISD::BITREVERSE, MVT::i32, Legal);
+
+  // FIXME: This should be narrowed to i32, but that only happens if i64 is
+  // illegal.
+  setOperationAction(ISD::BSWAP, MVT::i64, Legal);
+  setOperationAction(ISD::BSWAP, MVT::i32, Legal);
 
   // On SI this is s_memtime and s_memrealtime on VI.
   setOperationAction(ISD::READCYCLECOUNTER, MVT::i64, Legal);
@@ -1251,9 +1255,11 @@ bool SITargetLowering::allowsMisalignedMemoryAccessesImpl(
     // If we have an uniform constant load, it still requires using a slow
     // buffer instruction if unaligned.
     if (IsFast) {
+      // Accesses can really be issued as 1-byte aligned or 4-byte aligned, so
+      // 2-byte alignment is worse than 1 unless doing a 2-byte accesss.
       *IsFast = (AddrSpace == AMDGPUAS::CONSTANT_ADDRESS ||
                  AddrSpace == AMDGPUAS::CONSTANT_ADDRESS_32BIT) ?
-        (Align % 4 == 0) : true;
+        Align >= 4 : Align != 2;
     }
 
     return true;

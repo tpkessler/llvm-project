@@ -374,9 +374,11 @@ static Value *constructPointer(Type *ResTy, Value *Ptr, int64_t Offset,
 /// will be done by looking through cast instructions, selects, phis, and calls
 /// with the "returned" attribute. Once we cannot look through the value any
 /// further, the callback \p VisitValueCB is invoked and passed the current
-/// value, the \p State, and a flag to indicate if we stripped anything. To
-/// limit how much effort is invested, we will never visit more values than
-/// specified by \p MaxValues.
+/// value, the \p State, and a flag to indicate if we stripped anything.
+/// Stripped means that we unpacked the value associated with \p IRP at least
+/// once. Note that the value used for the callback may still be the value
+/// associated with \p IRP (due to PHIs). To limit how much effort is invested,
+/// we will never visit more values than specified by \p MaxValues.
 template <typename AAType, typename StateTy>
 static bool genericValueTraversal(
     Attributor &A, IRPosition IRP, const AAType &QueryingAA, StateTy &State,
@@ -441,7 +443,9 @@ static bool genericValueTraversal(
              "Expected liveness in the presence of instructions!");
       for (unsigned u = 0, e = PHI->getNumIncomingValues(); u < e; u++) {
         const BasicBlock *IncomingBB = PHI->getIncomingBlock(u);
-        if (LivenessAA->isAssumedDead(IncomingBB->getTerminator())) {
+        if (A.isAssumedDead(*IncomingBB->getTerminator(), &QueryingAA,
+                            LivenessAA,
+                            /* CheckBBLivenessOnly */ true)) {
           AnyDead = true;
           continue;
         }
@@ -1192,8 +1196,9 @@ ChangeStatus AAReturnedValuesImpl::manifest(Attributor &A) {
   auto ReplaceCallSiteUsersWith = [&A](CallBase &CB, Constant &C) {
     if (CB.getNumUses() == 0 || CB.isMustTailCall())
       return ChangeStatus::UNCHANGED;
-    A.replaceAllUsesWith(CB, C);
-    return ChangeStatus::CHANGED;
+    if (A.changeValueAfterManifest(CB, C))
+      return ChangeStatus::CHANGED;
+    return ChangeStatus::UNCHANGED;
   };
 
   // If the assumed unique return value is an argument, annotate it.
@@ -1771,6 +1776,8 @@ struct AANoFreeFloating : AANoFreeImpl {
         Follow = true;
         return true;
       }
+      if (isa<ReturnInst>(UserI))
+        return true;
 
       // Unknown user.
       return false;
@@ -2225,8 +2232,10 @@ struct AAUndefinedBehaviorImpl : public AAUndefinedBehavior {
     A.checkForAllInstructions(InspectMemAccessInstForUB, *this,
                               {Instruction::Load, Instruction::Store,
                                Instruction::AtomicCmpXchg,
-                               Instruction::AtomicRMW});
-    A.checkForAllInstructions(InspectBrInstForUB, *this, {Instruction::Br});
+                               Instruction::AtomicRMW},
+                              /* CheckBBLivenessOnly */ true);
+    A.checkForAllInstructions(InspectBrInstForUB, *this, {Instruction::Br},
+                              /* CheckBBLivenessOnly */ true);
     if (NoUBPrevSize != AssumedNoUBInsts.size() ||
         UBPrevSize != KnownUBInsts.size())
       return ChangeStatus::CHANGED;
@@ -2815,12 +2824,43 @@ struct AAIsDeadValueImpl : public AAIsDead {
 
   /// See AAIsDead::isKnownDead(Instruction *I).
   bool isKnownDead(const Instruction *I) const override {
-    return I == getCtxI() && getKnown();
+    return isAssumedDead(I) && getKnown();
   }
 
   /// See AbstractAttribute::getAsStr().
   const std::string getAsStr() const override {
     return isAssumedDead() ? "assumed-dead" : "assumed-live";
+  }
+
+  /// Check if all uses are assumed dead.
+  bool areAllUsesAssumedDead(Attributor &A, Value &V) {
+    auto UsePred = [&](const Use &U, bool &Follow) { return false; };
+    // Explicitly set the dependence class to required because we want a long
+    // chain of N dependent instructions to be considered live as soon as one is
+    // without going through N update cycles. This is not required for
+    // correctness.
+    return A.checkForAllUses(UsePred, *this, V, DepClassTy::REQUIRED);
+  }
+
+  /// Determine if \p I is assumed to be side-effect free.
+  bool isAssumedSideEffectFree(Attributor &A, Instruction *I) {
+    if (!I || wouldInstructionBeTriviallyDead(I))
+      return true;
+
+    auto *CB = dyn_cast<CallBase>(I);
+    if (!CB || isa<IntrinsicInst>(CB))
+      return false;
+
+    const IRPosition &CallIRP = IRPosition::callsite_function(*CB);
+    const auto &NoUnwindAA = A.getAAFor<AANoUnwind>(*this, CallIRP);
+    if (!NoUnwindAA.isAssumedNoUnwind())
+      return false;
+
+    const auto &MemBehaviorAA = A.getAAFor<AAMemoryBehavior>(*this, CallIRP);
+    if (!MemBehaviorAA.isAssumedReadOnly())
+      return false;
+
+    return true;
   }
 };
 
@@ -2829,35 +2869,23 @@ struct AAIsDeadFloating : public AAIsDeadValueImpl {
 
   /// See AbstractAttribute::initialize(...).
   void initialize(Attributor &A) override {
-    if (Instruction *I = dyn_cast<Instruction>(&getAssociatedValue()))
-      if (!wouldInstructionBeTriviallyDead(I))
-        indicatePessimisticFixpoint();
-    if (isa<UndefValue>(getAssociatedValue()))
+    if (isa<UndefValue>(getAssociatedValue())) {
+      indicatePessimisticFixpoint();
+      return;
+    }
+
+    Instruction *I = dyn_cast<Instruction>(&getAssociatedValue());
+    if (!isAssumedSideEffectFree(A, I))
       indicatePessimisticFixpoint();
   }
 
   /// See AbstractAttribute::updateImpl(...).
   ChangeStatus updateImpl(Attributor &A) override {
-    auto UsePred = [&](const Use &U, bool &Follow) {
-      Instruction *UserI = cast<Instruction>(U.getUser());
-      if (CallSite CS = CallSite(UserI)) {
-        if (!CS.isArgOperand(&U))
-          return false;
-        const IRPosition &CSArgPos =
-            IRPosition::callsite_argument(CS, CS.getArgumentNo(&U));
-        const auto &CSArgIsDead = A.getAAFor<AAIsDead>(*this, CSArgPos);
-        return CSArgIsDead.isAssumedDead();
-      }
-      if (ReturnInst *RI = dyn_cast<ReturnInst>(UserI)) {
-        const IRPosition &RetPos = IRPosition::returned(*RI->getFunction());
-        const auto &RetIsDeadAA = A.getAAFor<AAIsDead>(*this, RetPos);
-        return RetIsDeadAA.isAssumedDead();
-      }
-      Follow = true;
-      return wouldInstructionBeTriviallyDead(UserI);
-    };
+    Instruction *I = dyn_cast<Instruction>(&getAssociatedValue());
+    if (!isAssumedSideEffectFree(A, I))
+      return indicatePessimisticFixpoint();
 
-    if (!A.checkForAllUses(UsePred, *this, getAssociatedValue()))
+    if (!areAllUsesAssumedDead(A, getAssociatedValue()))
       return indicatePessimisticFixpoint();
     return ChangeStatus::UNCHANGED;
   }
@@ -2865,13 +2893,23 @@ struct AAIsDeadFloating : public AAIsDeadValueImpl {
   /// See AbstractAttribute::manifest(...).
   ChangeStatus manifest(Attributor &A) override {
     Value &V = getAssociatedValue();
-    if (auto *I = dyn_cast<Instruction>(&V))
-      if (wouldInstructionBeTriviallyDead(I)) {
+    if (auto *I = dyn_cast<Instruction>(&V)) {
+      // If we get here we basically know the users are all dead. We check if
+      // isAssumedSideEffectFree returns true here again because it might not be
+      // the case and only the users are dead but the instruction (=call) is
+      // still needed.
+      if (isAssumedSideEffectFree(A, I) && !isa<InvokeInst>(I)) {
         A.deleteAfterManifest(*I);
         return ChangeStatus::CHANGED;
       }
-
+    }
     if (V.use_empty())
+      return ChangeStatus::UNCHANGED;
+
+    bool UsedAssumedInformation = false;
+    Optional<ConstantInt *> CI =
+        getAssumedConstant(A, V, *this, UsedAssumedInformation);
+    if (CI.hasValue() && CI.getValue())
       return ChangeStatus::UNCHANGED;
 
     UndefValue &UV = *UndefValue::get(V.getType());
@@ -2951,30 +2989,82 @@ struct AAIsDeadCallSiteArgument : public AAIsDeadValueImpl {
   void trackStatistics() const override { STATS_DECLTRACK_CSARG_ATTR(IsDead) }
 };
 
+struct AAIsDeadCallSiteReturned : public AAIsDeadFloating {
+  AAIsDeadCallSiteReturned(const IRPosition &IRP)
+      : AAIsDeadFloating(IRP), IsAssumedSideEffectFree(true) {}
+
+  /// See AAIsDead::isAssumedDead().
+  bool isAssumedDead() const override {
+    return AAIsDeadFloating::isAssumedDead() && IsAssumedSideEffectFree;
+  }
+
+  /// See AbstractAttribute::initialize(...).
+  void initialize(Attributor &A) override {
+    if (isa<UndefValue>(getAssociatedValue())) {
+      indicatePessimisticFixpoint();
+      return;
+    }
+
+    // We track this separately as a secondary state.
+    IsAssumedSideEffectFree = isAssumedSideEffectFree(A, getCtxI());
+  }
+
+  /// See AbstractAttribute::updateImpl(...).
+  ChangeStatus updateImpl(Attributor &A) override {
+    ChangeStatus Changed = ChangeStatus::UNCHANGED;
+    if (IsAssumedSideEffectFree && !isAssumedSideEffectFree(A, getCtxI())) {
+      IsAssumedSideEffectFree = false;
+      Changed = ChangeStatus::CHANGED;
+    }
+
+    if (!areAllUsesAssumedDead(A, getAssociatedValue()))
+      return indicatePessimisticFixpoint();
+    return Changed;
+  }
+
+  /// See AbstractAttribute::manifest(...).
+  ChangeStatus manifest(Attributor &A) override {
+    if (auto *CI = dyn_cast<CallInst>(&getAssociatedValue()))
+      if (CI->isMustTailCall())
+        return ChangeStatus::UNCHANGED;
+    return AAIsDeadFloating::manifest(A);
+  }
+
+  /// See AbstractAttribute::trackStatistics()
+  void trackStatistics() const override {
+    if (IsAssumedSideEffectFree)
+      STATS_DECLTRACK_CSRET_ATTR(IsDead)
+    else
+      STATS_DECLTRACK_CSRET_ATTR(UnusedResult)
+  }
+
+  /// See AbstractAttribute::getAsStr().
+  const std::string getAsStr() const override {
+    return isAssumedDead()
+               ? "assumed-dead"
+               : (getAssumed() ? "assumed-dead-users" : "assumed-live");
+  }
+
+private:
+  bool IsAssumedSideEffectFree;
+};
+
 struct AAIsDeadReturned : public AAIsDeadValueImpl {
   AAIsDeadReturned(const IRPosition &IRP) : AAIsDeadValueImpl(IRP) {}
 
   /// See AbstractAttribute::updateImpl(...).
   ChangeStatus updateImpl(Attributor &A) override {
 
-    bool AllKnownDead = true;
     auto PredForCallSite = [&](AbstractCallSite ACS) {
-      if (ACS.isCallbackCall())
+      if (ACS.isCallbackCall() || !ACS.getInstruction())
         return false;
-      const IRPosition &CSRetPos =
-          IRPosition::callsite_returned(ACS.getCallSite());
-      const auto &RetIsDeadAA = A.getAAFor<AAIsDead>(*this, CSRetPos);
-      AllKnownDead &= RetIsDeadAA.isKnownDead();
-      return RetIsDeadAA.isAssumedDead();
+      return areAllUsesAssumedDead(A, *ACS.getInstruction());
     };
 
     bool AllCallSitesKnown;
     if (!A.checkForAllCallSites(PredForCallSite, *this, true,
                                 AllCallSitesKnown))
       return indicatePessimisticFixpoint();
-
-    if (AllCallSitesKnown && AllKnownDead)
-      indicateOptimisticFixpoint();
 
     return ChangeStatus::UNCHANGED;
   }
@@ -2986,6 +3076,9 @@ struct AAIsDeadReturned : public AAIsDeadValueImpl {
     UndefValue &UV = *UndefValue::get(getAssociatedFunction()->getReturnType());
     auto RetInstPred = [&](Instruction &I) {
       ReturnInst &RI = cast<ReturnInst>(I);
+      if (auto *CI = dyn_cast<CallInst>(RI.getReturnValue()))
+        if (CI->isMustTailCall())
+          return true;
       if (!isa<UndefValue>(RI.getReturnValue()))
         AnyChange |= A.changeUseAfterManifest(RI.getOperandUse(0), UV);
       return true;
@@ -2996,16 +3089,6 @@ struct AAIsDeadReturned : public AAIsDeadValueImpl {
 
   /// See AbstractAttribute::trackStatistics()
   void trackStatistics() const override { STATS_DECLTRACK_FNRET_ATTR(IsDead) }
-};
-
-struct AAIsDeadCallSiteReturned : public AAIsDeadFloating {
-  AAIsDeadCallSiteReturned(const IRPosition &IRP) : AAIsDeadFloating(IRP) {}
-
-  /// See AbstractAttribute::initialize(...).
-  void initialize(Attributor &A) override {}
-
-  /// See AbstractAttribute::trackStatistics()
-  void trackStatistics() const override { STATS_DECLTRACK_CSRET_ATTR(IsDead) }
 };
 
 struct AAIsDeadFunction : public AAIsDead {
@@ -4133,12 +4216,8 @@ struct AACaptureUseTracker final : public CaptureTracker {
 
   /// See CaptureTracker::shouldExplore(...).
   bool shouldExplore(const Use *U) override {
-    // Check liveness, if it is used to stop exploring we need a dependence.
-    if (IsDeadAA.isAssumedDead(cast<Instruction>(U->getUser()))) {
-      A.recordDependence(IsDeadAA, NoCaptureAA, DepClassTy::OPTIONAL);
-      return false;
-    }
-    return true;
+    // Check liveness.
+    return !A.isAssumedDead(*U, &NoCaptureAA, &IsDeadAA);
   }
 
   /// Update the state according to \p CapturedInMem, \p CapturedInInt, and
@@ -4443,8 +4522,8 @@ struct AAValueSimplifyImpl : AAValueSimplify {
       if (!V.user_empty() && &V != C && V.getType() == C->getType()) {
         LLVM_DEBUG(dbgs() << "[ValueSimplify] " << V << " -> " << *C
                           << " :: " << *this << "\n");
-        A.changeValueAfterManifest(V, *C);
-        Changed = ChangeStatus::CHANGED;
+        if (A.changeValueAfterManifest(V, *C))
+          Changed = ChangeStatus::CHANGED;
       }
     }
 
@@ -4634,6 +4713,14 @@ struct AAValueSimplifyCallSiteReturned : AAValueSimplifyReturned {
   AAValueSimplifyCallSiteReturned(const IRPosition &IRP)
       : AAValueSimplifyReturned(IRP) {}
 
+  /// See AbstractAttribute::manifest(...).
+  ChangeStatus manifest(Attributor &A) override {
+    if (auto *CI = dyn_cast<CallInst>(&getAssociatedValue()))
+      if (CI->isMustTailCall())
+        return ChangeStatus::UNCHANGED;
+    return AAValueSimplifyReturned::manifest(A);
+  }
+
   void trackStatistics() const override {
     STATS_DECLTRACK_CSRET_ATTR(value_simplify)
   }
@@ -4696,7 +4783,7 @@ struct AAHeapToStackImpl : public AAHeapToStack {
         AI = new BitCastInst(AI, MallocCall->getType(), "malloc_bc",
                              AI->getNextNode());
 
-      A.replaceAllUsesWith(*MallocCall, *AI);
+      A.changeValueAfterManifest(*MallocCall, *AI);
 
       if (auto *II = dyn_cast<InvokeInst>(MallocCall)) {
         auto *NBB = II->getNormalDest();
@@ -5827,12 +5914,10 @@ ChangeStatus AAMemoryBehaviorFloating::updateImpl(Attributor &A) {
     const Use *U = Uses[i];
     Instruction *UserI = cast<Instruction>(U->getUser());
     LLVM_DEBUG(dbgs() << "[AAMemoryBehavior] Use: " << **U << " in " << *UserI
-                      << " [Dead: " << (LivenessAA.isAssumedDead(UserI))
+                      << " [Dead: " << (A.isAssumedDead(*U, this, &LivenessAA))
                       << "]\n");
-    if (LivenessAA.isAssumedDead(UserI)) {
-      A.recordDependence(LivenessAA, *this, DepClassTy::OPTIONAL);
+    if (A.isAssumedDead(*U, this, &LivenessAA))
       continue;
-    }
 
     // Check if the users of UserI should also be visited.
     if (followUsersOfUseIn(A, U, UserI))
@@ -6433,34 +6518,140 @@ struct AAValueConstantRangeCallSiteArgument : AAValueConstantRangeFloating {
 /// ----------------------------------------------------------------------------
 
 bool Attributor::isAssumedDead(const AbstractAttribute &AA,
-                               const AAIsDead *LivenessAA) {
-  const Instruction *CtxI = AA.getIRPosition().getCtxI();
-  if (!CtxI || !Functions.count(const_cast<Function *>(CtxI->getFunction())))
+                               const AAIsDead *FnLivenessAA,
+                               bool CheckBBLivenessOnly, DepClassTy DepClass) {
+  const IRPosition &IRP = AA.getIRPosition();
+  if (!Functions.count(IRP.getAnchorScope()))
+    return false;
+  return isAssumedDead(IRP, &AA, FnLivenessAA, CheckBBLivenessOnly, DepClass);
+}
+
+bool Attributor::isAssumedDead(const Use &U,
+                               const AbstractAttribute *QueryingAA,
+                               const AAIsDead *FnLivenessAA,
+                               bool CheckBBLivenessOnly, DepClassTy DepClass) {
+  Instruction *UserI = dyn_cast<Instruction>(U.getUser());
+  if (!UserI)
+    return isAssumedDead(IRPosition::value(*U.get()), QueryingAA, FnLivenessAA,
+                         CheckBBLivenessOnly, DepClass);
+
+  if (CallSite CS = CallSite(UserI)) {
+    // For call site argument uses we can check if the argument is
+    // unused/dead.
+    if (CS.isArgOperand(&U)) {
+      const IRPosition &CSArgPos =
+          IRPosition::callsite_argument(CS, CS.getArgumentNo(&U));
+      return isAssumedDead(CSArgPos, QueryingAA, FnLivenessAA,
+                           CheckBBLivenessOnly, DepClass);
+    }
+  } else if (ReturnInst *RI = dyn_cast<ReturnInst>(UserI)) {
+    const IRPosition &RetPos = IRPosition::returned(*RI->getFunction());
+    return isAssumedDead(RetPos, QueryingAA, FnLivenessAA, CheckBBLivenessOnly,
+                         DepClass);
+  } else if (PHINode *PHI = dyn_cast<PHINode>(UserI)) {
+    BasicBlock *IncomingBB = PHI->getIncomingBlock(U);
+    return isAssumedDead(*IncomingBB->getTerminator(), QueryingAA, FnLivenessAA,
+                         CheckBBLivenessOnly, DepClass);
+  }
+
+  return isAssumedDead(IRPosition::value(*UserI), QueryingAA, FnLivenessAA,
+                       CheckBBLivenessOnly, DepClass);
+}
+
+bool Attributor::isAssumedDead(const Instruction &I,
+                               const AbstractAttribute *QueryingAA,
+                               const AAIsDead *FnLivenessAA,
+                               bool CheckBBLivenessOnly, DepClassTy DepClass) {
+  if (!FnLivenessAA)
+    FnLivenessAA = lookupAAFor<AAIsDead>(IRPosition::function(*I.getFunction()),
+                                         QueryingAA,
+                                         /* TrackDependence */ false);
+
+  // If we have a context instruction and a liveness AA we use it.
+  if (FnLivenessAA &&
+      FnLivenessAA->getIRPosition().getAnchorScope() == I.getFunction() &&
+      FnLivenessAA->isAssumedDead(&I)) {
+    if (QueryingAA)
+      recordDependence(*FnLivenessAA, *QueryingAA, DepClass);
+    return true;
+  }
+
+  if (CheckBBLivenessOnly)
     return false;
 
-  // TODO: Find a good way to utilize fine and coarse grained liveness
-  // information.
-  if (!LivenessAA)
-    LivenessAA =
-        &getAAFor<AAIsDead>(AA, IRPosition::function(*CtxI->getFunction()),
-                            /* TrackDependence */ false);
-
+  const AAIsDead &IsDeadAA = getOrCreateAAFor<AAIsDead>(
+      IRPosition::value(I), QueryingAA, /* TrackDependence */ false);
   // Don't check liveness for AAIsDead.
-  if (&AA == LivenessAA)
+  if (QueryingAA == &IsDeadAA)
     return false;
 
-  if (!LivenessAA->isAssumedDead(CtxI))
+  if (IsDeadAA.isAssumedDead()) {
+    if (QueryingAA)
+      recordDependence(IsDeadAA, *QueryingAA, DepClass);
+    return true;
+  }
+
+  return false;
+}
+
+bool Attributor::isAssumedDead(const IRPosition &IRP,
+                               const AbstractAttribute *QueryingAA,
+                               const AAIsDead *FnLivenessAA,
+                               bool CheckBBLivenessOnly, DepClassTy DepClass) {
+  Instruction *CtxI = IRP.getCtxI();
+  if (CtxI &&
+      isAssumedDead(*CtxI, QueryingAA, FnLivenessAA,
+                    /* CheckBBLivenessOnly */ true,
+                    CheckBBLivenessOnly ? DepClass : DepClassTy::OPTIONAL))
+    return true;
+
+  if (CheckBBLivenessOnly)
     return false;
 
-  // We actually used liveness information so we have to record a dependence.
-  recordDependence(*LivenessAA, AA, DepClassTy::OPTIONAL);
+  // If we haven't succeeded we query the specific liveness info for the IRP.
+  const AAIsDead *IsDeadAA;
+  if (IRP.getPositionKind() == IRPosition::IRP_CALL_SITE)
+    IsDeadAA = &getOrCreateAAFor<AAIsDead>(
+        IRPosition::callsite_returned(cast<CallBase>(IRP.getAssociatedValue())),
+        QueryingAA, /* TrackDependence */ false);
+  else
+    IsDeadAA = &getOrCreateAAFor<AAIsDead>(IRP, QueryingAA,
+                                           /* TrackDependence */ false);
+  // Don't check liveness for AAIsDead.
+  if (QueryingAA == IsDeadAA)
+    return false;
 
-  return true;
+  if (IsDeadAA->isAssumedDead()) {
+    if (QueryingAA)
+      recordDependence(*IsDeadAA, *QueryingAA, DepClass);
+    return true;
+  }
+
+  return false;
 }
 
 bool Attributor::checkForAllUses(
     const function_ref<bool(const Use &, bool &)> &Pred,
-    const AbstractAttribute &QueryingAA, const Value &V) {
+    const AbstractAttribute &QueryingAA, const Value &V,
+    DepClassTy LivenessDepClass) {
+
+  // Check the trivial case first as it catches void values.
+  if (V.use_empty())
+    return true;
+
+  // If the value is replaced by another one, for now a constant, we do not have
+  // uses. Note that this requires users of `checkForAllUses` to not recurse but
+  // instead use the `follow` callback argument to look at transitive users,
+  // however, that should be clear from the presence of the argument.
+  bool UsedAssumedInformation = false;
+  Optional<ConstantInt *> CI =
+      getAssumedConstant(*this, V, QueryingAA, UsedAssumedInformation);
+  if (CI.hasValue() && CI.getValue()) {
+    LLVM_DEBUG(dbgs() << "[Attributor] Value is simplified, uses skipped: " << V
+                      << " -> " << *CI.getValue() << "\n");
+    return true;
+  }
+
   const IRPosition &IRP = QueryingAA.getIRPosition();
   SmallVector<const Use *, 16> Worklist;
   SmallPtrSet<const Use *, 16> Visited;
@@ -6471,10 +6662,6 @@ bool Attributor::checkForAllUses(
   LLVM_DEBUG(dbgs() << "[Attributor] Got " << Worklist.size()
                     << " initial uses to check\n");
 
-  if (Worklist.empty())
-    return true;
-
-  bool AnyDead = false;
   const Function *ScopeFn = IRP.getAnchorScope();
   const auto *LivenessAA =
       ScopeFn ? &getAAFor<AAIsDead>(QueryingAA, IRPosition::function(*ScopeFn),
@@ -6485,14 +6672,13 @@ bool Attributor::checkForAllUses(
     const Use *U = Worklist.pop_back_val();
     if (!Visited.insert(U).second)
       continue;
-    LLVM_DEBUG(dbgs() << "[Attributor] Check use: " << **U << "\n");
-    if (Instruction *UserI = dyn_cast<Instruction>(U->getUser()))
-      if (LivenessAA && LivenessAA->isAssumedDead(UserI)) {
-        LLVM_DEBUG(dbgs() << "[Attributor] Dead user: " << *UserI << ": "
-                          << *LivenessAA << "\n");
-        AnyDead = true;
-        continue;
-      }
+    LLVM_DEBUG(dbgs() << "[Attributor] Check use: " << **U << " in "
+                      << *U->getUser() << "\n");
+    if (isAssumedDead(*U, &QueryingAA, LivenessAA,
+                      /* CheckBBLivenessOnly */ false, LivenessDepClass)) {
+      LLVM_DEBUG(dbgs() << "[Attributor] Dead use, skip!\n");
+      continue;
+    }
 
     bool Follow = false;
     if (!Pred(*U, Follow))
@@ -6502,9 +6688,6 @@ bool Attributor::checkForAllUses(
     for (const Use &UU : U->getUser()->uses())
       Worklist.push_back(&UU);
   }
-
-  if (AnyDead)
-    recordDependence(*LivenessAA, QueryingAA, DepClassTy::OPTIONAL);
 
   return true;
 }
@@ -6546,6 +6729,13 @@ bool Attributor::checkForAllCallSites(
   AllCallSitesKnown = RequireAllCallSites;
 
   for (const Use &U : Fn.uses()) {
+    LLVM_DEBUG(dbgs() << "[Attributor] Check use: " << *U << " in "
+                      << *U.getUser() << "\n");
+    if (isAssumedDead(U, QueryingAA, nullptr, /* CheckBBLivenessOnly */ true)) {
+      LLVM_DEBUG(dbgs() << "[Attributor] Dead use, skip!\n");
+      continue;
+    }
+
     AbstractCallSite ACS(&U);
     if (!ACS) {
       LLVM_DEBUG(dbgs() << "[Attributor] Function " << Fn.getName()
@@ -6555,23 +6745,6 @@ bool Attributor::checkForAllCallSites(
       if (isa<BlockAddress>(U.getUser()))
         continue;
       return false;
-    }
-
-    Instruction *I = ACS.getInstruction();
-    Function *Caller = I->getFunction();
-
-    const auto *LivenessAA =
-        lookupAAFor<AAIsDead>(IRPosition::function(*Caller), QueryingAA,
-                              /* TrackDependence */ false);
-
-    // Skip dead calls.
-    if (LivenessAA && LivenessAA->isAssumedDead(I)) {
-      // We actually used liveness information so we have to record a
-      // dependence.
-      if (QueryingAA)
-        recordDependence(*LivenessAA, *QueryingAA, DepClassTy::OPTIONAL);
-      AllCallSitesKnown = false;
-      continue;
     }
 
     const Use *EffectiveUse =
@@ -6639,18 +6812,17 @@ bool Attributor::checkForAllReturnedValues(
       });
 }
 
-static bool
-checkForAllInstructionsImpl(InformationCache::OpcodeInstMapTy &OpcodeInstMap,
-                            const function_ref<bool(Instruction &)> &Pred,
-                            const AAIsDead *LivenessAA, bool &AnyDead,
-                            const ArrayRef<unsigned> &Opcodes) {
+static bool checkForAllInstructionsImpl(
+    Attributor *A, InformationCache::OpcodeInstMapTy &OpcodeInstMap,
+    const function_ref<bool(Instruction &)> &Pred,
+    const AbstractAttribute *QueryingAA, const AAIsDead *LivenessAA,
+    const ArrayRef<unsigned> &Opcodes, bool CheckBBLivenessOnly = false) {
   for (unsigned Opcode : Opcodes) {
     for (Instruction *I : OpcodeInstMap[Opcode]) {
       // Skip dead instructions.
-      if (LivenessAA && LivenessAA->isAssumedDead(I)) {
-        AnyDead = true;
+      if (A && A->isAssumedDead(IRPosition::value(*I), QueryingAA, LivenessAA,
+                                CheckBBLivenessOnly))
         continue;
-      }
 
       if (!Pred(*I))
         return false;
@@ -6661,7 +6833,8 @@ checkForAllInstructionsImpl(InformationCache::OpcodeInstMapTy &OpcodeInstMap,
 
 bool Attributor::checkForAllInstructions(
     const llvm::function_ref<bool(Instruction &)> &Pred,
-    const AbstractAttribute &QueryingAA, const ArrayRef<unsigned> &Opcodes) {
+    const AbstractAttribute &QueryingAA, const ArrayRef<unsigned> &Opcodes,
+    bool CheckBBLivenessOnly) {
 
   const IRPosition &IRP = QueryingAA.getIRPosition();
   // Since we need to provide instructions we have to have an exact definition.
@@ -6673,17 +6846,12 @@ bool Attributor::checkForAllInstructions(
   const IRPosition &QueryIRP = IRPosition::function(*AssociatedFunction);
   const auto &LivenessAA =
       getAAFor<AAIsDead>(QueryingAA, QueryIRP, /* TrackDependence */ false);
-  bool AnyDead = false;
 
   auto &OpcodeInstMap =
       InfoCache.getOpcodeInstMapForFunction(*AssociatedFunction);
-  if (!checkForAllInstructionsImpl(OpcodeInstMap, Pred, &LivenessAA, AnyDead,
-                                   Opcodes))
+  if (!checkForAllInstructionsImpl(this, OpcodeInstMap, Pred, &QueryingAA,
+                                   &LivenessAA, Opcodes, CheckBBLivenessOnly))
     return false;
-
-  // If we actually used liveness information so we have to record a dependence.
-  if (AnyDead)
-    recordDependence(LivenessAA, QueryingAA, DepClassTy::OPTIONAL);
 
   return true;
 }
@@ -6701,23 +6869,16 @@ bool Attributor::checkForAllReadWriteInstructions(
   const IRPosition &QueryIRP = IRPosition::function(*AssociatedFunction);
   const auto &LivenessAA =
       getAAFor<AAIsDead>(QueryingAA, QueryIRP, /* TrackDependence */ false);
-  bool AnyDead = false;
 
   for (Instruction *I :
        InfoCache.getReadOrWriteInstsForFunction(*AssociatedFunction)) {
     // Skip dead instructions.
-    if (LivenessAA.isAssumedDead(I)) {
-      AnyDead = true;
+    if (isAssumedDead(IRPosition::value(*I), &QueryingAA, &LivenessAA))
       continue;
-    }
 
     if (!Pred(*I))
       return false;
   }
-
-  // If we actually used liveness information so we have to record a dependence.
-  if (AnyDead)
-    recordDependence(LivenessAA, QueryingAA, DepClassTy::OPTIONAL);
 
   return true;
 }
@@ -6801,7 +6962,8 @@ ChangeStatus Attributor::run() {
     // Update all abstract attribute in the work list and record the ones that
     // changed.
     for (AbstractAttribute *AA : Worklist)
-      if (!AA->getState().isAtFixpoint() && !isAssumedDead(*AA, nullptr)) {
+      if (!AA->getState().isAtFixpoint() &&
+          !isAssumedDead(*AA, nullptr, /* CheckBBLivenessOnly */ true)) {
         QueriedNonFixAA = false;
         if (AA->update(*this) == ChangeStatus::CHANGED) {
           ChangedAAs.push_back(AA);
@@ -6886,7 +7048,7 @@ ChangeStatus Attributor::run() {
       continue;
 
     // Skip dead code.
-    if (isAssumedDead(*AA, nullptr))
+    if (isAssumedDead(*AA, nullptr, /* CheckBBLivenessOnly */ true))
       continue;
     // Manifest the state and record if we changed the IR.
     ChangeStatus LocalChange = AA->manifest(*this);
@@ -7109,10 +7271,9 @@ bool Attributor::isValidFunctionSignatureRewrite(
 
   // Forbid must-tail calls for now.
   // TODO:
-  bool AnyDead;
   auto &OpcodeInstMap = InfoCache.getOpcodeInstMapForFunction(*Fn);
-  if (!checkForAllInstructionsImpl(OpcodeInstMap, InstPred, nullptr, AnyDead,
-                                   {Instruction::Call})) {
+  if (!checkForAllInstructionsImpl(nullptr, OpcodeInstMap, InstPred, nullptr,
+                                   nullptr, {Instruction::Call})) {
     LLVM_DEBUG(dbgs() << "[Attributor] Cannot rewrite due to instructions\n");
     return false;
   }
@@ -7512,6 +7673,12 @@ void Attributor::identifyDefaultAbstractAttributes(Function &F) {
 
   auto CallSitePred = [&](Instruction &I) -> bool {
     CallSite CS(&I);
+    IRPosition CSRetPos = IRPosition::callsite_returned(CS);
+
+    // Call sites might be dead if they do not have side effects and no live
+    // users. The return value might be dead if there are no live users.
+    getOrCreateAAFor<AAIsDead>(CSRetPos);
+
     if (Function *Callee = CS.getCalledFunction()) {
       // Skip declerations except if annotations on their call sites were
       // explicitly requested.
@@ -7523,13 +7690,9 @@ void Attributor::identifyDefaultAbstractAttributes(Function &F) {
 
         IRPosition CSRetPos = IRPosition::callsite_returned(CS);
 
-        // Call site return values might be dead.
-        getOrCreateAAFor<AAIsDead>(CSRetPos);
-
         // Call site return integer values might be limited by a constant range.
-        if (Callee->getReturnType()->isIntegerTy()) {
+        if (Callee->getReturnType()->isIntegerTy())
           getOrCreateAAFor<AAValueConstantRange>(CSRetPos);
-        }
       }
 
       for (int i = 0, e = CS.getNumArgOperands(); i < e; i++) {
@@ -7569,13 +7732,13 @@ void Attributor::identifyDefaultAbstractAttributes(Function &F) {
   };
 
   auto &OpcodeInstMap = InfoCache.getOpcodeInstMapForFunction(F);
-  bool Success, AnyDead = false;
+  bool Success;
   Success = checkForAllInstructionsImpl(
-      OpcodeInstMap, CallSitePred, nullptr, AnyDead,
+      nullptr, OpcodeInstMap, CallSitePred, nullptr, nullptr,
       {(unsigned)Instruction::Invoke, (unsigned)Instruction::CallBr,
        (unsigned)Instruction::Call});
   (void)Success;
-  assert(Success && !AnyDead && "Expected the check call to be successful!");
+  assert(Success && "Expected the check call to be successful!");
 
   auto LoadStorePred = [&](Instruction &I) -> bool {
     if (isa<LoadInst>(I))
@@ -7587,10 +7750,10 @@ void Attributor::identifyDefaultAbstractAttributes(Function &F) {
     return true;
   };
   Success = checkForAllInstructionsImpl(
-      OpcodeInstMap, LoadStorePred, nullptr, AnyDead,
+      nullptr, OpcodeInstMap, LoadStorePred, nullptr, nullptr,
       {(unsigned)Instruction::Load, (unsigned)Instruction::Store});
   (void)Success;
-  assert(Success && !AnyDead && "Expected the check call to be successful!");
+  assert(Success && "Expected the check call to be successful!");
 }
 
 /// Helpers to ease debugging through output streams and print calls.
@@ -7705,10 +7868,12 @@ static bool runAttributorOnFunctions(InformationCache &InfoCache,
     A.identifyDefaultAbstractAttributes(*F);
   }
 
-  bool Changed = A.run() == ChangeStatus::CHANGED;
+  ChangeStatus Changed = A.run();
   assert(!verifyModule(*Functions.front()->getParent(), &errs()) &&
          "Module verification failed!");
-  return Changed;
+  LLVM_DEBUG(dbgs() << "[Attributor] Done with " << Functions.size()
+                    << " functions, result: " << Changed << ".\n");
+  return Changed == ChangeStatus::CHANGED;
 }
 
 PreservedAnalyses AttributorPass::run(Module &M, ModuleAnalysisManager &AM) {

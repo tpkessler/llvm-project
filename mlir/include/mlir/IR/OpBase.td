@@ -371,7 +371,9 @@ def AnyComplex : Type<CPred<"$_self.isa<ComplexType>()">, "complex-type">;
 
 class OpaqueType<string dialect, string name, string description>
   : Type<CPred<"isOpaqueTypeWithName($_self, \""#dialect#"\", \""#name#"\")">,
-         description>;
+         description>,
+    BuildableType<"OpaqueType::get($_builder.getIdentifier(\"" # dialect #
+                  "\"), \"" # name # "\", $_builder.getContext())">;
 
 // Function Type
 
@@ -1040,6 +1042,26 @@ class IntElementsAttr<int width> : ElementsAttrBase<
 def I32ElementsAttr : IntElementsAttr<32>;
 def I64ElementsAttr : IntElementsAttr<64>;
 
+// A `width`-bit integer elements attribute. The attribute should be ranked and
+// has a shape as specified in `dims`.
+class RankedIntElementsAttr<int width, list<int> dims> : IntElementsAttr<width> {
+  // Check that this has the specified shape.
+  let predicate = And<[
+    IntElementsAttr<width>.predicate,
+    CPred<"$_self.cast<DenseIntElementsAttr>().getType().getShape() == "
+        "ArrayRef<int64_t>({" # StrJoinInt<dims>.result # "})">]>;
+
+  let description = width # "-bit int elements attribute of shape [" #
+                    StrJoinInt<dims>.result # "]";
+
+  let constBuilderCall = "DenseIntElementsAttr::get("
+    "RankedTensorType::get({" # StrJoinInt<dims>.result #
+    "}, $_builder.getIntegerType(" # width # ")), makeArrayRef($0))";
+}
+
+class RankedI32ElementsAttr<list<int> dims> : RankedIntElementsAttr<32, dims>;
+class RankedI64ElementsAttr<list<int> dims> : RankedIntElementsAttr<64, dims>;
+
 class FloatElementsAttr<int width> : ElementsAttrBase<
   CPred<"$_self.isa<DenseFPElementsAttr>() &&"
       "$_self.cast<DenseElementsAttr>().getType()."
@@ -1108,6 +1130,8 @@ class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
                           "; })">]>,
     description> {
   let constBuilderCall = "$_builder.getArrayAttr($0)";
+
+  Attr elementAttr = element;
 }
 
 def I32ArrayAttr : TypedArrayAttrBase<I32Attr,

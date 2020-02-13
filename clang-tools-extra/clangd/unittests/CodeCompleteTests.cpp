@@ -1627,6 +1627,7 @@ TEST(CompletionTest, Render) {
   Include.Header = "\"foo.h\"";
   C.Kind = CompletionItemKind::Method;
   C.Score.Total = 1.0;
+  C.Score.ExcludingName = .5;
   C.Origin = SymbolOrigin::AST | SymbolOrigin::Static;
 
   CodeCompleteOptions Opts;
@@ -1644,6 +1645,7 @@ TEST(CompletionTest, Render) {
   EXPECT_THAT(R.additionalTextEdits, IsEmpty());
   EXPECT_EQ(R.sortText, sortText(1.0, "x"));
   EXPECT_FALSE(R.deprecated);
+  EXPECT_EQ(R.score, .5f);
 
   Opts.EnableSnippets = true;
   R = C.render(Opts);
@@ -2134,6 +2136,7 @@ TEST(GuessCompletionPrefix, Filters) {
            "some text [[scope::more::]][[identif]]^ier",
            "some text [[scope::]][[mor]]^e::identifier",
            "weird case foo::[[::bar::]][[baz]]^",
+           "/* [[]][[]]^ */",
        }) {
     Annotations F(Case);
     auto Offset = cantFail(positionToOffset(F.code(), F.point()));
@@ -2673,6 +2676,28 @@ TEST(CompletionTest, NoCrashWithIncompleteLambda) {
 
   auto Signatures = signatures("auto x() { x(^").signatures;
   EXPECT_THAT(Signatures, Contains(Sig("x() -> auto")));
+}
+
+TEST(CompletionTest, CompletionRange) {
+  const char *WithRange = "auto x = [[abc]]^";
+  auto Completions = completions(WithRange);
+  EXPECT_EQ(Completions.CompletionRange, Annotations(WithRange).range());
+  Completions = completionsNoCompile(WithRange);
+  EXPECT_EQ(Completions.CompletionRange, Annotations(WithRange).range());
+
+  const char *EmptyRange = "auto x = [[]]^";
+  Completions = completions(EmptyRange);
+  EXPECT_EQ(Completions.CompletionRange, Annotations(EmptyRange).range());
+  Completions = completionsNoCompile(EmptyRange);
+  EXPECT_EQ(Completions.CompletionRange, Annotations(EmptyRange).range());
+
+  // Sema doesn't trigger at all here, while the no-sema completion runs
+  // heuristics as normal and reports a range. It'd be nice to be consistent.
+  const char *NoCompletion = "/* [[]]^ */";
+  Completions = completions(NoCompletion);
+  EXPECT_EQ(Completions.CompletionRange, llvm::None);
+  Completions = completionsNoCompile(NoCompletion);
+  EXPECT_EQ(Completions.CompletionRange, Annotations(NoCompletion).range());
 }
 
 TEST(NoCompileCompletionTest, Basic) {

@@ -1473,6 +1473,7 @@ private:
     }
     Output.HasMore = Incomplete;
     Output.Context = CCContextKind;
+    Output.CompletionRange = ReplacedRange;
     return Output;
   }
 
@@ -1848,6 +1849,8 @@ CompletionItem CodeCompletion::render(const CodeCompleteOptions &Opts) const {
                                              : InsertTextFormat::PlainText;
   if (InsertInclude && InsertInclude->Insertion)
     LSP.additionalTextEdits.push_back(*InsertInclude->Insertion);
+
+  LSP.score = Score.ExcludingName;
 
   return LSP;
 }

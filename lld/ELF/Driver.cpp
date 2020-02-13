@@ -1865,10 +1865,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
   if (errorCount())
     return;
 
-  // Now when we read all script files, we want to finalize order of linker
-  // script commands, which can be not yet final because of INSERT commands.
-  script->processInsertCommands();
-
   // We want to declare linker script's symbols early,
   // so that we can version them.
   // They also might be exported if referenced by DSOs.
@@ -1942,8 +1938,17 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
 
     // We do not want to emit debug sections if --strip-all
     // or -strip-debug are given.
-    return config->strip != StripPolicy::None &&
-           (s->name.startswith(".debug") || s->name.startswith(".zdebug"));
+    if (config->strip == StripPolicy::None)
+      return false;
+
+    if (isDebugSection(*s))
+      return true;
+    if (auto *isec = dyn_cast<InputSection>(s))
+      if (InputSectionBase *rel = isec->getRelocatedSection())
+        if (isDebugSection(*rel))
+          return true;
+
+    return false;
   });
 
   // Now that the number of partitions is fixed, save a pointer to the main

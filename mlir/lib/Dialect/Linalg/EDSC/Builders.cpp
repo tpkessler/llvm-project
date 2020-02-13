@@ -130,18 +130,6 @@ GenericLoopNestRangeBuilder<loop::ParallelOp>::GenericLoopNestRangeBuilder(
 } // namespace edsc
 } // namespace mlir
 
-static void getMaxDimIndex(ArrayRef<StructuredIndexed> structuredIndices,
-                           unsigned &pos) {
-  for (auto sidx : structuredIndices) {
-    for (auto expr : sidx.getExprs()) {
-      expr.walk([&pos](AffineExpr e) {
-        if (auto d = e.dyn_cast<AffineDimExpr>())
-          pos = std::max(pos, d.getPosition());
-      });
-    }
-  }
-}
-
 Operation *mlir::edsc::makeGenericLinalgOp(
     ArrayRef<IteratorType> iteratorTypes, ArrayRef<StructuredIndexed> inputs,
     ArrayRef<StructuredIndexed> outputs,
@@ -155,20 +143,16 @@ Operation *mlir::edsc::makeGenericLinalgOp(
   auto *ctx = builder.getContext();
   unsigned nInputs = inputs.size();
   unsigned nOutputs = outputs.size();
-  unsigned maxPos = 0;
-  getMaxDimIndex(inputs, maxPos);
-  getMaxDimIndex(outputs, maxPos);
-  // maxPos is 0 indexed, need to turn this into a count (i.e. +1)
-  unsigned nDims = maxPos + 1;
 
-  SmallVector<AffineMap, 4> maps;
-  maps.reserve(nInputs + nOutputs);
-  for (auto in : inputs)
-    maps.push_back(
-        AffineMap::get(/*dimCount=*/nDims, /*symbolCount=*/0, in.getExprs()));
-  for (auto out : outputs)
-    maps.push_back(
-        AffineMap::get(/*dimCount=*/nDims, /*symbolCount=*/0, out.getExprs()));
+  SmallVector<SmallVector<AffineExpr, 4>, 4> exprsList;
+  exprsList.reserve(nInputs + nOutputs);
+  for (auto structuredIndexed : inputs)
+    exprsList.emplace_back(structuredIndexed.getExprs().begin(),
+                           structuredIndexed.getExprs().end());
+  for (auto structuredIndexed : outputs)
+    exprsList.emplace_back(structuredIndexed.getExprs().begin(),
+                           structuredIndexed.getExprs().end());
+  auto maps = AffineMap::inferFromExprList(exprsList);
 
   unsigned nViews = nInputs + nOutputs;
   SmallVector<Value, 4> values;
@@ -221,7 +205,8 @@ Operation *mlir::edsc::makeGenericLinalgOp(
   return op;
 }
 
-static void mulRegionBuilder(ArrayRef<BlockArgument> args) {
+void mlir::edsc::ops::mulRegionBuilder(ArrayRef<BlockArgument> args) {
+  using edsc::op::operator+;
   using edsc::op::operator*;
   assert(args.size() == 2 && "expected 2 block arguments");
   ValueHandle a(args[0]), b(args[1]);
@@ -307,7 +292,8 @@ Operation *mlir::edsc::ops::linalg_pointwise_max(StructuredIndexed I1,
 }
 
 Operation *mlir::edsc::ops::linalg_matmul(ValueHandle vA, ValueHandle vB,
-                                          ValueHandle vC) {
+                                          ValueHandle vC,
+                                          MatmulRegionBuilder regionBuilder) {
   // clang-format off
   AffineExpr m, n, k;
   bindDims(ScopedContext::getContext(), m, n, k);
@@ -316,12 +302,13 @@ Operation *mlir::edsc::ops::linalg_matmul(ValueHandle vA, ValueHandle vB,
     {IteratorType::Parallel, IteratorType::Parallel, IteratorType::Reduction},
     {A({m, k}), B({k, n})},
     {C({m, n})},
-    macRegionBuilder);
+    regionBuilder);
   // clang-format on
 }
 
 Operation *mlir::edsc::ops::linalg_matmul(ValueHandle vA, ValueHandle vB,
-                                          RankedTensorType tC) {
+                                          RankedTensorType tC,
+                                          MatmulRegionBuilder regionBuilder) {
   // clang-format off
   AffineExpr m, n, k;
   bindDims(ScopedContext::getContext(), m, n, k);
@@ -330,12 +317,13 @@ Operation *mlir::edsc::ops::linalg_matmul(ValueHandle vA, ValueHandle vB,
     {IteratorType::Parallel, IteratorType::Parallel, IteratorType::Reduction},
     {A({m, k}), B({k, n})},
     {C({m, n})},
-    mulRegionBuilder);
+    regionBuilder);
   // clang-format on
 }
 
 Operation *mlir::edsc::ops::linalg_matmul(ValueHandle vA, ValueHandle vB,
-                                          ValueHandle vC, RankedTensorType tD) {
+                                          ValueHandle vC, RankedTensorType tD,
+                                          MatmulRegionBuilder regionBuilder) {
   // clang-format off
   AffineExpr m, n, k;
   bindDims(ScopedContext::getContext(), m, n, k);
@@ -344,7 +332,7 @@ Operation *mlir::edsc::ops::linalg_matmul(ValueHandle vA, ValueHandle vB,
     {IteratorType::Parallel, IteratorType::Parallel, IteratorType::Reduction},
     {A({m, k}), B({k, n}), C({m, n})},
     {D({m, n})},
-    macRegionBuilder);
+    regionBuilder);
   // clang-format on
 }
 
