@@ -480,7 +480,7 @@ is conservatively correct for OpenCL.
                              - ``agent`` and executed by a thread on the same
                                agent.
                              - ``workgroup`` and executed by a thread in the
-                               same workgroup.
+                               same work-group.
                              - ``wavefront`` and executed by a thread in the
                                same wavefront.
 
@@ -493,7 +493,7 @@ is conservatively correct for OpenCL.
                              - ``system`` or ``agent`` and executed by a thread
                                on the same agent.
                              - ``workgroup`` and executed by a thread in the
-                               same workgroup.
+                               same work-group.
                              - ``wavefront`` and executed by a thread in the
                                same wavefront.
 
@@ -504,7 +504,7 @@ is conservatively correct for OpenCL.
                              provided the other operation's sync scope is:
 
                              - ``system``, ``agent`` or ``workgroup`` and
-                               executed by a thread in the same workgroup.
+                               executed by a thread in the same work-group.
                              - ``wavefront`` and executed by a thread in the
                                same wavefront.
 
@@ -1110,8 +1110,13 @@ generating.
 
 AMDGPU optimized code may spill vector registers to non-global address space
 memory, and this spilling may be done only for lanes that are active on entry to
-the function. To support this, a location description that can be created as a
+the subprogram. To support this, a location description that can be created as a
 masked select is required.
+
+Since the active lane mask may be held in a register, a way to get the value of
+a register on entry to a subprogram is required. To support this an operation
+that returns the caller value of a register as specified by the Call Frame
+Information (see :ref:`amdgpu-call-frame-information`) is required.
 
 Current DWARF uses an empty expression to indicate an undefined location
 description. Since the masked select composite location description operation
@@ -1358,7 +1363,7 @@ registers. The mapping for AMDGPU is defined in
 The vector registers are represented as the full size for the wavefront. They
 are organized as consecutive dwords (32-bits), one per lane, with the dword at
 the least significant bit position corresponding to lane 0 and so forth. DWARF
-location expressions involving the ``DW_OP_LLVM_bit_piecex`` and
+location expressions involving the ``DW_OP_LLVM_offset`` and
 ``DW_OP_LLVM_push_lane`` operations are used to select the part of the vector
 register corresponding to the lane that is executing the current thread of
 execution in languages that are implemented using a SIMD or SIMT execution
@@ -1814,8 +1819,7 @@ inclusive range ``DW_ATE_lo_user`` to ``DW_ATE_hi_user``.
       copies of the variables on entry. Seems only the compiler knows how to do
       this. If the main purpose is only to read the entry value of a register
       using CFI then would be better to have an operation that explicitly does
-      just that such as ``DW_OP_LLVM_call_frame_reg`` that is like
-      ``DW_OP_call_frame_cfa``.
+      just that such as ``DW_OP_LLVM_call_frame_entry_reg``.
 
 .. _amdgpu-location-description-operations:
 
@@ -2094,6 +2098,20 @@ General Operations
       debugging information entries, and should not be creating DWARF with
       ``DW_OP_call*`` to a ``DW_TAG_dwarf_procedure`` that does not have a
       ``DW_AT_location`` attribute.
+
+12. ``DW_OP_LLVM_call_frame_entry_reg`` *New*
+
+    ``DW_OP_LLVM_call_frame_entry_reg`` has a single unsigned LEB128 integer
+    operand that is treated as a target architecture register number R.
+
+    It pushes a location description L that holds the value of register R on
+    entry to the current subprogram as defined by the Call Frame Information
+    (see :ref:`amdgpu-call-frame-information`).
+
+    *If there is no Call Frame Information defined, then the default rules for
+    the target architecture are used. If the register rule is* undefined\ *,
+    then the undefined location description is pushed. If the register rule is*
+    same value\ *, then a register location description for R is pushed.*
 
 Undefined Location Descriptions
 ###############################
@@ -2687,8 +2705,8 @@ compatible with the definitions in DWARF 5 and earlier.*
     bit offset updated as if the ``DW_OP_LLVM_bit_offset D`` operation were
     applied.
 
-    *If a computed bit displacement is required, the* ``DW_OP_bit_offset`` *can
-    be used to update the part location description.*
+    *If a computed bit displacement is required, the* ``DW_OP_LLVM_bit_offset``
+    *can be used to update the part location description.*
 
     .. note::
 
@@ -2734,7 +2752,7 @@ compatible with the definitions in DWARF 5 and earlier.*
     1.  If the Nth least significant bit of M is a zero then the PL for part N
         is the same as L0, otherwise it is the same as L1.
 
-    2.  The PL for part N is updated as if the ``DW_OP_bit_offset N*S``
+    2.  The PL for part N is updated as if the ``DW_OP_LLVM_bit_offset N*S``
         operation was applied.
 
     If LS is not in canonical form it is updated to be in canonical form.
@@ -2742,10 +2760,9 @@ compatible with the definitions in DWARF 5 and earlier.*
     The DWARF expression is ill-formed if S or C are 0, or if the bit size of M
     is less than C.
 
-``DW_OP_bit_piece`` *and* ``DW_OP_bit_piecex`` *are used instead of*
-``DW_OP_piece`` *when the piece to be assembled into a value or assigned to is
-not byte-sized or is not at the start of the part location description.*
-``DW_OP_bit_piecex`` *is used when the bit offset is not a constant value.*
+``DW_OP_bit_piece`` *is used instead of* ``DW_OP_piece`` *when the piece to be
+assembled into a value or assigned to is not byte-sized or is not at the start
+of the part location description.*
 
 .. note::
 
@@ -2772,27 +2789,28 @@ for AMDGPU.
 .. table:: AMDGPU DWARF Expression Operation Encodings
    :name: amdgpu-dwarf-expression-operation-encodings-table
 
-   ================================== ==== ======== ===============================
-   Operation                          Code Number   Notes
-                                           of
-                                           Operands
-   ================================== ==== ======== ===============================
-   DW_OP_LLVM_form_aspace_address     0xe7    0
-   DW_OP_LLVM_push_lane               0xea    0
-   DW_OP_LLVM_offset                  0xe9    0
-   DW_OP_LLVM_offset_uconst                   1     ULEB128 byte displacement
-   DW_OP_LLVM_bit_offset                      0
-   DW_OP_LLVM_undefined                       0
-   DW_OP_LLVM_aspace_bregx                    2     ULEB128 register number,
-                                                    ULEB128 byte displacement
-   DW_OP_LLVM_aspace_implicit_pointer         2     4- or 8-byte offset of DIE,
-                                                    SLEB128 byte displacement
-   DW_OP_LLVM_piece_end                       0
-   DW_OP_LLVM_extend                          2     ULEB128 bit size,
-                                                    ULEB128 count
-   DW_OP_LLVM_select_bit_piece                2     ULEB128 bit size,
-                                                    ULEB128 count
-   ================================== ==== ======== ===============================
+   ================================== ===== ======== ===============================
+   Operation                          Code  Number   Notes
+                                            of
+                                            Operands
+   ================================== ===== ======== ===============================
+   DW_OP_LLVM_form_aspace_address     0xe7     0
+   DW_OP_LLVM_push_lane               0xea     0
+   DW_OP_LLVM_offset                  0xe9     0
+   DW_OP_LLVM_offset_uconst           *TBD*    1     ULEB128 byte displacement
+   DW_OP_LLVM_bit_offset              *TBD*    0
+   DW_OP_LLVM_call_frame_entry_reg    *TBD*    1     ULEB128 register number
+   DW_OP_LLVM_undefined               *TBD*    0
+   DW_OP_LLVM_aspace_bregx            *TBD*    2     ULEB128 register number,
+                                                     ULEB128 byte displacement
+   DW_OP_LLVM_aspace_implicit_pointer *TBD*    2     4- or 8-byte offset of DIE,
+                                                     SLEB128 byte displacement
+   DW_OP_LLVM_piece_end               *TBD*    0
+   DW_OP_LLVM_extend                  *TBD*    2     ULEB128 bit size,
+                                                     ULEB128 count
+   DW_OP_LLVM_select_bit_piece        *TBD*    2     ULEB128 bit size,
+                                                     ULEB128 count
+   ================================== ===== ======== ===============================
 
 .. _amdgpu-dwarf-debugging-information-entry-attributes:
 
@@ -3318,20 +3336,29 @@ Call Frame Instructions
 +++++++++++++++++++++++
 
 Some call frame instructions have operands that are encoded as DWARF expressions
-(see :ref:`amdgpu-dwarf-expressions`). The following DWARF operators cannot be
-used in such operands:
+E (see :ref:`amdgpu-dwarf-expressions`). The DWARF operators that can be used in
+E have the following restrictions:
 
 * ``DW_OP_addrx``, ``DW_OP_call2``, ``DW_OP_call4``, ``DW_OP_call_ref``,
   ``DW_OP_const_type``, ``DW_OP_constx``, ``DW_OP_convert``,
   ``DW_OP_deref_type``, ``DW_OP_regval_type``, and ``DW_OP_reinterpret``
-  operators are not allowed in an operand of these instructions because the
-  call frame information must not depend on other debug sections.
+  operators are not allowed because the call frame information must not depend
+  on other debug sections.
 
-* ``DW_OP_push_object_address`` is not meaningful in an operand of these
-  instructions because there is no object context to provide a value to push.
+* ``DW_OP_push_object_address`` is not allowed because there is no object
+  context to provide a value to push.
 
-* ``DW_OP_call_frame_cfa`` and ``DW_OP_entry_value`` are not meaningful in an
-  operand of these instructions because their use would be circular.
+* ``DW_OP_call_frame_cfa`` and ``DW_OP_entry_value`` are not allowed because
+  their use would be circular.
+
+* ``DW_OP_LLVM_call_frame_entry_reg`` is not allowed if evaluating E causes a
+  circular dependency between ``DW_OP_LLVM_call_frame_entry_reg`` operators.
+
+  *For example, if a register R1 has a* ``DW_CFA_def_cfa_expression``
+  *instruction that evaluates a* ``DW_OP_LLVM_call_frame_entry_reg`` *operator
+  that specifies register R2, and register R2 has a*
+  ``DW_CFA_def_cfa_expression`` *instruction that that evaluates a*
+  ``DW_OP_LLVM_call_frame_entry_reg`` *operator that specifies register R1.*
 
 *Call frame instructions to which these restrictions apply include*
 ``DW_CFA_def_cfa_expression``\ *,* ``DW_CFA_expression``\ *, and*
@@ -8473,6 +8500,452 @@ the ``s_trap`` instruction with the following usage:
      reserved            ``s_trap 0xfe``                 Reserved.
      reserved            ``s_trap 0xff``                 Reserved.
      =================== =============== =============== =======================
+
+.. _amdgpu-amdhsa-function-call-convention:
+
+Call Convention
+~~~~~~~~~~~~~~~
+
+.. note::
+
+  This section is currently incomplete and has inakkuracies. It is WIP that will
+  be updated as information is determined.
+
+See :ref:`amdgpu-dwarf-address-space-mapping` for information on swizzled
+addresses. Unswizzled addresses are normal linear addresses.
+
+Kernel Functions
+++++++++++++++++
+
+This section describes the call convention ABI for the outer kernel function.
+
+See :ref:`amdgpu-amdhsa-initial-kernel-execution-state` for the kernel call
+convention.
+
+The following is not part of the AMDGPU kernel calling convention but describes
+how the AMDGPU implements function calls:
+
+1.  Clang decides the kernarg layout to match the *HSA Programmer's Language
+    Reference* [HSA]_.
+
+    - All structs are passed directly.
+    - Lambda values are passed *TBA*.
+
+    .. TODO::
+
+      - Does this really follow HSA rules? Or are structs >16 bytes passed
+        by-value struct?
+      - What is ABI for lambda values?
+
+2.  The CFI return address is undefined.
+3.  If the kernel contains no calls then:
+
+    - If using the ``amdhsa`` OS ABI (see :ref:`amdgpu-os-table`), and know
+      during ISel that there is stack usage SGPR0-3 is reserved for use as the
+      scratch SRD and SGPR33 reserved for the wave scratch offset. Stack usage
+      is assumed if ``-O0``, if already aware of stack objects for locals, etc.,
+      or if there are any function calls.
+    - Otherwise, five high numbered SGPRs are reserved for the tentative scratch
+      SRD and wave scratch offset. These will be used if determine need to do
+      spilling.
+
+      - If no use is made of the tentative scratch SRD or wave scratch offset,
+        then they are unreserved and the register count is determined ignoring
+        them.
+      - If use is made of the tenatative scratch SRD or wave scratch offset,
+        then the register numbers used are shifted to be after the highest one
+        allocated by the register allocator, and all uses updated. The register
+        count will include them in the shifted location. Since register
+        allocation may introduce spills, this shifting allows them to be
+        eliminated without having to perform register allocation again.
+      - In either case, if the processor has the SGPR allocation bug, the
+        tentative allocation is not shifted or unreserved inorder to ensure the
+        register count is higher to workaround the bug.
+
+4.  If the kernel contains function calls:
+
+    - SP is set to the wave scratch offset.
+
+      - Since SP is an unswizzled address relative to the queue scratch base, an
+        wave scratch offset is an unswizzle offset, this means that if SP is
+        used to access swizzled scratch memory, it will access the private
+        segment address 0.
+
+      .. note::
+
+        This is planned to be changed to be the unswizzled base address of the
+        wavefront scratch backing memory.
+
+Non-Kernel Functions
+++++++++++++++++++++
+
+This section describes the call convention ABI for functions other than the
+outer kernel function.
+
+If a kernel has function calls then scratch is always allocated and used for the
+call stack which grows from low address to high address using the swizzled
+scratch address space.
+
+On entry to a function:
+
+1.  SGPR0-3 contain a V# with the following properties:
+
+    * Base address of the queue scratch backing memory.
+
+      .. note::
+
+        This is planned to be changed to be the unswizzled base address of the
+        wavefront scratch backing memory.
+
+    * Swizzled with dword element size and stride of wavefront size elements.
+
+2.  The FLAT_SCRATCH register pair is setup. See
+    :ref:`amdgpu-amdhsa-flat-scratch`.
+3.  GFX6-8: M0 register set to the size of LDS in bytes.
+4.  The EXEC register is set to the lanes active on entry to the function.
+5.  MODE register: *TBD*
+6.  VGPR0-31 and SGPR4-29 are used to pass function input arguments as described
+    below.
+7.  SGPR30-31 return address (RA). The code address that the function must
+    return to when it completes. The value is undefined if the function is *no
+    return*.
+8.  SGPR32 is used for the stack pointer (SP). It is an unswizzled
+    scratch offset relative to the beginning of the queue scratch backing
+    memory.
+
+    The unswizzled SP can be used with buffer instructions as an unswizzled SGPR
+    offset with the scratch V# in SGPR0-3 to access the stack in a swizzled
+    manner.
+
+    The swizzled SP value is always 4 bytes aligned for the ``r600``
+    architecture and 16 byte aligned for the ``amdgcn`` architecture.
+
+    .. note::
+
+      The ``amdgcn`` value is selected to avoid dynamic stack alignment for the
+      OpenCL language which has the largest base type defined as 16 bytes.
+
+    On entry, the swizzled SP value is the address of the first function
+    argument passed on the stack. Other stack passed arguments are positive
+    offsets from the entry swizzled SP value.
+
+    The function may use positive offsets beyond the last stack passed argument
+    for stack allocated local variables and register spill slots. If necessary
+    the function may align these to greater alignment than 16 bytes. After these
+    the function may dynamically allocate space for such things as runtime sized
+    ``alloca`` local allocations.
+
+    If the function calls another function, it will place any stack allocated
+    arguments after the last local allocation and adjust SGPR32 to the address
+    after the last local allocation.
+
+    .. note::
+
+      The SP value is planned to be changed to be the unswizzled offset relative
+      to the wavefront scratch backing memory.
+
+9.  SGPR33 wavefront scratch base offset. The unswizzled offset from the queue
+    scratch backing memory base to the base of the wavefront scratch backing
+    memory.
+
+    It is used to convert the unswizzled SP value to swizzled address in the
+    private address space by:
+
+      | private address = (unswizzled SP - wavefront scratch base offset) /
+        wavefront size
+
+    This may be used to obtain the private address of stack objects and to
+    convert these address to a flat address by adding the flat scratch aperture
+    base address.
+
+    .. note::
+
+      This is planned to be eliminated when SP is changed to be the unswizzled
+      offset relative to the wavefront scratch backing memory. The the
+      conversion simplifies to:
+
+        | private address = unswizzled SP / wavefront size
+
+10. All other registers are unspecified.
+11. Any necessary ``waitcnt`` has been performed to ensure memory is available
+    to the function.
+
+On exit from a function:
+
+1.  VGPR0-31 and SGPR4-29 are used to pass function result arguments as
+    described below. Any registers used are considered clobbered registers,
+2.  The following registers are preserved and have the same value as on entry:
+
+    * FLAT_SCRATCH
+    * EXEC
+    * GFX6-8: M0
+    * All SGPR and VGPR registers except the clobbered registers of SGPR4-31 and
+      VGPR0-31.
+
+      For the AMDGPU backend, an inter-procedural register allocation (IPRA)
+      optimization may mark some of clobbered SGPR4-31 and VGPR0-31 registers as
+      preserved if it can be determined that the called function does not change
+      their value.
+
+2.  The PC is set to the RA provided on entry.
+3.  MODE register: *TBD*.
+4.  All other registers are clobbered.
+5.  Any necessary ``waitcnt`` has been performed to ensure memory accessed by
+    function is available to the caller.
+
+.. TODO::
+
+  - On gfx908 are all ACC registers clobbered?
+
+  - How are function results returned? The address of structured types is passed
+    by reference, but what about other types?
+
+The function input arguments are made up of the formal arguments explicitly
+declared by the source language function plus the implicit input arguments used
+by the implementation.
+
+The source language input arguments are:
+
+1. Any source language implicit ``this`` or ``self`` argument comes first as a
+   pointer type.
+2. Followed by the function formal arguments in left to right source order.
+
+The source language result arguments are:
+
+1. The function result argument.
+
+The source language input or result struct type arguments that are less than or
+equal to 16 bytes, are decomposed recursively into their base type fields, and
+each field is passed as if a separate argument. For input arguments, if the
+called function requires the struct to be in memory, for example because its
+address is taken, then the function body is responsible for allocating a stack
+location and copying the field arguments into it. Clang terms this *direct
+struct*.
+
+The source language input struct type arguments that are greater than 16 bytes,
+are passed by reference. The caller is responsible for allocating a stack
+location to make a copy of the struct value and pass the address as the input
+argument. The called function is responsible to perform the dereference when
+accessing the input argument. Clang terms this *by-value struct*.
+
+A source language result struct type argument that is greater than 16 bytes, is
+returned by reference. The caller is responsible for allocating a stack location
+to hold the result value and passes the address as the last input argument
+(before the implicit input arguments). In this case there are no result
+arguments. The called function is responsible to perform the dereference when
+storing the result value. Clang terms this *structured return (sret)*.
+
+*TODO: correct the sret definition.*
+
+.. TODO::
+
+  Is this definition correct? Or is sret only used if passing in registers, and
+  pass as non-decomposed struct as stack argument? Or something else? Is the
+  memory location in the caller stack frame, or a stack memory argument and so
+  no address is passed as the caller can directly write to the argument stack
+  location. But then the stack location is still live after return. If an
+  argument stack location is it the first stack argument or the last one?
+
+Lambda argument types are treated as struct types with an implementation defined
+set of fields.
+
+.. TODO::
+
+  Need to specify the ABI for lambda types for AMDGPU.
+
+For AMDGPU backend all source language arguments (including the decomposed
+struct type arguments) are passed in VGPRs unless marked ``inreg`` in which case
+they are passed in SGPRs.
+
+The AMDGPU backend walks the function call graph from the leaves to determine
+which implicit input arguments are used, propagating to each caller of the
+function. The used implicit arguments are appended to the function arguments
+after the source language arguments in the following order:
+
+.. TODO::
+
+  Is recursion or external functions supported?
+
+1.  Work-Item ID (1 VGPR)
+
+    The X, Y and Z work-item ID are packed into a single VGRP with the following
+    layout. Only fields actually used by the function are set. The other bits
+    are undefined.
+
+    The values come from the initial kernel execution state. See
+    :ref:`amdgpu-amdhsa-vgpr-register-set-up-order-table`.
+
+    .. table:: Work-item implict argument layout
+      :name: amdgpu-amdhsa-workitem-implict-argument-layout-table
+
+      ======= ======= ==============
+      Bits    Size    Field Name
+      ======= ======= ==============
+      9:0     10 bits X Work-Item ID
+      19:10   10 bits Y Work-Item ID
+      29:20   10 bits Z Work-Item ID
+      31:30   2 bits  Unused
+      ======= ======= ==============
+
+2.  Dispatch Ptr (2 SGPRs)
+
+    The value comes from the initial kernel execution state. See
+    :ref:`amdgpu-amdhsa-sgpr-register-set-up-order-table`.
+
+3.  Queue Ptr (2 SGPRs)
+
+    The value comes from the initial kernel execution state. See
+    :ref:`amdgpu-amdhsa-sgpr-register-set-up-order-table`.
+
+4.  Kernarg Segment Ptr (2 SGPRs)
+
+    The value comes from the initial kernel execution state. See
+    :ref:`amdgpu-amdhsa-sgpr-register-set-up-order-table`.
+
+5.  Dispatch id (2 SGPRs)
+
+    The value comes from the initial kernel execution state. See
+    :ref:`amdgpu-amdhsa-sgpr-register-set-up-order-table`.
+
+6.  Work-Group ID X (1 SGPR)
+
+    The value comes from the initial kernel execution state. See
+    :ref:`amdgpu-amdhsa-sgpr-register-set-up-order-table`.
+
+7.  Work-Group ID Y (1 SGPR)
+
+    The value comes from the initial kernel execution state. See
+    :ref:`amdgpu-amdhsa-sgpr-register-set-up-order-table`.
+
+8.  Work-Group ID Z (1 SGPR)
+
+    The value comes from the initial kernel execution state. See
+    :ref:`amdgpu-amdhsa-sgpr-register-set-up-order-table`.
+
+9.  Implicit Argument Ptr (2 SGPRs)
+
+    The value is computed by adding an offset to Kernarg Segment Ptr to get the
+    global address space pointer to the first kernarg implicit argument.
+
+The input and result arguments are assigned in order in the following manner:
+
+..note::
+
+  There are likely some errors and ommissions in the following description that
+  need correction.
+
+  ..TODO::
+
+    Check the clang source code to decipher how funtion arguments and return
+    results are handled. Also see the AMDGPU specific values used.
+
+* VGPR arguments are assigned to consecutive VGPRs starting at VGPR0 up to
+  VGPR31.
+
+  If there are more arguments than will fit in these registers, the remaining
+  arguments are allocated on the stack in order on naturally aligned
+  addresses.
+
+  .. TODO::
+
+    How are overly aligned structures allocated on the stack?
+
+* SGPR arguments are assigned to consecutive SGPRs starting at SGPR0 up to
+  SGPR29.
+
+  If there are more arguments than will fit in these registers, the remaining
+  arguments are allocated on the stack in order on naturally aligned
+  addresses.
+
+Note that decomposed struct type arguments may have some fields passed in
+registers and some in memory.
+
+..TODO::
+
+  So a struct which can pass some fields as decomposed register arguments, will
+  pass the rest as decomposed stack elements? But an arguent that will not start
+  in registers will not be decomposed and will be passed as a non-decomposed
+  stack value?
+
+The following is not part of the AMDGPU function calling convention but
+describes how the AMDGPU implements function calls:
+
+1.  SGPR34 is used as a frame pointer (FP) if necessary. Like the SP it is an
+    unswizzled scratch address. It is only needed if runtime sized ``alloca``
+    are used, or for the reasons defined in ``SiFrameLowering``.
+2.  Runtime stack alignment is not currently supported.
+
+    .. TODO::
+
+      - If runtime stack alignment is supported then will an extra argument
+        pointer register be used?
+
+2.  Allocating SGPR arguments on the stack are not supported.
+
+3.  No CFI is currently generated. See :ref:`amdgpu-call-frame-information`.
+
+    ..note::
+
+      Before CFI is generated, the call convention will be changed so that SP is
+      an unswizzled address relative to the wave scratch base.
+
+      CFI will be generated that defines the CFA as the unswizzled address
+      relative to the wave scratch base in the unswizzled private address space
+      of the lowest address stack allocated local variable.
+
+      ``DW_AT_frame_base`` will be defined as the swizelled address in the
+      swizzled private address space by dividing the CFA by the wavefront size
+      (since CFA is always at least dword aligned which matches the scratch
+      swizzle element size).
+
+      If no dynamic stack alignment was performed, the stack allocated arguments
+      are accessed as negative offsets relative to ``DW_AT_frame_base``, and the
+      local variables and register spill slots are accessed as positive offsets
+      relative to ``DW_AT_frame_base``.
+
+4.  Function argument passing is implemented by copying the input physical
+    registers to virtual registers on entry. The register allocator can spill if
+    necessary. These are copied back to physical registers at call sites. The
+    net effect is that each function call can have these values in entirely
+    distinct locations. The IPRA can help avoid shuffling argument registers.
+5.  Call sites are implemented by setting up the arguments at positive offsets
+    from SP. Then SP is incremented to account for the known frame size before
+    the call and decremented after the call.
+
+    ..note::
+
+      The CFI will reflect the changed calculation needed to compute the CFA
+      from SP.
+
+6.  4 byte spill slots are used in the stack frame. One slot is allocated for an
+    emergency spill slot. Buffer instructions are used for stack accesses and
+    not the ``flat_scratch`` instruction.
+
+    ..TODO::
+
+      Explain when the emergency spill slot is used.
+
+.. TODO::
+
+  Possible broken issues:
+
+  - Stack arguments must be aligned to required alignment.
+  - Stack is aligned to max(16, max formal argument alignment)
+  - Direct argument < 64 bits should check register budget.
+  - Register budget calculation should respect ``inreg`` for SGPR.
+  - SGPR overflow is not handled.
+  - struct with 1 member unpeeling is not checking size of member.
+  - ``sret`` is after ``this`` pointer.
+  - Caller is not implementing stack realignment: need an extra pointer.
+  - Should say AMDGPU passes FP rather than SP.
+  - Should CFI define CFA as address of locals or arguments. Difference is
+    apparent when have implemented dynamic alignment.
+  - If ``SCRATCH`` instruction could allow negative offsets then can make FP be
+    highest address of stack frame and use negative offset for locals. Would
+    allow SP to be the same as FP and could support signal-handler-like as now
+    have a real SP for the top of the stack.
+  - How is ``sret`` passed on the stack? In argument stack area? Can it overlay
+    arguments?
 
 AMDPAL
 ------
