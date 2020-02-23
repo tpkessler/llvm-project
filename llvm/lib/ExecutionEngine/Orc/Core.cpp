@@ -15,6 +15,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Format.h"
 
+#include <condition_variable>
 #if LLVM_ENABLE_THREADS
 #include <future>
 #endif
@@ -143,6 +144,8 @@ namespace orc {
 char FailedToMaterialize::ID = 0;
 char SymbolsNotFound::ID = 0;
 char SymbolsCouldNotBeRemoved::ID = 0;
+char MissingSymbolDefinitions::ID = 0;
+char UnexpectedSymbolDefinitions::ID = 0;
 
 RegisterDependenciesFunction NoDependenciesToRegister =
     RegisterDependenciesFunction();
@@ -349,6 +352,24 @@ std::error_code SymbolsCouldNotBeRemoved::convertToErrorCode() const {
 
 void SymbolsCouldNotBeRemoved::log(raw_ostream &OS) const {
   OS << "Symbols could not be removed: " << Symbols;
+}
+
+std::error_code MissingSymbolDefinitions::convertToErrorCode() const {
+  return orcError(OrcErrorCode::MissingSymbolDefinitions);
+}
+
+void MissingSymbolDefinitions::log(raw_ostream &OS) const {
+  OS << "Missing definitions in module " << ModuleName
+     << ": " << Symbols;
+}
+
+std::error_code UnexpectedSymbolDefinitions::convertToErrorCode() const {
+  return orcError(OrcErrorCode::UnexpectedSymbolDefinitions);
+}
+
+void UnexpectedSymbolDefinitions::log(raw_ostream &OS) const {
+  OS << "Unexpected definitions in module " << ModuleName
+     << ": " << Symbols;
 }
 
 AsynchronousSymbolQuery::AsynchronousSymbolQuery(
