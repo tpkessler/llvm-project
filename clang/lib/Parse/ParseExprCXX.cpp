@@ -1555,6 +1555,13 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                       /*DeclsInPrototype=*/None, DeclLoc, DeclEndLoc, D,
                       TrailingReturnType),
                   std::move(Attr), DeclEndLoc);
+
+    // Parse the requires-clause, if present.
+    if (Tok.is(tok::kw_requires))
+      ParseTrailingRequiresClause(D);
+
+    WarnIfHasCUDATargetAttr();
+
   }  else if (Tok.is(tok::l_brace)) {
     // Next is compound-statement.
     // Parse C++AMP restrict specifier though the lambda expression has no params, so that
@@ -1572,12 +1579,6 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
       D.getAttributes().addAll(Attr.begin(), Attr.end());
       D.getAttributePool().takeAllFrom(Attr.getPool());
     }
-
-    // Parse the requires-clause, if present.
-    if (Tok.is(tok::kw_requires))
-      ParseTrailingRequiresClause(D);
-
-    WarnIfHasCUDATargetAttr();
   }
 
   // FIXME: Rename BlockScope -> ClosureScope if we decide to continue using
