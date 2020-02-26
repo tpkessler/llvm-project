@@ -62,8 +62,7 @@ public:
             if (!isa<Instruction>(PU))
                 continue;
 
-            Builder.SetInsertPoint(
-                cast<Instruction>(PU)->getNextNonDebugInstruction());
+            Builder.SetInsertPoint(cast<Instruction>(PU));
 
             Value *TmpAlloca = Builder.CreateAlloca(PU->getType());
             Value *Tmp = Builder.CreateLoad(TmpAlloca, "Tmp");
