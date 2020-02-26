@@ -39,35 +39,45 @@ public:
 
     bool runOnFunction(Function &F) override
     {
-        if (F.getCallingConv() != CallingConv::AMDGPU_KERNEL) return false;
+        if (F.getCallingConv() != CallingConv::AMDGPU_KERNEL)
+            return false;
 
-        SmallVector<Argument *, 8> PtrArgs;
-        for_each(F.arg_begin(), F.arg_end(), [&](Argument &Arg) {
-            if (!Arg.getType()->isPointerTy()) return;
-            if (Arg.getType()->getPointerAddressSpace() != GenericAddrSpace) {
-                return;
+        SmallVector<User *, 8> Promotable;
+        for (auto &&Arg : F.args()) {
+            for (auto &&U : Arg.users()) {
+                if (!U->getType()->isPointerTy())
+                    continue;
+                if (U->getType()->getPointerAddressSpace() != GenericAddrSpace)
+                    continue;
+
+                Promotable.push_back(U);
             }
+        }
 
-            PtrArgs.push_back(&Arg);
-        });
-
-        if (PtrArgs.empty()) return false;
+        if (Promotable.empty())
+            return false;
 
         static IRBuilder<> Builder{F.getContext()};
-        Builder.SetInsertPoint(&F.getEntryBlock().front());
+        for (auto &&PU : Promotable) {
+            if (!isa<Instruction>(PU))
+                continue;
 
-        for_each(PtrArgs.begin(), PtrArgs.end(), [](Argument *PArg) {
-            Argument Tmp{PArg->getType(), PArg->getName()};
-            PArg->replaceAllUsesWith(&Tmp);
+            Builder.SetInsertPoint(
+                cast<Instruction>(PU)->getNextNonDebugInstruction());
+
+            Value *TmpAlloca = Builder.CreateAlloca(PU->getType());
+            Value *Tmp = Builder.CreateLoad(TmpAlloca, "Tmp");
+
+            PU->replaceAllUsesWith(Tmp);
 
             Value *FToG = Builder.CreateAddrSpaceCast(
-                PArg,
-                cast<PointerType>(PArg->getType())
+                PU,
+                cast<PointerType>(PU->getType())
                     ->getElementType()->getPointerTo(GlobalAddrSpace));
-            Value *GToF = Builder.CreateAddrSpaceCast(FToG, PArg->getType());
+            Value *GToF = Builder.CreateAddrSpaceCast(FToG, PU->getType());
 
-            Tmp.replaceAllUsesWith(GToF);
-        });
+            Tmp->replaceAllUsesWith(GToF);
+        }
 
         return true;
     }
