@@ -2452,6 +2452,10 @@ private:
   TPResult TryParseBracketDeclarator();
   TPResult TryConsumeDeclarationSpecifier();
 
+  /// Try to skip a possibly empty sequence of 'attribute-specifier's without
+  /// full validation of the syntactic structure of attributes.
+  bool TrySkipAttributes();
+
 public:
   TypeResult ParseTypeName(SourceRange *Range = nullptr,
                            DeclaratorContext Context
