@@ -33,6 +33,36 @@ class PromotePointerKernArgsToGlobal : public FunctionPass {
     // TODO: query the address space robustly.
     static constexpr unsigned int GenericAddrSpace{0u};
     static constexpr unsigned int GlobalAddrSpace{1u};
+
+    void createPromotableCast(IRBuilder<>& Builder, Value *From, Value *To) {
+        From->replaceAllUsesWith(To);
+
+        Value *FToG = Builder.CreateAddrSpaceCast(
+            From,
+            cast<PointerType>(From->getType())
+                ->getElementType()->getPointerTo(GlobalAddrSpace));
+        Value *GToF = Builder.CreateAddrSpaceCast(FToG, From->getType());
+
+        To->replaceAllUsesWith(GToF);
+    }
+
+    void maybePromoteUse(IRBuilder<>& Builder, Instruction *UI) {
+        if (!UI)
+            return;
+
+        Builder.SetInsertPoint(UI);
+
+        Value *TmpAlloca = Builder.CreateAlloca(UI->getType());
+        Value *Tmp = Builder.CreateLoad(TmpAlloca, "Tmp");
+
+        createPromotableCast(Builder, UI, Tmp);
+    }
+
+    void promoteArgument(IRBuilder<>& Builder, Argument *Arg) {
+        Argument Tmp(Arg->getType(), Arg->getName());
+
+        createPromotableCast(Builder, Arg, &Tmp);
+    }
 public:
     static char ID;
     PromotePointerKernArgsToGlobal() : FunctionPass{ID} {}
@@ -42,7 +72,8 @@ public:
         if (F.getCallingConv() != CallingConv::AMDGPU_KERNEL)
             return false;
 
-        SmallVector<User *, 8> Promotable;
+        SmallVector<Argument *, 8> PromotableArgs;
+        SmallVector<User *, 8> PromotableUses;
         for (auto &&Arg : F.args()) {
             for (auto &&U : Arg.users()) {
                 if (!U->getType()->isPointerTy())
@@ -50,34 +81,27 @@ public:
                 if (U->getType()->getPointerAddressSpace() != GenericAddrSpace)
                     continue;
 
-                Promotable.push_back(U);
+                PromotableUses.push_back(U);
             }
+
+            if (!Arg.getType()->isPointerTy())
+                continue;
+            if (Arg.getType()->getPointerAddressSpace() != GenericAddrSpace)
+                continue;
+
+            PromotableArgs.push_back(&Arg);
         }
 
-        if (Promotable.empty())
+        if (PromotableArgs.empty() && PromotableUses.empty())
             return false;
 
         static IRBuilder<> Builder{F.getContext()};
-        for (auto &&PU : Promotable) {
-            if (!isa<Instruction>(PU))
-                continue;
+        for (auto &&PU : PromotableUses)
+            maybePromoteUse(Builder, dyn_cast<Instruction>(PU));
 
-            Builder.SetInsertPoint(cast<Instruction>(PU));
-
-            Value *TmpAlloca = Builder.CreateAlloca(PU->getType());
-            Value *Tmp = Builder.CreateLoad(TmpAlloca, "Tmp");
-
-            PU->replaceAllUsesWith(Tmp);
-
-            Value *FToG = Builder.CreateAddrSpaceCast(
-                PU,
-                cast<PointerType>(PU->getType())
-                    ->getElementType()->getPointerTo(GlobalAddrSpace));
-            Value *GToF = Builder.CreateAddrSpaceCast(FToG, PU->getType());
-
-            Tmp->replaceAllUsesWith(GToF);
-        }
-
+        Builder.SetInsertPoint(&F.getEntryBlock().front());
+        for (auto &&Arg : PromotableArgs)
+            promoteArgument(Builder, Arg);
         return true;
     }
 };
