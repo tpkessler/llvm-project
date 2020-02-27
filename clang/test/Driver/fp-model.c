@@ -110,6 +110,13 @@
 // CHECK-FPM-STRICT: "-frounding-math"
 // CHECK-FPM-STRICT: "-ffp-exception-behavior=strict"
 
+// RUN: %clang -### -nostdinc -ftrapping-math -ffp-exception-behavior=ignore -c %s 2>&1 \
+// RUN:   | FileCheck --check-prefix=CHECK-TRAP-IGNORE %s
+// CHECK-TRAP-IGNORE: "-cc1"
+// CHECK-TRAP-IGNORE: "-fno-rounding-math"
+// CHECK-TRAP-IGNORE: "-ffp-exception-behavior=ignore"
+
+
 // RUN: %clang -### -nostdinc -ffp-exception-behavior=strict -c %s 2>&1 \
 // RUN:   | FileCheck --check-prefix=CHECK-FEB-STRICT %s
 // CHECK-FEB-STRICT: "-cc1"

@@ -364,6 +364,9 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   case CallingConv::ARM_AAPCS:     Out << "arm_aapcscc"; break;
   case CallingConv::ARM_AAPCS_VFP: Out << "arm_aapcs_vfpcc"; break;
   case CallingConv::AArch64_VectorCall: Out << "aarch64_vector_pcs"; break;
+  case CallingConv::AArch64_SVE_VectorCall:
+    Out << "aarch64_sve_vector_pcs";
+    break;
   case CallingConv::MSP430_INTR:   Out << "msp430_intrcc"; break;
   case CallingConv::AVR_INTR:      Out << "avr_intrcc "; break;
   case CallingConv::AVR_SIGNAL:    Out << "avr_signalcc "; break;
@@ -2952,7 +2955,7 @@ void AssemblyWriter::printFunctionSummary(const FunctionSummary *FS) {
 
   FunctionSummary::FFlags FFlags = FS->fflags();
   if (FFlags.ReadNone | FFlags.ReadOnly | FFlags.NoRecurse |
-      FFlags.ReturnDoesNotAlias | FFlags.NoInline) {
+      FFlags.ReturnDoesNotAlias | FFlags.NoInline | FFlags.AlwaysInline) {
     Out << ", funcFlags: (";
     Out << "readNone: " << FFlags.ReadNone;
     Out << ", readOnly: " << FFlags.ReadOnly;
@@ -3397,9 +3400,6 @@ void AssemblyWriter::printTypeIdentities() {
 
 /// printFunction - Print all aspects of a function.
 void AssemblyWriter::printFunction(const Function *F) {
-  // Print out the return type and name.
-  Out << '\n';
-
   if (AnnotationWriter) AnnotationWriter->emitFunctionAnnot(F, Out);
 
   if (F->isMaterializable())

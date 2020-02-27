@@ -27,6 +27,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
@@ -3410,11 +3411,6 @@ LLVMValueRef LLVMBuildFNeg(LLVMBuilderRef B, LLVMValueRef V, const char *Name) {
   return wrap(unwrap(B)->CreateFNeg(unwrap(V), Name));
 }
 
-LLVMValueRef LLVMBuildFreeze(LLVMBuilderRef B, LLVMValueRef V,
-                             const char *Name) {
-  return wrap(unwrap(B)->CreateFreeze(unwrap(V), Name));
-}
-
 LLVMValueRef LLVMBuildNot(LLVMBuilderRef B, LLVMValueRef V, const char *Name) {
   return wrap(unwrap(B)->CreateNot(unwrap(V), Name));
 }
@@ -3446,7 +3442,8 @@ LLVMValueRef LLVMBuildArrayMalloc(LLVMBuilderRef B, LLVMTypeRef Ty,
 LLVMValueRef LLVMBuildMemSet(LLVMBuilderRef B, LLVMValueRef Ptr, 
                              LLVMValueRef Val, LLVMValueRef Len,
                              unsigned Align) {
-  return wrap(unwrap(B)->CreateMemSet(unwrap(Ptr), unwrap(Val), unwrap(Len), Align));
+  return wrap(unwrap(B)->CreateMemSet(unwrap(Ptr), unwrap(Val), unwrap(Len),
+                                      MaybeAlign(Align)));
 }
 
 LLVMValueRef LLVMBuildMemCpy(LLVMBuilderRef B, 
@@ -3900,6 +3897,11 @@ LLVMValueRef LLVMBuildInsertValue(LLVMBuilderRef B, LLVMValueRef AggVal,
                                   const char *Name) {
   return wrap(unwrap(B)->CreateInsertValue(unwrap(AggVal), unwrap(EltVal),
                                            Index, Name));
+}
+
+LLVMValueRef LLVMBuildFreeze(LLVMBuilderRef B, LLVMValueRef Val,
+                             const char *Name) {
+  return wrap(unwrap(B)->CreateFreeze(unwrap(Val), Name));
 }
 
 LLVMValueRef LLVMBuildIsNull(LLVMBuilderRef B, LLVMValueRef Val,

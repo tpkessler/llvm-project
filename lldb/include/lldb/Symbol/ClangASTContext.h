@@ -30,7 +30,10 @@
 #include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "lldb/Target/Target.h"
 #include "lldb/Utility/ConstString.h"
+#include "lldb/Utility/Log.h"
+#include "lldb/Utility/Logging.h"
 #include "lldb/lldb-enumerations.h"
 
 class DWARFASTParserClang;
@@ -41,15 +44,17 @@ namespace lldb_private {
 class Declaration;
 
 class ClangASTContext : public TypeSystem {
+  // LLVM RTTI support
+  static char ID;
+
 public:
   typedef void (*CompleteTagDeclCallback)(void *baton, clang::TagDecl *);
   typedef void (*CompleteObjCInterfaceDeclCallback)(void *baton,
                                                     clang::ObjCInterfaceDecl *);
 
   // llvm casting support
-  static bool classof(const TypeSystem *ts) {
-    return ts->getKind() == TypeSystem::eKindClang;
-  }
+  bool isA(const void *ClassID) const override { return ClassID == &ID; }
+  static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
 
   // Constructors and Destructors
   explicit ClangASTContext(llvm::StringRef triple = "");
@@ -83,6 +88,18 @@ public:
   static void Terminate();
 
   static ClangASTContext *GetASTContext(clang::ASTContext *ast_ctx);
+
+  static ClangASTContext *GetScratch(Target &target,
+                                     bool create_on_demand = true) {
+    auto type_system_or_err = target.GetScratchTypeSystemForLanguage(
+        lldb::eLanguageTypeC, create_on_demand);
+    if (auto err = type_system_or_err.takeError()) {
+      LLDB_LOG_ERROR(lldb_private::GetLogIfAnyCategoriesSet(LIBLLDB_LOG_TARGET),
+                     std::move(err), "Couldn't get scratch ClangASTContext");
+      return nullptr;
+    }
+    return llvm::dyn_cast<ClangASTContext>(&type_system_or_err.get());
+  }
 
   clang::ASTContext *getASTContext();
 
@@ -128,36 +145,30 @@ public:
 
   static bool GetCompleteDecl(clang::ASTContext *ast, clang::Decl *decl);
 
-  void SetMetadataAsUserID(const void *object, lldb::user_id_t user_id);
+  void SetMetadataAsUserID(const clang::Decl *decl, lldb::user_id_t user_id);
+  void SetMetadataAsUserID(const clang::Type *type, lldb::user_id_t user_id);
 
-  void SetMetadata(const void *object, ClangASTMetadata &meta_data) {
-    SetMetadata(getASTContext(), object, meta_data);
-  }
-
-  static void SetMetadata(clang::ASTContext *ast, const void *object,
-                          ClangASTMetadata &meta_data);
-
-  ClangASTMetadata *GetMetadata(const void *object) {
+  void SetMetadata(const clang::Decl *object, ClangASTMetadata &meta_data);
+  void SetMetadata(const clang::Type *object, ClangASTMetadata &meta_data);
+  ClangASTMetadata *GetMetadata(const clang::Decl *object) {
     return GetMetadata(getASTContext(), object);
   }
 
   static ClangASTMetadata *GetMetadata(clang::ASTContext *ast,
-                                       const void *object);
+                                       const clang::Decl *object);
+
+  ClangASTMetadata *GetMetadata(const clang::Type *object) {
+    return GetMetadata(getASTContext(), object);
+  }
+
+  static ClangASTMetadata *GetMetadata(clang::ASTContext *ast,
+                                       const clang::Type *object);
 
   // Basic Types
   CompilerType GetBuiltinTypeForEncodingAndBitSize(lldb::Encoding encoding,
                                                    size_t bit_size) override;
 
-  static CompilerType GetBuiltinTypeForEncodingAndBitSize(
-      clang::ASTContext *ast, lldb::Encoding encoding, uint32_t bit_size);
-
   CompilerType GetBasicType(lldb::BasicType type);
-
-  static CompilerType GetBasicType(clang::ASTContext *ast,
-                                   lldb::BasicType type);
-
-  static CompilerType GetBasicType(clang::ASTContext *ast,
-                                   ConstString name);
 
   static lldb::BasicType GetBasicTypeEnumeration(ConstString name);
 
@@ -166,12 +177,6 @@ public:
                                                         uint32_t bit_size);
 
   CompilerType GetCStringType(bool is_const);
-
-  static CompilerType GetUnknownAnyType(clang::ASTContext *ast);
-
-  CompilerType GetUnknownAnyType() {
-    return ClangASTContext::GetUnknownAnyType(getASTContext());
-  }
 
   static clang::DeclContext *GetDeclContextForType(clang::QualType type);
 
@@ -308,19 +313,13 @@ public:
                                             class_template_specialization_decl);
 
   static clang::DeclContext *
-  GetAsDeclContext(clang::CXXMethodDecl *cxx_method_decl);
-
-  static clang::DeclContext *
-  GetAsDeclContext(clang::ObjCMethodDecl *objc_method_decl);
+  GetAsDeclContext(clang::FunctionDecl *function_decl);
 
   static bool CheckOverloadedOperatorKindParameterCount(
       bool is_method, clang::OverloadedOperatorKind op_kind,
       uint32_t num_params);
 
   bool FieldIsBitfield(clang::FieldDecl *field, uint32_t &bitfield_bit_size);
-
-  static bool FieldIsBitfield(clang::ASTContext *ast, clang::FieldDecl *field,
-                              uint32_t &bitfield_bit_size);
 
   static bool RecordHasFields(const clang::RecordDecl *record_decl);
 
@@ -342,11 +341,6 @@ public:
 
   clang::NamespaceDecl *
   GetUniqueNamespaceDeclaration(const char *name, clang::DeclContext *decl_ctx,
-                                bool is_inline = false);
-
-  static clang::NamespaceDecl *
-  GetUniqueNamespaceDeclaration(clang::ASTContext *ast, const char *name,
-                                clang::DeclContext *decl_ctx,
                                 bool is_inline = false);
 
   // Function Types
@@ -501,7 +495,7 @@ public:
   DeclContextGetAsNamespaceDecl(const CompilerDeclContext &dc);
 
   static ClangASTMetadata *DeclContextGetMetaData(const CompilerDeclContext &dc,
-                                                  const void *object);
+                                                  const clang::Decl *object);
 
   static clang::ASTContext *
   DeclContextGetClangASTContext(const CompilerDeclContext &dc);
@@ -667,6 +661,8 @@ public:
 
   CompilerType
   GetRValueReferenceType(lldb::opaque_compiler_type_t type) override;
+
+  CompilerType GetAtomicType(lldb::opaque_compiler_type_t type) override;
 
   CompilerType AddConstModifier(lldb::opaque_compiler_type_t type) override;
 
@@ -927,7 +923,8 @@ public:
 
   static clang::TypedefNameDecl *GetAsTypedefDecl(const CompilerType &type);
 
-  clang::CXXRecordDecl *GetAsCXXRecordDecl(lldb::opaque_compiler_type_t type);
+  static clang::CXXRecordDecl *
+  GetAsCXXRecordDecl(lldb::opaque_compiler_type_t type);
 
   static clang::ObjCInterfaceDecl *
   GetAsObjCInterfaceDecl(const CompilerType &type);

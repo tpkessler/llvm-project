@@ -141,11 +141,11 @@ using ValueToAddrSpaceMapTy = DenseMap<const Value *, unsigned>;
 
 /// InferAddressSpaces
 class InferAddressSpaces : public FunctionPass {
-  const TargetTransformInfo *TTI;
+  const TargetTransformInfo *TTI = nullptr;
 
   /// Target specific address space which uses of should be replaced if
   /// possible.
-  unsigned FlatAddrSpace;
+  unsigned FlatAddrSpace = 0;
 
 public:
   static char ID;
@@ -791,8 +791,8 @@ static bool handleMemIntrinsicPtrUse(MemIntrinsic *MI, Value *OldV,
   MDNode *NoAliasMD = MI->getMetadata(LLVMContext::MD_noalias);
 
   if (auto *MSI = dyn_cast<MemSetInst>(MI)) {
-    B.CreateMemSet(NewV, MSI->getValue(),
-                   MSI->getLength(), MSI->getDestAlignment(),
+    B.CreateMemSet(NewV, MSI->getValue(), MSI->getLength(),
+                   MaybeAlign(MSI->getDestAlignment()),
                    false, // isVolatile
                    TBAA, ScopeMD, NoAliasMD);
   } else if (auto *MTI = dyn_cast<MemTransferInst>(MI)) {

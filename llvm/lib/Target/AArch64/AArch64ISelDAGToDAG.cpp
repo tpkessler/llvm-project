@@ -17,6 +17,7 @@
 #include "llvm/IR/Function.h" // To access function attributes.
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsAArch64.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/KnownBits.h"
@@ -39,20 +40,16 @@ class AArch64DAGToDAGISel : public SelectionDAGISel {
   /// make the right decision when generating code for different targets.
   const AArch64Subtarget *Subtarget;
 
-  bool ForCodeSize;
-
 public:
   explicit AArch64DAGToDAGISel(AArch64TargetMachine &tm,
                                CodeGenOpt::Level OptLevel)
-      : SelectionDAGISel(tm, OptLevel), Subtarget(nullptr),
-        ForCodeSize(false) {}
+      : SelectionDAGISel(tm, OptLevel), Subtarget(nullptr) {}
 
   StringRef getPassName() const override {
     return "AArch64 Instruction Selection";
   }
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    ForCodeSize = MF.getFunction().hasOptSize();
     Subtarget = &MF.getSubtarget<AArch64Subtarget>();
     return SelectionDAGISel::runOnMachineFunction(MF);
   }
@@ -162,6 +159,11 @@ public:
     return false;
   }
 
+  template<MVT::SimpleValueType VT>
+  bool SelectSVEAddSubImm(SDValue N, SDValue &Imm, SDValue &Shift) {
+    return SelectSVEAddSubImm(N, VT, Imm, Shift);
+  }
+
   /// Form sequences of consecutive 64/128-bit registers for use in NEON
   /// instructions making use of a vector-list (e.g. ldN, tbl). Vecs must have
   /// between 1 and 4 elements. If it contains a single element that is returned
@@ -238,6 +240,7 @@ private:
 
   bool SelectCMP_SWAP(SDNode *N);
 
+  bool SelectSVEAddSubImm(SDValue N, MVT VT, SDValue &Imm, SDValue &Shift);
 };
 } // end anonymous namespace
 
@@ -399,7 +402,7 @@ static bool isWorthFoldingSHL(SDValue V) {
 bool AArch64DAGToDAGISel::isWorthFolding(SDValue V) const {
   // Trivial if we are optimizing for code size or if there is only
   // one use of the value.
-  if (ForCodeSize || V.hasOneUse())
+  if (CurDAG->shouldOptForSize() || V.hasOneUse())
     return true;
   // If a subtarget has a fastpath LSL we can fold a logical shift into
   // the addressing mode and save a cycle.
@@ -2813,6 +2816,41 @@ bool AArch64DAGToDAGISel::SelectCMP_SWAP(SDNode *N) {
 
   return true;
 }
+
+bool AArch64DAGToDAGISel::SelectSVEAddSubImm(SDValue N, MVT VT, SDValue &Imm, SDValue &Shift) {
+  if (auto CNode = dyn_cast<ConstantSDNode>(N)) {
+    const int64_t ImmVal = CNode->getZExtValue();
+    SDLoc DL(N);
+
+    switch (VT.SimpleTy) {
+    case MVT::i8:
+      if ((ImmVal & 0xFF) == ImmVal) {
+        Shift = CurDAG->getTargetConstant(0, DL, MVT::i32);
+        Imm = CurDAG->getTargetConstant(ImmVal, DL, MVT::i32);
+        return true;
+      }
+      break;
+    case MVT::i16:
+    case MVT::i32:
+    case MVT::i64:
+      if ((ImmVal & 0xFF) == ImmVal) {
+        Shift = CurDAG->getTargetConstant(0, DL, MVT::i32);
+        Imm = CurDAG->getTargetConstant(ImmVal, DL, MVT::i32);
+        return true;
+      } else if ((ImmVal & 0xFF00) == ImmVal) {
+        Shift = CurDAG->getTargetConstant(8, DL, MVT::i32);
+        Imm = CurDAG->getTargetConstant(ImmVal >> 8, DL, MVT::i32);
+        return true;
+      }
+      break;
+    default:
+      break;
+    }
+  }
+
+  return false;
+}
+
 
 bool AArch64DAGToDAGISel::trySelectStackSlotTagP(SDNode *N) {
   // tagp(FrameIndex, IRGstack, tag_offset):

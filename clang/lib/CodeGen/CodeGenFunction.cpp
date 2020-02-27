@@ -12,10 +12,10 @@
 
 #include "CodeGenFunction.h"
 #include "CGBlocks.h"
-#include "CGCleanup.h"
 #include "CGAMPRuntime.h"
 #include "CGCUDARuntime.h"
 #include "CGCXXABI.h"
+#include "CGCleanup.h"
 #include "CGDebugInfo.h"
 #include "CGOpenMPRuntime.h"
 #include "CodeGenModule.h"
@@ -23,6 +23,7 @@
 #include "TargetInfo.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTLambda.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/StmtCXX.h"
@@ -34,6 +35,7 @@
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/FPEnv.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/MDBuilder.h"
@@ -111,36 +113,28 @@ CodeGenFunction::~CodeGenFunction() {
 
 // Map the LangOption for rounding mode into
 // the corresponding enum in the IR.
-static llvm::ConstrainedFPIntrinsic::RoundingMode ToConstrainedRoundingMD(
+static llvm::fp::RoundingMode ToConstrainedRoundingMD(
   LangOptions::FPRoundingModeKind Kind) {
 
   switch (Kind) {
-  case LangOptions::FPR_ToNearest:
-    return llvm::ConstrainedFPIntrinsic::rmToNearest;
-  case LangOptions::FPR_Downward:
-    return llvm::ConstrainedFPIntrinsic::rmDownward;
-  case LangOptions::FPR_Upward:
-    return llvm::ConstrainedFPIntrinsic::rmUpward;
-  case LangOptions::FPR_TowardZero:
-    return llvm::ConstrainedFPIntrinsic::rmTowardZero;
-  case LangOptions::FPR_Dynamic:
-    return llvm::ConstrainedFPIntrinsic::rmDynamic;
+  case LangOptions::FPR_ToNearest:  return llvm::fp::rmToNearest;
+  case LangOptions::FPR_Downward:   return llvm::fp::rmDownward;
+  case LangOptions::FPR_Upward:     return llvm::fp::rmUpward;
+  case LangOptions::FPR_TowardZero: return llvm::fp::rmTowardZero;
+  case LangOptions::FPR_Dynamic:    return llvm::fp::rmDynamic;
   }
   llvm_unreachable("Unsupported FP RoundingMode");
 }
 
 // Map the LangOption for exception behavior into
 // the corresponding enum in the IR.
-static llvm::ConstrainedFPIntrinsic::ExceptionBehavior ToConstrainedExceptMD(
+static llvm::fp::ExceptionBehavior ToConstrainedExceptMD(
   LangOptions::FPExceptionModeKind Kind) {
 
   switch (Kind) {
-  case LangOptions::FPE_Ignore:
-    return llvm::ConstrainedFPIntrinsic::ebIgnore;
-  case LangOptions::FPE_MayTrap:
-    return llvm::ConstrainedFPIntrinsic::ebMayTrap;
-  case LangOptions::FPE_Strict:
-    return llvm::ConstrainedFPIntrinsic::ebStrict;
+  case LangOptions::FPE_Ignore:  return llvm::fp::ebIgnore;
+  case LangOptions::FPE_MayTrap: return llvm::fp::ebMayTrap;
+  case LangOptions::FPE_Strict:  return llvm::fp::ebStrict;
   }
   llvm_unreachable("Unsupported FP Exception Behavior");
 }
@@ -151,8 +145,8 @@ void CodeGenFunction::SetFPModel() {
   auto fpExceptionBehavior = ToConstrainedExceptMD(
                                getLangOpts().getFPExceptionMode());
 
-  if (fpExceptionBehavior == llvm::ConstrainedFPIntrinsic::ebIgnore &&
-      fpRoundingMode == llvm::ConstrainedFPIntrinsic::rmToNearest)
+  if (fpExceptionBehavior == llvm::fp::ebIgnore &&
+      fpRoundingMode == llvm::fp::rmToNearest)
     // Constrained intrinsics are not used.
     ;
   else {
@@ -389,9 +383,15 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
   if (HasCleanups) {
     // Make sure the line table doesn't jump back into the body for
     // the ret after it's been at EndLoc.
-    if (CGDebugInfo *DI = getDebugInfo())
+    Optional<ApplyDebugLocation> AL;
+    if (CGDebugInfo *DI = getDebugInfo()) {
       if (OnlySimpleReturnStmts)
         DI->EmitLocation(Builder, EndLoc);
+      else
+        // We may not have a valid end location. Try to apply it anyway, and
+        // fall back to an artificial location if needed.
+        AL = ApplyDebugLocation::CreateDefaultArtificial(*this, EndLoc);
+    }
 
     PopCleanupBlocks(PrologueCleanupDepth);
   }
@@ -666,6 +666,13 @@ void CodeGenFunction::markAsIgnoreThreadCheckingAtRuntime(llvm::Function *Fn) {
   }
 }
 
+/// Check if the return value of this function requires sanitization.
+bool CodeGenFunction::requiresReturnValueCheck() const {
+  return requiresReturnValueNullabilityCheck() ||
+         (SanOpts.has(SanitizerKind::ReturnsNonnullAttribute) && CurCodeDecl &&
+          CurCodeDecl->getAttr<ReturnsNonNullAttr>());
+}
+
 static bool matchesStlAllocatorFn(const Decl *D, const ASTContext &Ctx) {
   auto *MD = dyn_cast_or_null<CXXMethodDecl>(D);
   if (!MD || !MD->getDeclName().getAsIdentifierInfo() ||
@@ -927,6 +934,10 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
       if (FD->isMain())
         Fn->addFnAttr(llvm::Attribute::NoRecurse);
 
+  if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D))
+    if (FD->usesFPIntrin())
+      Fn->addFnAttr(llvm::Attribute::StrictFP);
+
   // If a custom alignment is used, force realigning to this alignment on
   // any main function which certainly will need it.
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D))
@@ -1080,7 +1091,7 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
         LValue ThisFieldLValue = EmitLValueForLambdaField(LambdaThisCaptureField);
         if (!LambdaThisCaptureField->getType()->isPointerType()) {
           // If the enclosing object was captured by value, just use its address.
-          CXXThisValue = ThisFieldLValue.getAddress().getPointer();
+          CXXThisValue = ThisFieldLValue.getAddress(*this).getPointer();
         } else {
           // Load the lvalue pointed to by the field, since '*this' was captured
           // by reference.
@@ -2137,11 +2148,11 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
 Address CodeGenFunction::EmitVAListRef(const Expr* E) {
   if (getContext().getBuiltinVaListType()->isArrayType())
     return EmitPointerWithAlignment(E);
-  return EmitLValue(E).getAddress();
+  return EmitLValue(E).getAddress(*this);
 }
 
 Address CodeGenFunction::EmitMSVAListRef(const Expr *E) {
-  return EmitLValue(E).getAddress();
+  return EmitLValue(E).getAddress(*this);
 }
 
 void CodeGenFunction::EmitDeclRefExprDbgValue(const DeclRefExpr *E,
@@ -2347,12 +2358,12 @@ void CodeGenFunction::checkTargetFeatures(SourceLocation Loc,
           << TargetDecl->getDeclName()
           << CGM.getContext().BuiltinInfo.getRequiredFeatures(BuiltinID);
 
-  } else if (TargetDecl->hasAttr<TargetAttr>() ||
-             TargetDecl->hasAttr<CPUSpecificAttr>()) {
+  } else if (!TargetDecl->isMultiVersion() &&
+             TargetDecl->hasAttr<TargetAttr>()) {
     // Get the required features for the callee.
 
     const TargetAttr *TD = TargetDecl->getAttr<TargetAttr>();
-    TargetAttr::ParsedTargetAttr ParsedAttr = CGM.filterFunctionTargetAttrs(TD);
+    ParsedTargetAttr ParsedAttr = CGM.filterFunctionTargetAttrs(TD);
 
     SmallVector<StringRef, 1> ReqFeatures;
     llvm::StringMap<bool> CalleeFeatureMap;

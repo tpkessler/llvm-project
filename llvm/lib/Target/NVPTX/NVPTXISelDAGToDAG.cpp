@@ -11,11 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "NVPTXISelDAGToDAG.h"
-#include "NVPTXUtilities.h"
 #include "MCTargetDesc/NVPTXBaseInfo.h"
+#include "NVPTXUtilities.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -885,7 +886,7 @@ bool NVPTXDAGToDAGISel::tryLoad(SDNode *N) {
   MVT SimpleVT = LoadedVT.getSimpleVT();
   MVT ScalarVT = SimpleVT.getScalarType();
   // Read at least 8 bits (predicates are stored as 8-bit values)
-  unsigned fromTypeWidth = std::max(8U, ScalarVT.getSizeInBits());
+  unsigned fromTypeWidth = std::max(8U, (unsigned)ScalarVT.getSizeInBits());
   unsigned int fromType;
 
   // Vector Setting
@@ -1030,7 +1031,7 @@ bool NVPTXDAGToDAGISel::tryLoadVector(SDNode *N) {
   // Float  : ISD::NON_EXTLOAD or ISD::EXTLOAD and the type is float
   MVT ScalarVT = SimpleVT.getScalarType();
   // Read at least 8 bits (predicates are stored as 8-bit values)
-  unsigned FromTypeWidth = std::max(8U, ScalarVT.getSizeInBits());
+  unsigned FromTypeWidth = std::max(8U, (unsigned)ScalarVT.getSizeInBits());
   unsigned int FromType;
   // The last operand holds the original LoadSDNode::getExtensionType() value
   unsigned ExtensionType = cast<ConstantSDNode>(

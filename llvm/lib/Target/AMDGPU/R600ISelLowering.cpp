@@ -37,6 +37,7 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IntrinsicsR600.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -61,6 +62,9 @@ R600TargetLowering::R600TargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::v2i32, &R600::R600_Reg64RegClass);
   addRegisterClass(MVT::v4f32, &R600::R600_Reg128RegClass);
   addRegisterClass(MVT::v4i32, &R600::R600_Reg128RegClass);
+
+  setBooleanContents(ZeroOrNegativeOneBooleanContent);
+  setBooleanVectorContents(ZeroOrNegativeOneBooleanContent);
 
   computeRegisterProperties(Subtarget->getRegisterInfo());
 
@@ -223,10 +227,8 @@ R600TargetLowering::R600TargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::FMA, MVT::f64, Expand);
   }
 
-  // FIXME: This was moved from AMDGPUTargetLowering, I'm not sure if we
-  // need it for R600.
-  if (!Subtarget->hasFP32Denormals())
-    setOperationAction(ISD::FMAD, MVT::f32, Legal);
+  // FIXME: May need no denormals check
+  setOperationAction(ISD::FMAD, MVT::f32, Legal);
 
   if (!Subtarget->hasBFI()) {
     // fcopysign can be done in a single instruction with BFI.
@@ -972,8 +974,7 @@ SDValue R600TargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const 
   // Move hardware True/False values to the correct operand.
   if (isHWTrueValue(False) && isHWFalseValue(True)) {
     ISD::CondCode CCOpcode = cast<CondCodeSDNode>(CC)->get();
-    ISD::CondCode InverseCC =
-        ISD::getSetCCInverse(CCOpcode, CompareVT == MVT::i32);
+    ISD::CondCode InverseCC = ISD::getSetCCInverse(CCOpcode, CompareVT);
     if (isCondCodeLegal(InverseCC, CompareVT.getSimpleVT())) {
       std::swap(False, True);
       CC = DAG.getCondCode(InverseCC);
@@ -1013,7 +1014,7 @@ SDValue R600TargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const 
       CC = DAG.getCondCode(CCSwapped);
     } else {
       // Try inverting the conditon and then swapping the operands
-      ISD::CondCode CCInv = ISD::getSetCCInverse(CCOpcode, CompareVT.isInteger());
+      ISD::CondCode CCInv = ISD::getSetCCInverse(CCOpcode, CompareVT);
       CCSwapped = ISD::getSetCCSwappedOperands(CCInv);
       if (isCondCodeLegal(CCSwapped, CompareVT.getSimpleVT())) {
         std::swap(True, False);
@@ -1039,7 +1040,7 @@ SDValue R600TargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const 
     case ISD::SETONE:
     case ISD::SETUNE:
     case ISD::SETNE:
-      CCOpcode = ISD::getSetCCInverse(CCOpcode, CompareVT == MVT::i32);
+      CCOpcode = ISD::getSetCCInverse(CCOpcode, CompareVT);
       Temp = True;
       True = False;
       False = Temp;
@@ -1991,8 +1992,7 @@ SDValue R600TargetLowering::PerformDAGCombine(SDNode *N,
     case ISD::SETNE: return LHS;
     case ISD::SETEQ: {
       ISD::CondCode LHSCC = cast<CondCodeSDNode>(LHS.getOperand(4))->get();
-      LHSCC = ISD::getSetCCInverse(LHSCC,
-                                  LHS.getOperand(0).getValueType().isInteger());
+      LHSCC = ISD::getSetCCInverse(LHSCC, LHS.getOperand(0).getValueType());
       if (DCI.isBeforeLegalizeOps() ||
           isCondCodeLegal(LHSCC, LHS.getOperand(0).getSimpleValueType()))
         return DAG.getSelectCC(DL,

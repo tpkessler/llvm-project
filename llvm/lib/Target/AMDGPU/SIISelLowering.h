@@ -349,7 +349,8 @@ public:
   EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
                          EVT VT) const override;
   MVT getScalarShiftAmountTy(const DataLayout &, EVT) const override;
-  bool isFMAFasterThanFMulAndFAdd(EVT VT) const override;
+  bool isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
+                                  EVT VT) const override;
   bool isFMADLegalForFAddFSub(const SelectionDAG &DAG,
                               const SDNode *N) const override;
 
@@ -392,7 +393,7 @@ public:
 
   bool isCanonicalized(SelectionDAG &DAG, SDValue Op,
                        unsigned MaxDepth = 5) const;
-  bool denormalsEnabledForType(EVT VT) const;
+  bool denormalsEnabledForType(const SelectionDAG &DAG, EVT VT) const;
 
   bool isKnownNeverNaNForTargetNode(SDValue Op,
                                     const SelectionDAG &DAG,
@@ -400,10 +401,6 @@ public:
                                     unsigned Depth = 0) const override;
   AtomicExpansionKind shouldExpandAtomicRMWInIR(AtomicRMWInst *) const override;
 
-  virtual const TargetRegisterClass *
-  getRegClassFor(MVT VT, bool isDivergent) const override;
-  virtual bool requiresUniformRegister(MachineFunction &MF,
-                                       const Value *V) const override;
   Align getPrefLoopAlignment(MachineLoop *ML) const override;
 
   void allocateHSAUserSGPRs(CCState &CCInfo,

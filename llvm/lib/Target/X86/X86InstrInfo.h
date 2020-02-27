@@ -312,7 +312,7 @@ public:
                     ArrayRef<MachineOperand> Cond, unsigned TrueReg,
                     unsigned FalseReg) const override;
   void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
-                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
+                   const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
                    bool KillSrc) const override;
   void storeRegToStackSlot(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MI, unsigned SrcReg,
@@ -522,8 +522,8 @@ public:
     return MI.getDesc().TSFlags & X86II::LOCK;
   }
 
-  Optional<ParamLoadedValue>
-  describeLoadedValue(const MachineInstr &MI) const override;
+  Optional<ParamLoadedValue> describeLoadedValue(const MachineInstr &MI,
+                                                 Register Reg) const override;
 
 protected:
   /// Commutes the operands in the given instruction by changing the operands

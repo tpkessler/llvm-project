@@ -274,13 +274,20 @@ def Event             : Type<"Event", QualType<"OCLEventTy">>;
 def VecAndScalar: IntList<"VecAndScalar", [1, 2, 3, 4, 8, 16]>;
 def VecNoScalar : IntList<"VecNoScalar", [2, 3, 4, 8, 16]>;
 def Vec1        : IntList<"Vec1", [1]>;
+def Vec2        : IntList<"Vec2", [2]>;
+def Vec4        : IntList<"Vec4", [4]>;
+def Vec8        : IntList<"Vec8", [8]>;
+def Vec16       : IntList<"Vec16", [16]>;
 def Vec1234     : IntList<"Vec1234", [1, 2, 3, 4]>;
 
 // Type lists.
-def TLAll   : TypeList<"TLAll", [Char, UChar, Short, UShort, Int, UInt, Long, ULong, Float, Double, Half]>;
+def TLAll         : TypeList<"TLAll", [Char,  UChar, Short,  UShort, Int,  UInt, Long,  ULong, Float, Double, Half]>;
+def TLAllUnsigned : TypeList<"TLAllUnsigned", [UChar, UChar, UShort, UShort, UInt, UInt, ULong, ULong, UInt,  ULong,  UShort]>;
 def TLFloat : TypeList<"TLFloat", [Float, Double, Half]>;
 def TLSignedInts   : TypeList<"TLSignedInts", [Char, Short, Int, Long]>;
 def TLUnsignedInts : TypeList<"TLUnsignedInts", [UChar, UShort, UInt, ULong]>;
+
+def TLIntLongFloats : TypeList<"TLIntLongFloats", [Int, UInt, Long, ULong, Float, Double, Half]>;
 
 // All unsigned integer types twice, to facilitate unsigned return types for e.g.
 // uchar abs(char) and
@@ -306,6 +313,8 @@ def SGenTypeN              : GenericType<"SGenTypeN", TLSignedInts, VecAndScalar
 def UGenTypeN              : GenericType<"UGenTypeN", TLUnsignedInts, VecAndScalar>;
 // Float
 def FGenTypeN              : GenericType<"FGenTypeN", TLFloat, VecAndScalar>;
+// (u)int, (u)long, and all floats
+def IntLongFloatGenType1   : GenericType<"IntLongFloatGenType1", TLIntLongFloats, Vec1>;
 
 // GenType definitions for every single base type (e.g. fp32 only).
 // Names are like: GenTypeFloatVecAndScalar.
@@ -666,8 +675,9 @@ foreach name = ["select"] in {
 }
 
 
+//--------------------------------------------------------------------
 // OpenCL v1.1 s6.11.7, v1.2 s6.12.7, v2.0 s6.13.7 - Vector Data Load and Store Functions
-// OpenCL Extension v1.1 s9.3.6 and s9.6.6, v1.2 s9.5.6, v2.0 s9.4.6, v2.0 s5.1.6 and 6.1.6 - Vector Data Load and Store Functions
+// OpenCL Extension v1.1 s9.3.6 and s9.6.6, v1.2 s9.5.6, v2.0 s5.1.6 and s6.1.6 - Vector Data Load and Store Functions
 // --- Table 15 ---
 // Variants for OpenCL versions below 2.0, using pointers to the global, local
 // and private address spaces.
@@ -778,6 +788,55 @@ foreach VSize = [2, 3, 4, 8, 16] in {
     }
   }
 }
+let MaxVersion = CL20 in {
+  foreach AS = [GlobalAS, LocalAS, PrivateAS] in {
+    def : Builtin<"vload_half", [Float, Size, PointerType<ConstType<Half>, AS>]>;
+    foreach VSize = [2, 3, 4, 8, 16] in {
+      foreach name = ["vload_half" # VSize] in {
+        def : Builtin<name, [VectorType<Float, VSize>, Size, PointerType<ConstType<Half>, AS>]>;
+      }
+    }
+    foreach rnd = ["", "_rte", "_rtz", "_rtp", "_rtn"] in {
+      def : Builtin<"vstore_half" # rnd, [Void, Float, Size, PointerType<Half, AS>]>;
+      def : Builtin<"vstore_half" # rnd, [Void, Double, Size, PointerType<Half, AS>]>;
+      foreach VSize = [2, 3, 4, 8, 16] in {
+        foreach name = ["vstore_half" # VSize # rnd] in {
+          def : Builtin<name, [Void, VectorType<Float, VSize>, Size, PointerType<Half, AS>]>;
+          def : Builtin<name, [Void, VectorType<Double, VSize>, Size, PointerType<Half, AS>]>;
+        }
+      }
+    }
+  }
+}
+let MinVersion = CL20 in {
+  foreach AS = [GenericAS] in {
+    def : Builtin<"vload_half", [Float, Size, PointerType<ConstType<Half>, AS>]>;
+    foreach VSize = [2, 3, 4, 8, 16] in {
+      foreach name = ["vload_half" # VSize] in {
+        def : Builtin<name, [VectorType<Float, VSize>, Size, PointerType<ConstType<Half>, AS>]>;
+      }
+    }
+    foreach rnd = ["", "_rte", "_rtz", "_rtp", "_rtn"] in {
+      def : Builtin<"vstore_half" # rnd, [Void, Float, Size, PointerType<Half, AS>]>;
+      def : Builtin<"vstore_half" # rnd, [Void, Double, Size, PointerType<Half, AS>]>;
+      foreach VSize = [2, 3, 4, 8, 16] in {
+        foreach name = ["vstore_half" # VSize # rnd] in {
+          def : Builtin<name, [Void, VectorType<Float, VSize>, Size, PointerType<Half, AS>]>;
+          def : Builtin<name, [Void, VectorType<Double, VSize>, Size, PointerType<Half, AS>]>;
+        }
+      }
+    }
+  }
+}
+
+foreach AS = [ConstantAS] in {
+  def : Builtin<"vload_half", [Float, Size, PointerType<ConstType<Half>, AS>]>;
+  foreach VSize = [2, 3, 4, 8, 16] in {
+    foreach name = ["vload_half" # VSize] in {
+      def : Builtin<name, [VectorType<Float, VSize>, Size, PointerType<ConstType<Half>, AS>]>;
+    }
+  }
+}
 
 //--------------------------------------------------------------------
 // OpenCL v1.1 s6.11.10, v1.2 s6.12.10, v2.0 s6.13.10: Async Copies from Global to Local Memory, Local to Global Memory, and Prefetch
@@ -814,6 +873,31 @@ foreach Type = [Int, UInt] in {
   }
   foreach name = ["atom_cmpxchg"] in {
     def : Builtin<name, [Type, PointerType<VolatileType<Type>, GlobalAS>, Type, Type]>;
+  }
+}
+
+//--------------------------------------------------------------------
+// OpenCL v1.1 s6.11.12, v1.2 s6.12.12, v2.0 s6.13.12 - Miscellaneous Vector Functions
+// --- Table 19 ---
+foreach name = ["shuffle"] in {
+  foreach VSize1 = [Vec2, Vec4, Vec8, Vec16] in {
+    foreach VSize2 = [Vec2, Vec4, Vec8, Vec16] in {
+      def : Builtin<name, [GenericType<"TLAll" # VSize1.Name, TLAll, VSize1>,
+                           GenericType<"TLAll" # VSize2.Name, TLAll, VSize2>,
+                           GenericType<"TLAllUnsigned" # VSize1.Name, TLAllUnsigned, VSize1>],
+                          Attr.Const>;
+    }
+  }
+}
+foreach name = ["shuffle2"] in {
+  foreach VSize1 = [Vec2, Vec4, Vec8, Vec16] in {
+    foreach VSize2 = [Vec2, Vec4, Vec8, Vec16] in {
+      def : Builtin<name, [GenericType<"TLAll" # VSize1.Name, TLAll, VSize1>,
+                           GenericType<"TLAll" # VSize2.Name, TLAll, VSize2>,
+                           GenericType<"TLAll" # VSize2.Name, TLAll, VSize2>,
+                           GenericType<"TLAllUnsigned" # VSize1.Name, TLAllUnsigned, VSize1>],
+                          Attr.Const>;
+    }
   }
 }
 
@@ -966,6 +1050,27 @@ foreach aQual = ["WO", "RW"] in {
     def : Builtin<name, [Void, ImageType<Image1dBuffer, aQual>, Int, VectorType<Half, 4>]>;
     def : Builtin<name, [Void, ImageType<Image1dArray, aQual>, VectorType<Int, 2>, VectorType<Half, 4>]>;
     def : Builtin<name, [Void, ImageType<Image3d, aQual>, VectorType<Int, 4>, VectorType<Half, 4>]>;
+  }
+}
+
+
+//--------------------------------------------------------------------
+// OpenCL v2.0 s6.13.15 - Work-group Functions
+// --- Table 26 ---
+let MinVersion = CL20 in {
+  foreach name = ["work_group_all", "work_group_any"] in {
+    def : Builtin<name, [Int, Int], Attr.Convergent>;
+  }
+  foreach name = ["work_group_broadcast"] in {
+    def : Builtin<name, [IntLongFloatGenType1, IntLongFloatGenType1, Size], Attr.Convergent>;
+    def : Builtin<name, [IntLongFloatGenType1, IntLongFloatGenType1, Size, Size], Attr.Convergent>;
+    def : Builtin<name, [IntLongFloatGenType1, IntLongFloatGenType1, Size, Size, Size], Attr.Convergent>;
+  }
+  foreach op = ["add", "min", "max"] in {
+    foreach name = ["work_group_reduce_", "work_group_scan_exclusive_",
+                    "work_group_scan_inclusive_"] in {
+      def : Builtin<name # op, [IntLongFloatGenType1, IntLongFloatGenType1], Attr.Convergent>;
+    }
   }
 }
 

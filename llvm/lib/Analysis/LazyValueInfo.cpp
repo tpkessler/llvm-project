@@ -19,8 +19,8 @@
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Analysis/ValueLattice.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/ConstantRange.h"
@@ -33,6 +33,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/ValueHandle.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
@@ -47,6 +48,9 @@ using namespace PatternMatch;
 static const unsigned MaxProcessedPerValue = 500;
 
 char LazyValueInfoWrapperPass::ID = 0;
+LazyValueInfoWrapperPass::LazyValueInfoWrapperPass() : FunctionPass(ID) {
+  initializeLazyValueInfoWrapperPassPass(*PassRegistry::getPassRegistry());
+}
 INITIALIZE_PASS_BEGIN(LazyValueInfoWrapperPass, "lazy-value-info",
                 "Lazy Value Information Analysis", false, true)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
@@ -132,12 +136,9 @@ namespace {
   /// A callback value handle updates the cache when values are erased.
   class LazyValueInfoCache;
   struct LVIValueHandle final : public CallbackVH {
-    // Needs to access getValPtr(), which is protected.
-    friend struct DenseMapInfo<LVIValueHandle>;
-
     LazyValueInfoCache *Parent;
 
-    LVIValueHandle(Value *V, LazyValueInfoCache *P)
+    LVIValueHandle(Value *V, LazyValueInfoCache *P = nullptr)
       : CallbackVH(V), Parent(P) { }
 
     void deleted() override;
@@ -151,101 +152,83 @@ namespace {
   /// This is the cache kept by LazyValueInfo which
   /// maintains information about queries across the clients' queries.
   class LazyValueInfoCache {
-  public:
-    typedef DenseMap<PoisoningVH<BasicBlock>, SmallPtrSet<Value *, 4>>
-        PerBlockValueCacheTy;
-
-  private:
-    /// This is all of the cached block information for exactly one Value*.
-    /// The entries are sorted by the BasicBlock* of the
-    /// entries, allowing us to do a lookup with a binary search.
-    /// Over-defined lattice values are recorded in OverDefinedCache to reduce
-    /// memory overhead.
-    struct ValueCacheEntryTy {
-      ValueCacheEntryTy(Value *V, LazyValueInfoCache *P) : Handle(V, P) {}
-      LVIValueHandle Handle;
-      SmallDenseMap<PoisoningVH<BasicBlock>, ValueLatticeElement, 4> BlockVals;
+    /// This is all of the cached information for one basic block. It contains
+    /// the per-value lattice elements, as well as a separate set for
+    /// overdefined values to reduce memory usage. Additionally pointers
+    /// dereferenced in the block are cached for nullability queries.
+    struct BlockCacheEntryTy {
+      SmallDenseMap<AssertingVH<Value>, ValueLatticeElement, 4> LatticeElements;
+      SmallDenseSet<AssertingVH<Value>, 4> OverDefined;
+      // None indicates that the dereferenced pointers for this basic block
+      // block have not been computed yet.
+      Optional<DenseSet<AssertingVH<Value>>> DereferencedPointers;
     };
 
-    /// Keep track of all blocks that we have ever seen, so we
-    /// don't spend time removing unused blocks from our caches.
-    DenseSet<PoisoningVH<BasicBlock> > SeenBlocks;
-
-    /// This is all of the cached information for all values,
-    /// mapped from Value* to key information.
-    DenseMap<Value *, std::unique_ptr<ValueCacheEntryTy>> ValueCache;
-    /// This tracks, on a per-block basis, the set of values that are
-    /// over-defined at the end of that block.
-    PerBlockValueCacheTy OverDefinedCache;
-    /// This tracks, on a per-block basis, the set of pointers that are
-    /// dereferenced in the block (and thus non-null at the end of the block).
-    PerBlockValueCacheTy DereferencedPointerCache;
-
+    /// Cached information per basic block.
+    DenseMap<PoisoningVH<BasicBlock>, BlockCacheEntryTy> BlockCache;
+    /// Set of value handles used to erase values from the cache on deletion.
+    DenseSet<LVIValueHandle, DenseMapInfo<Value *>> ValueHandles;
 
   public:
     void insertResult(Value *Val, BasicBlock *BB,
                       const ValueLatticeElement &Result) {
-      SeenBlocks.insert(BB);
-
+      auto &CacheEntry = BlockCache.try_emplace(BB).first->second;
       // Insert over-defined values into their own cache to reduce memory
       // overhead.
       if (Result.isOverdefined())
-        OverDefinedCache[BB].insert(Val);
-      else {
-        auto It = ValueCache.find_as(Val);
-        if (It == ValueCache.end()) {
-          ValueCache[Val] = std::make_unique<ValueCacheEntryTy>(Val, this);
-          It = ValueCache.find_as(Val);
-          assert(It != ValueCache.end() && "Val was just added to the map!");
-        }
-        It->second->BlockVals[BB] = Result;
-      }
-    }
+        CacheEntry.OverDefined.insert(Val);
+      else
+        CacheEntry.LatticeElements.insert({ Val, Result });
 
-    bool isOverdefined(Value *V, BasicBlock *BB) const {
-      auto ODI = OverDefinedCache.find(BB);
-
-      if (ODI == OverDefinedCache.end())
-        return false;
-
-      return ODI->second.count(V);
+      auto HandleIt = ValueHandles.find_as(Val);
+      if (HandleIt == ValueHandles.end())
+        ValueHandles.insert({ Val, this });
     }
 
     bool hasCachedValueInfo(Value *V, BasicBlock *BB) const {
-      if (isOverdefined(V, BB))
-        return true;
-
-      auto I = ValueCache.find_as(V);
-      if (I == ValueCache.end())
+      auto It = BlockCache.find(BB);
+      if (It == BlockCache.end())
         return false;
 
-      return I->second->BlockVals.count(BB);
+      return It->second.OverDefined.count(V) ||
+             It->second.LatticeElements.count(V);
     }
 
     ValueLatticeElement getCachedValueInfo(Value *V, BasicBlock *BB) const {
-      if (isOverdefined(V, BB))
+      auto It = BlockCache.find(BB);
+      if (It == BlockCache.end())
+        return ValueLatticeElement();
+
+      if (It->second.OverDefined.count(V))
         return ValueLatticeElement::getOverdefined();
 
-      auto I = ValueCache.find_as(V);
-      if (I == ValueCache.end())
+      auto LatticeIt = It->second.LatticeElements.find(V);
+      if (LatticeIt == It->second.LatticeElements.end())
         return ValueLatticeElement();
-      auto BBI = I->second->BlockVals.find(BB);
-      if (BBI == I->second->BlockVals.end())
-        return ValueLatticeElement();
-      return BBI->second;
+
+      return LatticeIt->second;
     }
 
-    std::pair<PerBlockValueCacheTy::iterator, bool>
-    getOrInitDereferencedPointers(BasicBlock *BB) {
-      return DereferencedPointerCache.try_emplace(BB);
+    bool isPointerDereferencedInBlock(
+        Value *V, BasicBlock *BB,
+        std::function<DenseSet<AssertingVH<Value>>(BasicBlock *)> InitFn) {
+      auto &CacheEntry = BlockCache.try_emplace(BB).first->second;
+      if (!CacheEntry.DereferencedPointers) {
+        CacheEntry.DereferencedPointers = InitFn(BB);
+        for (Value *V : *CacheEntry.DereferencedPointers) {
+          auto HandleIt = ValueHandles.find_as(V);
+          if (HandleIt == ValueHandles.end())
+            ValueHandles.insert({ V, this });
+        }
+      }
+
+      return CacheEntry.DereferencedPointers->count(V);
     }
 
     /// clear - Empty the cache.
     void clear() {
-      SeenBlocks.clear();
-      ValueCache.clear();
-      OverDefinedCache.clear();
-      DereferencedPointerCache.clear();
+      BlockCache.clear();
+      ValueHandles.clear();
     }
 
     /// Inform the cache that a given value has been deleted.
@@ -259,28 +242,20 @@ namespace {
     /// OldSucc might have (unless also overdefined in NewSucc).  This just
     /// flushes elements from the cache and does not add any.
     void threadEdgeImpl(BasicBlock *OldSucc,BasicBlock *NewSucc);
-
-    friend struct LVIValueHandle;
   };
 }
 
-static void eraseValueFromPerBlockValueCache(
-    Value *V, LazyValueInfoCache::PerBlockValueCacheTy &Cache) {
-  for (auto I = Cache.begin(), E = Cache.end(); I != E;) {
-    // Copy and increment the iterator immediately so we can erase behind
-    // ourselves.
-    auto Iter = I++;
-    SmallPtrSetImpl<Value *> &ValueSet = Iter->second;
-    ValueSet.erase(V);
-    if (ValueSet.empty())
-      Cache.erase(Iter);
-  }
-}
-
 void LazyValueInfoCache::eraseValue(Value *V) {
-  eraseValueFromPerBlockValueCache(V, OverDefinedCache);
-  eraseValueFromPerBlockValueCache(V, DereferencedPointerCache);
-  ValueCache.erase(V);
+  for (auto &Pair : BlockCache) {
+    Pair.second.LatticeElements.erase(V);
+    Pair.second.OverDefined.erase(V);
+    if (Pair.second.DereferencedPointers)
+      Pair.second.DereferencedPointers->erase(V);
+  }
+
+  auto HandleIt = ValueHandles.find_as(V);
+  if (HandleIt != ValueHandles.end())
+    ValueHandles.erase(HandleIt);
 }
 
 void LVIValueHandle::deleted() {
@@ -290,20 +265,7 @@ void LVIValueHandle::deleted() {
 }
 
 void LazyValueInfoCache::eraseBlock(BasicBlock *BB) {
-  // The SeenBlocks shortcut applies only to the value caches,
-  // always clear the dereferenced pointer cache.
-  DereferencedPointerCache.erase(BB);
-
-  // Shortcut if we have never seen this block.
-  DenseSet<PoisoningVH<BasicBlock> >::iterator I = SeenBlocks.find(BB);
-  if (I == SeenBlocks.end())
-    return;
-  SeenBlocks.erase(I);
-
-  OverDefinedCache.erase(BB);
-
-  for (auto &I : ValueCache)
-    I.second->BlockVals.erase(BB);
+  BlockCache.erase(BB);
 }
 
 void LazyValueInfoCache::threadEdgeImpl(BasicBlock *OldSucc,
@@ -321,10 +283,11 @@ void LazyValueInfoCache::threadEdgeImpl(BasicBlock *OldSucc,
   std::vector<BasicBlock*> worklist;
   worklist.push_back(OldSucc);
 
-  auto I = OverDefinedCache.find(OldSucc);
-  if (I == OverDefinedCache.end())
+  auto I = BlockCache.find(OldSucc);
+  if (I == BlockCache.end() || I->second.OverDefined.empty())
     return; // Nothing to process here.
-  SmallVector<Value *, 4> ValsToClear(I->second.begin(), I->second.end());
+  SmallVector<Value *, 4> ValsToClear(I->second.OverDefined.begin(),
+                                      I->second.OverDefined.end());
 
   // Use a worklist to perform a depth-first search of OldSucc's successors.
   // NOTE: We do not need a visited list since any blocks we have already
@@ -338,10 +301,10 @@ void LazyValueInfoCache::threadEdgeImpl(BasicBlock *OldSucc,
     if (ToUpdate == NewSucc) continue;
 
     // If a value was marked overdefined in OldSucc, and is here too...
-    auto OI = OverDefinedCache.find(ToUpdate);
-    if (OI == OverDefinedCache.end())
+    auto OI = BlockCache.find(ToUpdate);
+    if (OI == BlockCache.end() || OI->second.OverDefined.empty())
       continue;
-    SmallPtrSetImpl<Value *> &ValueSet = OI->second;
+    auto &ValueSet = OI->second.OverDefined;
 
     bool changed = false;
     for (Value *V : ValsToClear) {
@@ -351,11 +314,6 @@ void LazyValueInfoCache::threadEdgeImpl(BasicBlock *OldSucc,
       // If we removed anything, then we potentially need to update
       // blocks successors too.
       changed = true;
-
-      if (ValueSet.empty()) {
-        OverDefinedCache.erase(OI);
-        break;
-      }
     }
 
     if (!changed) continue;
@@ -685,7 +643,7 @@ bool LazyValueInfoImpl::solveBlockValueImpl(ValueLatticeElement &Res,
 }
 
 static void AddDereferencedPointer(
-    Value *Ptr, SmallPtrSet<Value *, 4> &PtrSet, const DataLayout &DL) {
+    Value *Ptr, DenseSet<AssertingVH<Value>> &PtrSet, const DataLayout &DL) {
   // TODO: Use NullPointerIsDefined instead.
   if (Ptr->getType()->getPointerAddressSpace() == 0) {
     Ptr = GetUnderlyingObject(Ptr, DL);
@@ -694,7 +652,8 @@ static void AddDereferencedPointer(
 }
 
 static void AddPointersDereferencedByInstruction(
-    Instruction *I, SmallPtrSet<Value *, 4> &PtrSet, const DataLayout &DL) {
+    Instruction *I, DenseSet<AssertingVH<Value>> &PtrSet,
+    const DataLayout &DL) {
   if (LoadInst *L = dyn_cast<LoadInst>(I)) {
     AddDereferencedPointer(L->getPointerOperand(), PtrSet, DL);
   } else if (StoreInst *S = dyn_cast<StoreInst>(I)) {
@@ -721,15 +680,12 @@ bool LazyValueInfoImpl::isNonNullDueToDereferenceInBlock(
   const DataLayout &DL = BB->getModule()->getDataLayout();
   Val = GetUnderlyingObject(Val, DL);
 
-  LazyValueInfoCache::PerBlockValueCacheTy::iterator It;
-  bool NeedsInit;
-  std::tie(It, NeedsInit) = TheCache.getOrInitDereferencedPointers(BB);
-
-  if (NeedsInit)
+  return TheCache.isPointerDereferencedInBlock(Val, BB, [DL](BasicBlock *BB) {
+    DenseSet<AssertingVH<Value>> DereferencedPointers;
     for (Instruction &I : *BB)
-      AddPointersDereferencedByInstruction(&I, It->second, DL);
-
-  return It->second.count(Val);
+      AddPointersDereferencedByInstruction(&I, DereferencedPointers, DL);
+    return DereferencedPointers;
+  });
 }
 
 bool LazyValueInfoImpl::solveBlockValueNonLocal(ValueLatticeElement &BBLV,

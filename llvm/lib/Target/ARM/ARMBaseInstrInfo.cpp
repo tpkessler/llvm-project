@@ -829,8 +829,8 @@ void llvm::addPredicatedMveVpredROp(MachineInstrBuilder &MIB,
 
 void ARMBaseInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                    MachineBasicBlock::iterator I,
-                                   const DebugLoc &DL, unsigned DestReg,
-                                   unsigned SrcReg, bool KillSrc) const {
+                                   const DebugLoc &DL, MCRegister DestReg,
+                                   MCRegister SrcReg, bool KillSrc) const {
   bool GPRDest = ARM::GPRRegClass.contains(DestReg);
   bool GPRSrc = ARM::GPRRegClass.contains(SrcReg);
 
@@ -2721,25 +2721,6 @@ static bool isSuitableForMask(MachineInstr *&MI, unsigned SrcReg,
   }
 
   return false;
-}
-
-/// getSwappedCondition - assume the flags are set by MI(a,b), return
-/// the condition code if we modify the instructions such that flags are
-/// set by MI(b,a).
-inline static ARMCC::CondCodes getSwappedCondition(ARMCC::CondCodes CC) {
-  switch (CC) {
-  default: return ARMCC::AL;
-  case ARMCC::EQ: return ARMCC::EQ;
-  case ARMCC::NE: return ARMCC::NE;
-  case ARMCC::HS: return ARMCC::LS;
-  case ARMCC::LO: return ARMCC::HI;
-  case ARMCC::HI: return ARMCC::LO;
-  case ARMCC::LS: return ARMCC::HS;
-  case ARMCC::GE: return ARMCC::LE;
-  case ARMCC::LT: return ARMCC::GT;
-  case ARMCC::GT: return ARMCC::LT;
-  case ARMCC::LE: return ARMCC::GE;
-  }
 }
 
 /// getCmpToAddCondition - assume the flags are set by CMP(a,b), return
@@ -5347,11 +5328,16 @@ ARMBaseInstrInfo::getSerializableBitmaskMachineOperandTargetFlags() const {
   return makeArrayRef(TargetFlags);
 }
 
-Optional<DestSourcePair>
-ARMBaseInstrInfo::isAddImmediate(const MachineInstr &MI,
-                                 int64_t &Offset) const {
+Optional<RegImmPair> ARMBaseInstrInfo::isAddImmediate(const MachineInstr &MI,
+                                                      Register Reg) const {
   int Sign = 1;
   unsigned Opcode = MI.getOpcode();
+  int64_t Offset = 0;
+
+  // TODO: Handle cases where Reg is a super- or sub-register of the
+  // destination register.
+  if (Reg != MI.getOperand(0).getReg())
+    return None;
 
   // We describe SUBri or ADDri instructions.
   if (Opcode == ARM::SUBri)
@@ -5367,7 +5353,7 @@ ARMBaseInstrInfo::isAddImmediate(const MachineInstr &MI,
     return None;
 
   Offset = MI.getOperand(2).getImm() * Sign;
-  return DestSourcePair{MI.getOperand(0), MI.getOperand(1)};
+  return RegImmPair{MI.getOperand(1).getReg(), Offset};
 }
 
 bool llvm::registerDefinedBetween(unsigned Reg,

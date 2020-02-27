@@ -403,6 +403,8 @@ def O_flag : Flag<["-"], "O">, Flags<[CC1Option]>, Alias<O>, AliasArgs<["2"]>;
 def Ofast : Joined<["-"], "Ofast">, Group<O_Group>, Flags<[CC1Option]>;
 def P : Flag<["-"], "P">, Flags<[CC1Option]>, Group<Preprocessor_Group>,
   HelpText<"Disable linemarker output in -E mode">;
+def parallel_jobs_EQ : Joined<["-"], "parallel-jobs=">, Flags<[DriverOption]>,
+  HelpText<"Number of parallel jobs">;
 def Qy : Flag<["-"], "Qy">, Flags<[CC1Option]>,
   HelpText<"Emit metadata containing compiler name and version">;
 def Qn : Flag<["-"], "Qn">, Flags<[CC1Option]>,
@@ -562,6 +564,9 @@ def cxx_isystem : JoinedOrSeparate<["-"], "cxx-isystem">, Group<clang_i_Group>,
   MetaVarName<"<directory>">;
 def c : Flag<["-"], "c">, Flags<[DriverOption]>, Group<Action_Group>,
   HelpText<"Only run preprocess, compile, and assemble steps">;
+def fconvergent_functions : Joined<["-"], "fconvergent-functions">, Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Assume functions may be convergent">;
+
 def cuda_device_only : Flag<["--"], "cuda-device-only">,
   HelpText<"Compile CUDA code for device only">;
 def cuda_host_only : Flag<["--"], "cuda-host-only">,
@@ -863,8 +868,6 @@ def fconstexpr_depth_EQ : Joined<["-"], "fconstexpr-depth=">, Group<f_Group>;
 def fconstexpr_steps_EQ : Joined<["-"], "fconstexpr-steps=">, Group<f_Group>;
 def fexperimental_new_constant_interpreter : Flag<["-"], "fexperimental-new-constant-interpreter">, Group<f_Group>,
   HelpText<"Enable the experimental new constant interpreter">, Flags<[CC1Option]>;
-def fforce_experimental_new_constant_interpreter : Flag<["-"], "fforce-experimental-new-constant-interpreter">, Group<f_Group>,
-  HelpText<"Force the use of the experimental new constant interpreter, failing on missing features">, Flags<[CC1Option]>;
 def fconstexpr_backtrace_limit_EQ : Joined<["-"], "fconstexpr-backtrace-limit=">,
                                     Group<f_Group>;
 def fno_crash_diagnostics : Flag<["-"], "fno-crash-diagnostics">, Group<f_clang_Group>, Flags<[NoArgumentUnused, CoreOption]>,
@@ -1673,6 +1676,8 @@ def fnoopenmp_relocatable_target : Flag<["-"], "fnoopenmp-relocatable-target">,
   Group<f_Group>, Flags<[CC1Option, NoArgumentUnused, HelpHidden]>;
 def fopenmp_simd : Flag<["-"], "fopenmp-simd">, Group<f_Group>, Flags<[CC1Option, NoArgumentUnused]>,
   HelpText<"Emit OpenMP code only for SIMD-based constructs.">;
+def fopenmp_enable_irbuilder : Flag<["-"], "fopenmp-enable-irbuilder">, Group<f_Group>, Flags<[CC1Option, NoArgumentUnused, HelpHidden]>,
+  HelpText<"Use the experimental OpenMP-IR-Builder codegen path.">;
 def fno_openmp_simd : Flag<["-"], "fno-openmp-simd">, Group<f_Group>, Flags<[CC1Option, NoArgumentUnused]>;
 def fopenmp_cuda_mode : Flag<["-"], "fopenmp-cuda-mode">, Group<f_Group>,
   Flags<[CC1Option, NoArgumentUnused, HelpHidden]>;
@@ -1817,16 +1822,18 @@ def foperator_arrow_depth_EQ : Joined<["-"], "foperator-arrow-depth=">,
 def fsave_optimization_record : Flag<["-"], "fsave-optimization-record">,
   Group<f_Group>, HelpText<"Generate a YAML optimization record file">;
 def fsave_optimization_record_EQ : Joined<["-"], "fsave-optimization-record=">,
-  Group<f_Group>, HelpText<"Generate an optimization record file in a specific format (default: YAML)">;
+  Group<f_Group>, HelpText<"Generate an optimization record file in a specific format">,
+  MetaVarName<"<format>">;
 def fno_save_optimization_record : Flag<["-"], "fno-save-optimization-record">,
   Group<f_Group>, Flags<[NoArgumentUnused]>;
 def foptimization_record_file_EQ : Joined<["-"], "foptimization-record-file=">,
   Group<f_Group>,
-  HelpText<"Specify the file name of any generated YAML optimization record">;
+  HelpText<"Specify the output name of the file containing the optimization remarks. Implies -fsave-optimization-record. On Darwin platforms, this cannot be used with multiple -arch <arch> options.">,
+  MetaVarName<"<file>">;
 def foptimization_record_passes_EQ : Joined<["-"], "foptimization-record-passes=">,
   Group<f_Group>,
-  HelpText<"Only include passes which match a specified regular expression in the generated optimization record (by default, include all passes)">;
-
+  HelpText<"Only include passes which match a specified regular expression in the generated optimization record (by default, include all passes)">,
+  MetaVarName<"<regex>">;
 
 def ftest_coverage : Flag<["-"], "ftest-coverage">, Group<f_Group>;
 def fvectorize : Flag<["-"], "fvectorize">, Group<f_Group>,
@@ -1985,6 +1992,12 @@ def fdebug_prefix_map_EQ
   : Joined<["-"], "fdebug-prefix-map=">, Group<f_Group>,
     Flags<[CC1Option,CC1AsOption]>,
     HelpText<"remap file source paths in debug info">;
+def ffile_prefix_map_EQ
+  : Joined<["-"], "ffile-prefix-map=">, Group<f_Group>, Flags<[CC1Option]>,
+    HelpText<"remap file source paths in debug info and predefined preprocessor macros">;
+def fmacro_prefix_map_EQ
+  : Joined<["-"], "fmacro-prefix-map=">, Group<Preprocessor_Group>, Flags<[CC1Option]>,
+    HelpText<"remap file source paths in predefined preprocessor macros">;
 def fforce_dwarf_frame : Flag<["-"], "fforce-dwarf-frame">, Group<f_Group>, Flags<[CC1Option]>,
     HelpText<"Always emit a debug frame section">;
 def fno_force_dwarf_frame : Flag<["-"], "fno-force-dwarf-frame">, Group<f_Group>, Flags<[CC1Option]>,
@@ -2340,6 +2353,8 @@ def mmultivalue : Flag<["-"], "mmultivalue">, Group<m_wasm_Features_Group>;
 def mno_multivalue : Flag<["-"], "mno-multivalue">, Group<m_wasm_Features_Group>;
 def mtail_call : Flag<["-"], "mtail-call">, Group<m_wasm_Features_Group>;
 def mno_tail_call : Flag<["-"], "mno-tail-call">, Group<m_wasm_Features_Group>;
+def mreference_types : Flag<["-"], "mreference-types">, Group<m_wasm_Features_Group>;
+def mno_reference_types : Flag<["-"], "mno-reference-types">, Group<m_wasm_Features_Group>;
 
 def mamdgpu_debugger_abi : Joined<["-"], "mamdgpu-debugger-abi=">,
   Flags<[HelpHidden]>,

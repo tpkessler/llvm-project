@@ -58,8 +58,8 @@
 #include "VPRecipeBuilder.h"
 #include "VPlan.h"
 #include "VPlanHCFGBuilder.h"
-#include "VPlanHCFGTransforms.h"
 #include "VPlanPredicator.h"
+#include "VPlanTransforms.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -124,6 +124,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -149,7 +150,6 @@
 #include <string>
 #include <tuple>
 #include <utility>
-#include <vector>
 
 using namespace llvm;
 
@@ -427,6 +427,11 @@ public:
   /// original loop, when vectorized, is represented by UF vector values in the
   /// new unrolled loop, where UF is the unroll factor.
   using VectorParts = SmallVector<Value *, 2>;
+
+  /// Vectorize a single GetElementPtrInst based on information gathered and
+  /// decisions taken during planning.
+  void widenGEP(GetElementPtrInst *GEP, unsigned UF, unsigned VF,
+                bool IsPtrLoopInvariant, SmallBitVector &IsIndexLoopInvariant);
 
   /// Vectorize a single PHINode in a block. This method handles the induction
   /// variable canonicalization. It supports both VF = 1 for unrolled loops and
@@ -3551,17 +3556,27 @@ void InnerLoopVectorizer::fixFirstOrderRecurrence(PHINode *Phi) {
   // among all unrolled iterations, due to the order of their construction.
   Value *PreviousLastPart = getOrCreateVectorValue(Previous, UF - 1);
 
-  // Set the insertion point after the previous value if it is an instruction.
+  // Find and set the insertion point after the previous value if it is an
+  // instruction.
+  BasicBlock::iterator InsertPt;
   // Note that the previous value may have been constant-folded so it is not
-  // guaranteed to be an instruction in the vector loop. Also, if the previous
-  // value is a phi node, we should insert after all the phi nodes to avoid
-  // breaking basic block verification.
-  if (LI->getLoopFor(LoopVectorBody)->isLoopInvariant(PreviousLastPart) ||
-      isa<PHINode>(PreviousLastPart))
-    Builder.SetInsertPoint(&*LoopVectorBody->getFirstInsertionPt());
-  else
-    Builder.SetInsertPoint(
-        &*++BasicBlock::iterator(cast<Instruction>(PreviousLastPart)));
+  // guaranteed to be an instruction in the vector loop.
+  // FIXME: Loop invariant values do not form recurrences. We should deal with
+  //        them earlier.
+  if (LI->getLoopFor(LoopVectorBody)->isLoopInvariant(PreviousLastPart))
+    InsertPt = LoopVectorBody->getFirstInsertionPt();
+  else {
+    Instruction *PreviousInst = cast<Instruction>(PreviousLastPart);
+    if (isa<PHINode>(PreviousLastPart))
+      // If the previous value is a phi node, we should insert after all the phi
+      // nodes in the block containing the PHI to avoid breaking basic block
+      // verification. Note that the basic block may be different to
+      // LoopVectorBody, in case we predicate the loop.
+      InsertPt = PreviousInst->getParent()->getFirstInsertionPt();
+    else
+      InsertPt = ++PreviousInst->getIterator();
+  }
+  Builder.SetInsertPoint(&*InsertPt);
 
   // We will construct a vector for the recurrence by combining the values for
   // the current and previous iterations. This is the required shuffle mask.
@@ -3961,6 +3976,75 @@ void InnerLoopVectorizer::fixNonInductionPHIs() {
   }
 }
 
+void InnerLoopVectorizer::widenGEP(GetElementPtrInst *GEP, unsigned UF,
+                                   unsigned VF, bool IsPtrLoopInvariant,
+                                   SmallBitVector &IsIndexLoopInvariant) {
+  // Construct a vector GEP by widening the operands of the scalar GEP as
+  // necessary. We mark the vector GEP 'inbounds' if appropriate. A GEP
+  // results in a vector of pointers when at least one operand of the GEP
+  // is vector-typed. Thus, to keep the representation compact, we only use
+  // vector-typed operands for loop-varying values.
+
+  if (VF > 1 && IsPtrLoopInvariant && IsIndexLoopInvariant.all()) {
+    // If we are vectorizing, but the GEP has only loop-invariant operands,
+    // the GEP we build (by only using vector-typed operands for
+    // loop-varying values) would be a scalar pointer. Thus, to ensure we
+    // produce a vector of pointers, we need to either arbitrarily pick an
+    // operand to broadcast, or broadcast a clone of the original GEP.
+    // Here, we broadcast a clone of the original.
+    //
+    // TODO: If at some point we decide to scalarize instructions having
+    //       loop-invariant operands, this special case will no longer be
+    //       required. We would add the scalarization decision to
+    //       collectLoopScalars() and teach getVectorValue() to broadcast
+    //       the lane-zero scalar value.
+    auto *Clone = Builder.Insert(GEP->clone());
+    for (unsigned Part = 0; Part < UF; ++Part) {
+      Value *EntryPart = Builder.CreateVectorSplat(VF, Clone);
+      VectorLoopValueMap.setVectorValue(GEP, Part, EntryPart);
+      addMetadata(EntryPart, GEP);
+    }
+  } else {
+    // If the GEP has at least one loop-varying operand, we are sure to
+    // produce a vector of pointers. But if we are only unrolling, we want
+    // to produce a scalar GEP for each unroll part. Thus, the GEP we
+    // produce with the code below will be scalar (if VF == 1) or vector
+    // (otherwise). Note that for the unroll-only case, we still maintain
+    // values in the vector mapping with initVector, as we do for other
+    // instructions.
+    for (unsigned Part = 0; Part < UF; ++Part) {
+      // The pointer operand of the new GEP. If it's loop-invariant, we
+      // won't broadcast it.
+      auto *Ptr = IsPtrLoopInvariant
+                      ? GEP->getPointerOperand()
+                      : getOrCreateVectorValue(GEP->getPointerOperand(), Part);
+
+      // Collect all the indices for the new GEP. If any index is
+      // loop-invariant, we won't broadcast it.
+      SmallVector<Value *, 4> Indices;
+      for (auto Index : enumerate(GEP->indices())) {
+        Value *User = Index.value().get();
+        if (IsIndexLoopInvariant[Index.index()])
+          Indices.push_back(User);
+        else
+          Indices.push_back(getOrCreateVectorValue(User, Part));
+      }
+
+      // Create the new GEP. Note that this GEP may be a scalar if VF == 1,
+      // but it should be a vector, otherwise.
+      auto *NewGEP =
+          GEP->isInBounds()
+              ? Builder.CreateInBoundsGEP(GEP->getSourceElementType(), Ptr,
+                                          Indices)
+              : Builder.CreateGEP(GEP->getSourceElementType(), Ptr, Indices);
+      assert((VF == 1 || NewGEP->getType()->isVectorTy()) &&
+             "NewGEP is not a pointer vector");
+      VectorLoopValueMap.setVectorValue(GEP, Part, NewGEP);
+      addMetadata(NewGEP, GEP);
+    }
+  }
+}
+
 void InnerLoopVectorizer::widenPHIInstruction(Instruction *PN, unsigned UF,
                                               unsigned VF) {
   PHINode *P = cast<PHINode>(PN);
@@ -4063,76 +4147,8 @@ void InnerLoopVectorizer::widenInstruction(Instruction &I) {
   switch (I.getOpcode()) {
   case Instruction::Br:
   case Instruction::PHI:
+  case Instruction::GetElementPtr:
     llvm_unreachable("This instruction is handled by a different recipe.");
-  case Instruction::GetElementPtr: {
-    // Construct a vector GEP by widening the operands of the scalar GEP as
-    // necessary. We mark the vector GEP 'inbounds' if appropriate. A GEP
-    // results in a vector of pointers when at least one operand of the GEP
-    // is vector-typed. Thus, to keep the representation compact, we only use
-    // vector-typed operands for loop-varying values.
-    auto *GEP = cast<GetElementPtrInst>(&I);
-
-    if (VF > 1 && OrigLoop->hasLoopInvariantOperands(GEP)) {
-      // If we are vectorizing, but the GEP has only loop-invariant operands,
-      // the GEP we build (by only using vector-typed operands for
-      // loop-varying values) would be a scalar pointer. Thus, to ensure we
-      // produce a vector of pointers, we need to either arbitrarily pick an
-      // operand to broadcast, or broadcast a clone of the original GEP.
-      // Here, we broadcast a clone of the original.
-      //
-      // TODO: If at some point we decide to scalarize instructions having
-      //       loop-invariant operands, this special case will no longer be
-      //       required. We would add the scalarization decision to
-      //       collectLoopScalars() and teach getVectorValue() to broadcast
-      //       the lane-zero scalar value.
-      auto *Clone = Builder.Insert(GEP->clone());
-      for (unsigned Part = 0; Part < UF; ++Part) {
-        Value *EntryPart = Builder.CreateVectorSplat(VF, Clone);
-        VectorLoopValueMap.setVectorValue(&I, Part, EntryPart);
-        addMetadata(EntryPart, GEP);
-      }
-    } else {
-      // If the GEP has at least one loop-varying operand, we are sure to
-      // produce a vector of pointers. But if we are only unrolling, we want
-      // to produce a scalar GEP for each unroll part. Thus, the GEP we
-      // produce with the code below will be scalar (if VF == 1) or vector
-      // (otherwise). Note that for the unroll-only case, we still maintain
-      // values in the vector mapping with initVector, as we do for other
-      // instructions.
-      for (unsigned Part = 0; Part < UF; ++Part) {
-        // The pointer operand of the new GEP. If it's loop-invariant, we
-        // won't broadcast it.
-        auto *Ptr =
-            OrigLoop->isLoopInvariant(GEP->getPointerOperand())
-                ? GEP->getPointerOperand()
-                : getOrCreateVectorValue(GEP->getPointerOperand(), Part);
-
-        // Collect all the indices for the new GEP. If any index is
-        // loop-invariant, we won't broadcast it.
-        SmallVector<Value *, 4> Indices;
-        for (auto &U : make_range(GEP->idx_begin(), GEP->idx_end())) {
-          if (OrigLoop->isLoopInvariant(U.get()))
-            Indices.push_back(U.get());
-          else
-            Indices.push_back(getOrCreateVectorValue(U.get(), Part));
-        }
-
-        // Create the new GEP. Note that this GEP may be a scalar if VF == 1,
-        // but it should be a vector, otherwise.
-        auto *NewGEP =
-            GEP->isInBounds()
-                ? Builder.CreateInBoundsGEP(GEP->getSourceElementType(), Ptr,
-                                            Indices)
-                : Builder.CreateGEP(GEP->getSourceElementType(), Ptr, Indices);
-        assert((VF == 1 || NewGEP->getType()->isVectorTy()) &&
-               "NewGEP is not a pointer vector");
-        VectorLoopValueMap.setVectorValue(&I, Part, NewGEP);
-        addMetadata(NewGEP, GEP);
-      }
-    }
-
-    break;
-  }
   case Instruction::UDiv:
   case Instruction::SDiv:
   case Instruction::SRem:
@@ -4668,14 +4684,26 @@ void LoopVectorizationCostModel::collectLoopUniforms(unsigned VF) {
   SetVector<Instruction *> Worklist;
   BasicBlock *Latch = TheLoop->getLoopLatch();
 
+  // Instructions that are scalar with predication must not be considered
+  // uniform after vectorization, because that would create an erroneous
+  // replicating region where only a single instance out of VF should be formed.
+  // TODO: optimize such seldom cases if found important, see PR40816.
+  auto addToWorklistIfAllowed = [&](Instruction *I) -> void {
+    if (isScalarWithPredication(I, VF)) {
+      LLVM_DEBUG(dbgs() << "LV: Found not uniform being ScalarWithPredication: "
+                        << *I << "\n");
+      return;
+    }
+    LLVM_DEBUG(dbgs() << "LV: Found uniform instruction: " << *I << "\n");
+    Worklist.insert(I);
+  };
+
   // Start with the conditional branch. If the branch condition is an
   // instruction contained in the loop that is only used by the branch, it is
   // uniform.
   auto *Cmp = dyn_cast<Instruction>(Latch->getTerminator()->getOperand(0));
-  if (Cmp && TheLoop->contains(Cmp) && Cmp->hasOneUse()) {
-    Worklist.insert(Cmp);
-    LLVM_DEBUG(dbgs() << "LV: Found uniform instruction: " << *Cmp << "\n");
-  }
+  if (Cmp && TheLoop->contains(Cmp) && Cmp->hasOneUse())
+    addToWorklistIfAllowed(Cmp);
 
   // Holds consecutive and consecutive-like pointers. Consecutive-like pointers
   // are pointers that are treated like consecutive pointers during
@@ -4734,10 +4762,8 @@ void LoopVectorizationCostModel::collectLoopUniforms(unsigned VF) {
   // Add to the Worklist all consecutive and consecutive-like pointers that
   // aren't also identified as possibly non-uniform.
   for (auto *V : ConsecutiveLikePtrs)
-    if (PossibleNonUniformPtrs.find(V) == PossibleNonUniformPtrs.end()) {
-      LLVM_DEBUG(dbgs() << "LV: Found uniform instruction: " << *V << "\n");
-      Worklist.insert(V);
-    }
+    if (PossibleNonUniformPtrs.find(V) == PossibleNonUniformPtrs.end())
+      addToWorklistIfAllowed(V);
 
   // Expand Worklist in topological order: whenever a new instruction
   // is added , its users should be already inside Worklist.  It ensures
@@ -4763,10 +4789,8 @@ void LoopVectorizationCostModel::collectLoopUniforms(unsigned VF) {
             return Worklist.count(J) ||
                    (OI == getLoadStorePointerOperand(J) &&
                     isUniformDecision(J, VF));
-          })) {
-        Worklist.insert(OI);
-        LLVM_DEBUG(dbgs() << "LV: Found uniform instruction: " << *OI << "\n");
-      }
+          }))
+        addToWorklistIfAllowed(OI);
     }
   }
 
@@ -4808,11 +4832,8 @@ void LoopVectorizationCostModel::collectLoopUniforms(unsigned VF) {
       continue;
 
     // The induction variable and its update instruction will remain uniform.
-    Worklist.insert(Ind);
-    Worklist.insert(IndUpdate);
-    LLVM_DEBUG(dbgs() << "LV: Found uniform instruction: " << *Ind << "\n");
-    LLVM_DEBUG(dbgs() << "LV: Found uniform instruction: " << *IndUpdate
-                      << "\n");
+    addToWorklistIfAllowed(Ind);
+    addToWorklistIfAllowed(IndUpdate);
   }
 
   Uniforms[VF].insert(Worklist.begin(), Worklist.end());
@@ -6213,7 +6234,7 @@ unsigned LoopVectorizationCostModel::getInstructionCost(Instruction *I,
     unsigned N = isScalarAfterVectorization(I, VF) ? VF : 1;
     return N * TTI.getArithmeticInstrCost(
                    I->getOpcode(), VectorTy, TargetTransformInfo::OK_AnyValue,
-                   Op2VK, TargetTransformInfo::OP_None, Op2VP, Operands);
+                   Op2VK, TargetTransformInfo::OP_None, Op2VP, Operands, I);
   }
   case Instruction::FNeg: {
     unsigned N = isScalarAfterVectorization(I, VF) ? VF : 1;
@@ -6221,7 +6242,7 @@ unsigned LoopVectorizationCostModel::getInstructionCost(Instruction *I,
                    I->getOpcode(), VectorTy, TargetTransformInfo::OK_AnyValue,
                    TargetTransformInfo::OK_AnyValue,
                    TargetTransformInfo::OP_None, TargetTransformInfo::OP_None,
-                   I->getOperand(0));
+                   I->getOperand(0), I);
   }
   case Instruction::Select: {
     SelectInst *SI = cast<SelectInst>(I);
@@ -6710,37 +6731,6 @@ VPValue *VPRecipeBuilder::createBlockInMask(BasicBlock *BB, VPlanPtr &Plan) {
   return BlockMaskCache[BB] = BlockMask;
 }
 
-VPInterleaveRecipe *VPRecipeBuilder::tryToInterleaveMemory(Instruction *I,
-                                                           VFRange &Range,
-                                                           VPlanPtr &Plan) {
-  const InterleaveGroup<Instruction> *IG = CM.getInterleavedAccessGroup(I);
-  if (!IG)
-    return nullptr;
-
-  // Now check if IG is relevant for VF's in the given range.
-  auto isIGMember = [&](Instruction *I) -> std::function<bool(unsigned)> {
-    return [=](unsigned VF) -> bool {
-      return (VF >= 2 && // Query is illegal for VF == 1
-              CM.getWideningDecision(I, VF) ==
-                  LoopVectorizationCostModel::CM_Interleave);
-    };
-  };
-  if (!LoopVectorizationPlanner::getDecisionAndClampRange(isIGMember(I), Range))
-    return nullptr;
-
-  // I is a member of an InterleaveGroup for VF's in the (possibly trimmed)
-  // range. If it's the primary member of the IG construct a VPInterleaveRecipe.
-  // Otherwise, it's an adjunct member of the IG, do not construct any Recipe.
-  assert(I == IG->getInsertPos() &&
-         "Generating a recipe for an adjunct member of an interleave group");
-
-  VPValue *Mask = nullptr;
-  if (Legal->isMaskRequired(I))
-    Mask = createBlockInMask(I->getParent(), Plan);
-
-  return new VPInterleaveRecipe(IG, Mask);
-}
-
 VPWidenMemoryInstructionRecipe *
 VPRecipeBuilder::tryToWidenMemory(Instruction *I, VFRange &Range,
                                   VPlanPtr &Plan) {
@@ -6750,15 +6740,15 @@ VPRecipeBuilder::tryToWidenMemory(Instruction *I, VFRange &Range,
   auto willWiden = [&](unsigned VF) -> bool {
     if (VF == 1)
       return false;
-    if (CM.isScalarAfterVectorization(I, VF) ||
-        CM.isProfitableToScalarize(I, VF))
-      return false;
     LoopVectorizationCostModel::InstWidening Decision =
         CM.getWideningDecision(I, VF);
     assert(Decision != LoopVectorizationCostModel::CM_Unknown &&
            "CM decision should be taken at this point.");
-    assert(Decision != LoopVectorizationCostModel::CM_Interleave &&
-           "Interleave memory opportunity should be caught earlier.");
+    if (Decision == LoopVectorizationCostModel::CM_Interleave)
+      return true;
+    if (CM.isScalarAfterVectorization(I, VF) ||
+        CM.isProfitableToScalarize(I, VF))
+      return false;
     return Decision != LoopVectorizationCostModel::CM_Scalarize;
   };
 
@@ -6857,7 +6847,6 @@ bool VPRecipeBuilder::tryToWiden(Instruction *I, VPBasicBlock *VPBB,
     case Instruction::FPTrunc:
     case Instruction::FRem:
     case Instruction::FSub:
-    case Instruction::GetElementPtr:
     case Instruction::ICmp:
     case Instruction::IntToPtr:
     case Instruction::Load:
@@ -6922,16 +6911,23 @@ bool VPRecipeBuilder::tryToWiden(Instruction *I, VPBasicBlock *VPBB,
 
   if (!LoopVectorizationPlanner::getDecisionAndClampRange(willWiden, Range))
     return false;
+  // If this ingredient's recipe is to be recorded, keep its recipe a singleton
+  // to avoid having to split recipes later.
+  bool IsSingleton = Ingredient2Recipe.count(I);
 
-  // Success: widen this instruction. We optimize the common case where
+  // Success: widen this instruction.
+
+  // Use the default widening recipe. We optimize the common case where
   // consecutive instructions can be represented by a single recipe.
-  if (!VPBB->empty()) {
-    VPWidenRecipe *LastWidenRecipe = dyn_cast<VPWidenRecipe>(&VPBB->back());
-    if (LastWidenRecipe && LastWidenRecipe->appendInstruction(I))
-      return true;
-  }
+  if (!IsSingleton && !VPBB->empty() && LastExtensibleRecipe == &VPBB->back() &&
+      LastExtensibleRecipe->appendInstruction(I))
+    return true;
 
-  VPBB->appendRecipe(new VPWidenRecipe(I));
+  VPWidenRecipe *WidenRecipe = new VPWidenRecipe(I);
+  if (!IsSingleton)
+    LastExtensibleRecipe = WidenRecipe;
+  setRecipe(I, WidenRecipe);
+  VPBB->appendRecipe(WidenRecipe);
   return true;
 }
 
@@ -6947,6 +6943,7 @@ VPBasicBlock *VPRecipeBuilder::handleReplication(
       [&](unsigned VF) { return CM.isScalarWithPredication(I, VF); }, Range);
 
   auto *Recipe = new VPReplicateRecipe(I, IsUniform, IsPredicated);
+  setRecipe(I, Recipe);
 
   // Find if I uses a predicated instruction. If so, it will use its scalar
   // value. Avoid hoisting the insert-element which packs the scalar value into
@@ -7005,36 +7002,36 @@ VPRegionBlock *VPRecipeBuilder::createReplicateRegion(Instruction *Instr,
 bool VPRecipeBuilder::tryToCreateRecipe(Instruction *Instr, VFRange &Range,
                                         VPlanPtr &Plan, VPBasicBlock *VPBB) {
   VPRecipeBase *Recipe = nullptr;
-  // Check if Instr should belong to an interleave memory recipe, or already
-  // does. In the latter case Instr is irrelevant.
-  if ((Recipe = tryToInterleaveMemory(Instr, Range, Plan))) {
+
+  // First, check for specific widening recipes that deal with memory
+  // operations, inductions and Phi nodes.
+  if ((Recipe = tryToWidenMemory(Instr, Range, Plan)) ||
+      (Recipe = tryToOptimizeInduction(Instr, Range)) ||
+      (Recipe = tryToBlend(Instr, Plan)) ||
+      (isa<PHINode>(Instr) &&
+       (Recipe = new VPWidenPHIRecipe(cast<PHINode>(Instr))))) {
+    setRecipe(Instr, Recipe);
     VPBB->appendRecipe(Recipe);
     return true;
   }
 
-  // Check if Instr is a memory operation that should be widened.
-  if ((Recipe = tryToWidenMemory(Instr, Range, Plan))) {
+  // Handle GEP widening.
+  if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(Instr)) {
+    auto Scalarize = [&](unsigned VF) {
+      return CM.isScalarWithPredication(Instr, VF) ||
+             CM.isScalarAfterVectorization(Instr, VF) ||
+             CM.isProfitableToScalarize(Instr, VF);
+    };
+    if (LoopVectorizationPlanner::getDecisionAndClampRange(Scalarize, Range))
+      return false;
+    VPWidenGEPRecipe *Recipe = new VPWidenGEPRecipe(GEP, OrigLoop);
+    setRecipe(Instr, Recipe);
     VPBB->appendRecipe(Recipe);
-    return true;
-  }
-
-  // Check if Instr should form some PHI recipe.
-  if ((Recipe = tryToOptimizeInduction(Instr, Range))) {
-    VPBB->appendRecipe(Recipe);
-    return true;
-  }
-  if ((Recipe = tryToBlend(Instr, Plan))) {
-    VPBB->appendRecipe(Recipe);
-    return true;
-  }
-  if (PHINode *Phi = dyn_cast<PHINode>(Instr)) {
-    VPBB->appendRecipe(new VPWidenPHIRecipe(Phi));
     return true;
   }
 
   // Check if Instr is to be widened by a general VPWidenRecipe, after
-  // having first checked for specific widening recipes that deal with
-  // Interleave Groups, Inductions and Phi nodes.
+  // having first checked for specific widening recipes.
   if (tryToWiden(Instr, VPBB, Range))
     return true;
 
@@ -7090,19 +7087,57 @@ void LoopVectorizationPlanner::buildVPlansWithVPRecipes(unsigned MinVF,
 VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
     VFRange &Range, SmallPtrSetImpl<Value *> &NeedDef,
     SmallPtrSetImpl<Instruction *> &DeadInstructions) {
+
   // Hold a mapping from predicated instructions to their recipes, in order to
   // fix their AlsoPack behavior if a user is determined to replicate and use a
   // scalar instead of vector value.
   DenseMap<Instruction *, VPReplicateRecipe *> PredInst2Recipe;
 
   DenseMap<Instruction *, Instruction *> &SinkAfter = Legal->getSinkAfter();
-  DenseMap<Instruction *, Instruction *> SinkAfterInverse;
+
+  SmallPtrSet<const InterleaveGroup<Instruction> *, 1> InterleaveGroups;
+
+  VPRecipeBuilder RecipeBuilder(OrigLoop, TLI, Legal, CM, Builder);
+
+  // ---------------------------------------------------------------------------
+  // Pre-construction: record ingredients whose recipes we'll need to further
+  // process after constructing the initial VPlan.
+  // ---------------------------------------------------------------------------
+
+  // Mark instructions we'll need to sink later and their targets as
+  // ingredients whose recipe we'll need to record.
+  for (auto &Entry : SinkAfter) {
+    RecipeBuilder.recordRecipeOf(Entry.first);
+    RecipeBuilder.recordRecipeOf(Entry.second);
+  }
+
+  // For each interleave group which is relevant for this (possibly trimmed)
+  // Range, add it to the set of groups to be later applied to the VPlan and add
+  // placeholders for its members' Recipes which we'll be replacing with a
+  // single VPInterleaveRecipe.
+  for (InterleaveGroup<Instruction> *IG : IAI.getInterleaveGroups()) {
+    auto applyIG = [IG, this](unsigned VF) -> bool {
+      return (VF >= 2 && // Query is illegal for VF == 1
+              CM.getWideningDecision(IG->getInsertPos(), VF) ==
+                  LoopVectorizationCostModel::CM_Interleave);
+    };
+    if (!getDecisionAndClampRange(applyIG, Range))
+      continue;
+    InterleaveGroups.insert(IG);
+    for (unsigned i = 0; i < IG->getFactor(); i++)
+      if (Instruction *Member = IG->getMember(i))
+        RecipeBuilder.recordRecipeOf(Member);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Build initial VPlan: Scan the body of the loop in a topological order to
+  // visit each basic block after having visited its predecessor basic blocks.
+  // ---------------------------------------------------------------------------
 
   // Create a dummy pre-entry VPBasicBlock to start building the VPlan.
   VPBasicBlock *VPBB = new VPBasicBlock("Pre-Entry");
   auto Plan = std::make_unique<VPlan>(VPBB);
 
-  VPRecipeBuilder RecipeBuilder(OrigLoop, TLI, Legal, CM, Builder);
   // Represent values that will have defs inside VPlan.
   for (Value *V : NeedDef)
     Plan->addVPValue(V);
@@ -7121,10 +7156,7 @@ VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
     VPBB = FirstVPBBForBB;
     Builder.setInsertPoint(VPBB);
 
-    std::vector<Instruction *> Ingredients;
-
-    // Organize the ingredients to vectorize from current basic block in the
-    // right order.
+    // Introduce each ingredient into VPlan.
     for (Instruction &I : BB->instructionsWithoutDebug()) {
       Instruction *Instr = &I;
 
@@ -7134,43 +7166,6 @@ VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
           DeadInstructions.find(Instr) != DeadInstructions.end())
         continue;
 
-      // I is a member of an InterleaveGroup for Range.Start. If it's an adjunct
-      // member of the IG, do not construct any Recipe for it.
-      const InterleaveGroup<Instruction> *IG =
-          CM.getInterleavedAccessGroup(Instr);
-      if (IG && Instr != IG->getInsertPos() &&
-          Range.Start >= 2 && // Query is illegal for VF == 1
-          CM.getWideningDecision(Instr, Range.Start) ==
-              LoopVectorizationCostModel::CM_Interleave) {
-        auto SinkCandidate = SinkAfterInverse.find(Instr);
-        if (SinkCandidate != SinkAfterInverse.end())
-          Ingredients.push_back(SinkCandidate->second);
-        continue;
-      }
-
-      // Move instructions to handle first-order recurrences, step 1: avoid
-      // handling this instruction until after we've handled the instruction it
-      // should follow.
-      auto SAIt = SinkAfter.find(Instr);
-      if (SAIt != SinkAfter.end()) {
-        LLVM_DEBUG(dbgs() << "Sinking" << *SAIt->first << " after"
-                          << *SAIt->second
-                          << " to vectorize a 1st order recurrence.\n");
-        SinkAfterInverse[SAIt->second] = Instr;
-        continue;
-      }
-
-      Ingredients.push_back(Instr);
-
-      // Move instructions to handle first-order recurrences, step 2: push the
-      // instruction to be sunk at its insertion point.
-      auto SAInvIt = SinkAfterInverse.find(Instr);
-      if (SAInvIt != SinkAfterInverse.end())
-        Ingredients.push_back(SAInvIt->second);
-    }
-
-    // Introduce each ingredient into VPlan.
-    for (Instruction *Instr : Ingredients) {
       if (RecipeBuilder.tryToCreateRecipe(Instr, Range, Plan, VPBB))
         continue;
 
@@ -7194,6 +7189,32 @@ VPlanPtr LoopVectorizationPlanner::buildVPlanWithVPRecipes(
   VPBlockBase *Entry = Plan->setEntry(PreEntry->getSingleSuccessor());
   VPBlockUtils::disconnectBlocks(PreEntry, Entry);
   delete PreEntry;
+
+  // ---------------------------------------------------------------------------
+  // Transform initial VPlan: Apply previously taken decisions, in order, to
+  // bring the VPlan to its final state.
+  // ---------------------------------------------------------------------------
+
+  // Apply Sink-After legal constraints.
+  for (auto &Entry : SinkAfter) {
+    VPRecipeBase *Sink = RecipeBuilder.getRecipe(Entry.first);
+    VPRecipeBase *Target = RecipeBuilder.getRecipe(Entry.second);
+    Sink->moveAfter(Target);
+  }
+
+  // Interleave memory: for each Interleave Group we marked earlier as relevant
+  // for this VPlan, replace the Recipes widening its memory instructions with a
+  // single VPInterleaveRecipe at its insertion point.
+  for (auto IG : InterleaveGroups) {
+    auto *Recipe = cast<VPWidenMemoryInstructionRecipe>(
+        RecipeBuilder.getRecipe(IG->getInsertPos()));
+    (new VPInterleaveRecipe(IG, Recipe->getMask()))->insertBefore(Recipe);
+
+    for (unsigned i = 0; i < IG->getFactor(); ++i)
+      if (Instruction *Member = IG->getMember(i)) {
+        RecipeBuilder.getRecipe(Member)->eraseFromParent();
+      }
+  }
 
   // Finally, if tail is folded by masking, introduce selects between the phi
   // and the live-out instruction of each reduction, at the end of the latch.
@@ -7251,9 +7272,8 @@ VPlanPtr LoopVectorizationPlanner::buildVPlan(VFRange &Range) {
   }
 
   SmallPtrSet<Instruction *, 1> DeadInstructions;
-  VPlanHCFGTransforms::VPInstructionsToVPRecipes(
-      Plan, Legal->getInductionVars(), DeadInstructions);
-
+  VPlanTransforms::VPInstructionsToVPRecipes(
+      OrigLoop, Plan, Legal->getInductionVars(), DeadInstructions);
   return Plan;
 }
 
@@ -7280,6 +7300,11 @@ void VPInterleaveRecipe::print(raw_ostream &O, const Twine &Indent) const {
 void VPWidenRecipe::execute(VPTransformState &State) {
   for (auto &Instr : make_range(Begin, End))
     State.ILV->widenInstruction(Instr);
+}
+
+void VPWidenGEPRecipe::execute(VPTransformState &State) {
+  State.ILV->widenGEP(GEP, State.UF, State.VF, IsPtrLoopInvariant,
+                      IsIndexLoopInvariant);
 }
 
 void VPWidenIntOrFpInductionRecipe::execute(VPTransformState &State) {
@@ -7427,12 +7452,11 @@ void VPPredInstPHIRecipe::execute(VPTransformState &State) {
 }
 
 void VPWidenMemoryInstructionRecipe::execute(VPTransformState &State) {
-  if (!User)
+  VPValue *Mask = getMask();
+  if (!Mask)
     return State.ILV->vectorizeMemoryInstruction(&Instr);
 
-  // Last (and currently only) operand is a mask.
   InnerLoopVectorizer::VectorParts MaskValues(State.UF);
-  VPValue *Mask = User->getOperand(User->getNumOperands() - 1);
   for (unsigned Part = 0; Part < State.UF; ++Part)
     MaskValues[Part] = State.get(Mask, Part);
   State.ILV->vectorizeMemoryInstruction(&Instr, &MaskValues);
@@ -7446,12 +7470,19 @@ getScalarEpilogueLowering(Function *F, Loop *L, LoopVectorizeHints &Hints,
                           ScalarEvolution *SE, DominatorTree *DT,
                           const LoopAccessInfo *LAI) {
   ScalarEpilogueLowering SEL = CM_ScalarEpilogueAllowed;
+  bool PredicateOptDisabled = PreferPredicateOverEpilog.getNumOccurrences() &&
+                              !PreferPredicateOverEpilog;
+
   if (Hints.getForce() != LoopVectorizeHints::FK_Enabled &&
       (F->hasOptSize() ||
-       llvm::shouldOptimizeForSize(L->getHeader(), PSI, BFI)))
+       llvm::shouldOptimizeForSize(L->getHeader(), PSI, BFI,
+                                   PGSOQueryType::IRPass)))
     SEL = CM_ScalarEpilogueNotAllowedOptSize;
-  else if (PreferPredicateOverEpilog || Hints.getPredicate() ||
-           TTI->preferPredicateOverEpilogue(L, LI, *SE, *AC, TLI, DT, LAI))
+  else if (PreferPredicateOverEpilog ||
+           Hints.getPredicate() == LoopVectorizeHints::FK_Enabled ||
+           (TTI->preferPredicateOverEpilogue(L, LI, *SE, *AC, TLI, DT, LAI) &&
+            Hints.getPredicate() != LoopVectorizeHints::FK_Disabled &&
+            !PredicateOptDisabled))
     SEL = CM_ScalarEpilogueNotNeededUsePredicate;
 
   return SEL;
@@ -7481,7 +7512,7 @@ static bool processLoopInVPlanNativePath(
   // Use the planner for outer loop vectorization.
   // TODO: CM is not used at this point inside the planner. Turn CM into an
   // optional argument if we don't need it in the future.
-  LoopVectorizationPlanner LVP(L, LI, TLI, TTI, LVL, CM);
+  LoopVectorizationPlanner LVP(L, LI, TLI, TTI, LVL, CM, IAI);
 
   // Get user vectorization factor.
   const unsigned UserVF = Hints.getWidth();
@@ -7641,7 +7672,7 @@ bool LoopVectorizePass::processLoop(Loop *L) {
   CM.collectValuesToIgnore();
 
   // Use the planner for vectorization.
-  LoopVectorizationPlanner LVP(L, LI, TLI, TTI, &LVL, CM);
+  LoopVectorizationPlanner LVP(L, LI, TLI, TTI, &LVL, CM, IAI);
 
   // Get user vectorization factor.
   unsigned UserVF = Hints.getWidth();

@@ -13,66 +13,24 @@
 
 using namespace lldb_private;
 
-uint64_t g_TotalSizeOfMetadata = 0;
+char ClangExternalASTSourceCommon::ID;
 
-typedef llvm::DenseMap<clang::ExternalASTSource *,
-                       ClangExternalASTSourceCommon *>
-    ASTSourceMap;
+ClangExternalASTSourceCommon::~ClangExternalASTSourceCommon() {}
 
-static ASTSourceMap &GetSourceMap(std::unique_lock<std::mutex> &guard) {
-  // Intentionally leaked to avoid problems with global destructors.
-  static ASTSourceMap *s_source_map = new ASTSourceMap;
-  static std::mutex s_mutex;
-  std::unique_lock<std::mutex> locked_guard(s_mutex);
-  guard.swap(locked_guard);
-  return *s_source_map;
-}
-
-ClangExternalASTSourceCommon *
-ClangExternalASTSourceCommon::Lookup(clang::ExternalASTSource *source) {
-  std::unique_lock<std::mutex> guard;
-  ASTSourceMap &source_map = GetSourceMap(guard);
-
-  ASTSourceMap::iterator iter = source_map.find(source);
-
-  if (iter != source_map.end()) {
-    return iter->second;
-  } else {
-    return nullptr;
-  }
-}
-
-ClangExternalASTSourceCommon::ClangExternalASTSourceCommon()
-    : clang::ExternalASTSource() {
-  g_TotalSizeOfMetadata += m_metadata.size();
-  std::unique_lock<std::mutex> guard;
-  GetSourceMap(guard)[this] = this;
-}
-
-ClangExternalASTSourceCommon::~ClangExternalASTSourceCommon() {
-  std::unique_lock<std::mutex> guard;
-  GetSourceMap(guard).erase(this);
-  g_TotalSizeOfMetadata -= m_metadata.size();
+ClangASTMetadata *
+ClangExternalASTSourceCommon::GetMetadata(const clang::Decl *object) {
+  auto It = m_decl_metadata.find(object);
+  if (It != m_decl_metadata.end())
+    return &It->second;
+  return nullptr;
 }
 
 ClangASTMetadata *
-ClangExternalASTSourceCommon::GetMetadata(const void *object) {
-  if (HasMetadata(object))
-    return &m_metadata[object];
-  else
-    return nullptr;
-}
-
-void ClangExternalASTSourceCommon::SetMetadata(const void *object,
-                                               ClangASTMetadata &metadata) {
-  uint64_t orig_size = m_metadata.size();
-  m_metadata[object] = metadata;
-  uint64_t new_size = m_metadata.size();
-  g_TotalSizeOfMetadata += (new_size - orig_size);
-}
-
-bool ClangExternalASTSourceCommon::HasMetadata(const void *object) {
-  return m_metadata.find(object) != m_metadata.end();
+ClangExternalASTSourceCommon::GetMetadata(const clang::Type *object) {
+  auto It = m_type_metadata.find(object);
+  if (It != m_type_metadata.end())
+    return &It->second;
+  return nullptr;
 }
 
 void ClangASTMetadata::Dump(Stream *s) {

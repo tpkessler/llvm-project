@@ -6,7 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_DISABLE_PYTHON
+#include "lldb/Host/Config.h"
+
+#if LLDB_ENABLE_PYTHON
 
 #include "OperatingSystemPython.h"
 
@@ -166,7 +168,7 @@ bool OperatingSystemPython::UpdateThreadList(ThreadList &old_thread_list,
   Target &target = m_process->GetTarget();
   std::unique_lock<std::recursive_mutex> api_lock(target.GetAPIMutex(),
                                                   std::defer_lock);
-  api_lock.try_lock();
+  (void)api_lock.try_lock(); // See above.
   auto interpreter_lock = m_interpreter->AcquireInterpreterLock();
 
   LLDB_LOGF(log,
@@ -308,7 +310,7 @@ OperatingSystemPython::CreateRegisterContextForThread(Thread *thread,
   Target &target = m_process->GetTarget();
   std::unique_lock<std::recursive_mutex> api_lock(target.GetAPIMutex(),
                                                   std::defer_lock);
-  api_lock.try_lock();
+  (void)api_lock.try_lock(); // See above.
   auto interpreter_lock = m_interpreter->AcquireInterpreterLock();
 
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_THREAD));
@@ -395,7 +397,7 @@ lldb::ThreadSP OperatingSystemPython::CreateThread(lldb::tid_t tid,
     Target &target = m_process->GetTarget();
     std::unique_lock<std::recursive_mutex> api_lock(target.GetAPIMutex(),
                                                     std::defer_lock);
-    api_lock.try_lock();
+    (void)api_lock.try_lock(); // See above.
     auto interpreter_lock = m_interpreter->AcquireInterpreterLock();
 
     StructuredData::DictionarySP thread_info_dict =
@@ -416,4 +418,4 @@ lldb::ThreadSP OperatingSystemPython::CreateThread(lldb::tid_t tid,
   return ThreadSP();
 }
 
-#endif // #ifndef LLDB_DISABLE_PYTHON
+#endif // #if LLDB_ENABLE_PYTHON

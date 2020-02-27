@@ -39,8 +39,9 @@
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsHexagon.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
@@ -475,7 +476,7 @@ HexagonTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       MemAddr = DAG.getNode(ISD::ADD, dl, MVT::i32, StackPtr, MemAddr);
       if (ArgAlign)
         LargestAlignSeen = std::max(LargestAlignSeen,
-                                    VA.getLocVT().getStoreSizeInBits() >> 3);
+                             (unsigned)VA.getLocVT().getStoreSizeInBits() >> 3);
       if (Flags.isByVal()) {
         // The argument is a struct passed by value. According to LLVM, "Arg"
         // is a pointer.
@@ -1909,7 +1910,8 @@ bool HexagonTargetLowering::isTruncateFree(EVT VT1, EVT VT2) const {
   return VT1.getSimpleVT() == MVT::i64 && VT2.getSimpleVT() == MVT::i32;
 }
 
-bool HexagonTargetLowering::isFMAFasterThanFMulAndFAdd(EVT VT) const {
+bool HexagonTargetLowering::isFMAFasterThanFMulAndFAdd(
+    const MachineFunction &MF, EVT VT) const {
   return isOperationLegalOrCustom(ISD::FMA, VT);
 }
 

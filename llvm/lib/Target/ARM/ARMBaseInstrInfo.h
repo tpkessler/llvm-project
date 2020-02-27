@@ -202,7 +202,7 @@ public:
                     const ARMSubtarget &Subtarget) const;
 
   void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
+                   const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
                    bool KillSrc) const override;
 
   void storeRegToStackSlot(MachineBasicBlock &MBB,
@@ -455,8 +455,8 @@ public:
     return MI.getOperand(3).getReg();
   }
 
-  Optional<DestSourcePair> isAddImmediate(const MachineInstr &MI,
-                                          int64_t &Offset) const override;
+  Optional<RegImmPair> isAddImmediate(const MachineInstr &MI,
+                                      Register Reg) const override;
 };
 
 /// Get the operands corresponding to the given \p Pred value. By default, the

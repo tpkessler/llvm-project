@@ -79,6 +79,9 @@ namespace llvm {
       /// X86 compare and logical compare instructions.
       CMP, COMI, UCOMI,
 
+      /// X86 strict FP compare instructions.
+      STRICT_FCMP, STRICT_FCMPS,
+
       /// X86 bit-test instructions.
       BT,
 
@@ -1056,7 +1059,8 @@ namespace llvm {
     /// Return true if an FMA operation is faster than a pair of fmul and fadd
     /// instructions. fmuladd intrinsics will be expanded to FMAs when this
     /// method returns true, otherwise fmuladd is expanded to fmul + fadd.
-    bool isFMAFasterThanFMulAndFAdd(EVT VT) const override;
+    bool isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
+                                    EVT VT) const override;
 
     /// Return true if it's profitable to narrow
     /// operations of type VT1 to VT2. e.g. on x86, it's profitable to narrow
@@ -1124,9 +1128,6 @@ namespace llvm {
 
     bool decomposeMulByConstant(LLVMContext &Context, EVT VT,
                                 SDValue C) const override;
-
-    bool shouldUseStrictFP_TO_INT(EVT FpVT, EVT IntVT,
-                                  bool IsSigned) const override;
 
     /// Return true if EXTRACT_SUBVECTOR is cheap for this result type
     /// with this index.
@@ -1203,8 +1204,9 @@ namespace llvm {
     /// offset as appropriate.
     Value *getSafeStackPointerLocation(IRBuilder<> &IRB) const override;
 
-    SDValue BuildFILD(SDValue Op, EVT SrcVT, SDValue Chain, SDValue StackSlot,
-                      SelectionDAG &DAG) const;
+    std::pair<SDValue, SDValue> BuildFILD(SDValue Op, EVT SrcVT, SDValue Chain,
+                                          SDValue StackSlot,
+                                          SelectionDAG &DAG) const;
 
     bool isNoopAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const override;
 
@@ -1315,7 +1317,8 @@ namespace llvm {
 
     unsigned getAddressSpace(void) const;
 
-    SDValue FP_TO_INTHelper(SDValue Op, SelectionDAG &DAG, bool isSigned) const;
+    SDValue FP_TO_INTHelper(SDValue Op, SelectionDAG &DAG, bool isSigned,
+                            SDValue &Chain) const;
 
     SDValue LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVSELECT(SDValue Op, SelectionDAG &DAG) const;
@@ -1340,6 +1343,7 @@ namespace llvm {
     SDValue LowerTRUNCATE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFP_TO_INT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSETCC(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerSTRICT_FSETCC(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSETCCCARRY(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBRCOND(SDValue Op, SelectionDAG &DAG) const;
@@ -1480,17 +1484,18 @@ namespace llvm {
     /// Emit nodes that will be selected as "cmp Op0,Op1", or something
     /// equivalent, for use with the given x86 condition code.
     SDValue EmitCmp(SDValue Op0, SDValue Op1, unsigned X86CC, const SDLoc &dl,
-                    SelectionDAG &DAG) const;
+                    SelectionDAG &DAG, SDValue Chain = SDValue(),
+                    bool IsSignaling = false) const;
 
     /// Convert a comparison if required by the subtarget.
     SDValue ConvertCmpIfNecessary(SDValue Cmp, SelectionDAG &DAG) const;
 
     /// Emit flags for the given setcc condition and operands. Also returns the
     /// corresponding X86 condition code constant in X86CC.
-    SDValue emitFlagsForSetcc(SDValue Op0, SDValue Op1,
-                              ISD::CondCode CC, const SDLoc &dl,
-                              SelectionDAG &DAG,
-                              SDValue &X86CC) const;
+    SDValue emitFlagsForSetcc(SDValue Op0, SDValue Op1, ISD::CondCode CC,
+                              const SDLoc &dl, SelectionDAG &DAG,
+                              SDValue &X86CC, SDValue &Chain,
+                              bool IsSignaling) const;
 
     /// Check if replacement of SQRT with RSQRT should be disabled.
     bool isFsqrtCheap(SDValue Operand, SelectionDAG &DAG) const override;

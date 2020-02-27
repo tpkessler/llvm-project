@@ -1,4 +1,3 @@
-from __future__ import print_function
 from __future__ import absolute_import
 
 # System modules
@@ -50,6 +49,7 @@ else:
                 self.expect_prompt()
 
         def expect(self, cmd, substrs=None):
+            self.assertNotIn('\n', cmd)
             self.child.sendline(cmd)
             if substrs is not None:
                 for s in substrs:

@@ -25,6 +25,7 @@
 #include "clang/AST/ExprOpenMP.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/Basic/Builtins.h"
 #include "clang/Basic/FixedPoint.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/SourceManager.h"
@@ -97,21 +98,16 @@ static void DiagnoseUnusedOfDecl(Sema &S, NamedDecl *D, SourceLocation Loc) {
 
 /// Emit a note explaining that this function is deleted.
 void Sema::NoteDeletedFunction(FunctionDecl *Decl) {
-  assert(Decl->isDeleted());
+  assert(Decl && Decl->isDeleted());
 
-  CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(Decl);
-
-  if (Method && Method->isDeleted() && Method->isDefaulted()) {
+  if (Decl->isDefaulted()) {
     // If the method was explicitly defaulted, point at that declaration.
-    if (!Method->isImplicit())
+    if (!Decl->isImplicit())
       Diag(Decl->getLocation(), diag::note_implicitly_deleted);
 
     // Try to diagnose why this special member function was implicitly
     // deleted. This might fail, if that reason no longer applies.
-    CXXSpecialMember CSM = getSpecialMember(Method);
-    if (CSM != CXXInvalid)
-      ShouldDeleteSpecialMember(Method, CSM, nullptr, /*Diagnose=*/true);
-
+    DiagnoseDeletedDefaultedFunction(Decl);
     return;
   }
 
@@ -1831,6 +1827,25 @@ Sema::BuildDeclRefExpr(ValueDecl *D, QualType Ty, ExprValueKind VK,
       VK, FoundD, TemplateArgs, getNonOdrUseReasonInCurrentContext(D));
   MarkDeclRefReferenced(E);
 
+  // C++ [except.spec]p17:
+  //   An exception-specification is considered to be needed when:
+  //   - in an expression, the function is the unique lookup result or
+  //     the selected member of a set of overloaded functions.
+  //
+  // We delay doing this until after we've built the function reference and
+  // marked it as used so that:
+  //  a) if the function is defaulted, we get errors from defining it before /
+  //     instead of errors from computing its exception specification, and
+  //  b) if the function is a defaulted comparison, we can use the body we
+  //     build when defining it as input to the exception specification
+  //     computation rather than computing a new body.
+  if (auto *FPT = Ty->getAs<FunctionProtoType>()) {
+    if (isUnresolvedExceptionSpec(FPT->getExceptionSpecType())) {
+      if (auto *NewFPT = ResolveExceptionSpec(NameInfo.getLoc(), FPT))
+        E->setType(Context.getQualifiedType(NewFPT, Ty.getQualifiers()));
+    }
+  }
+
   if (getLangOpts().ObjCWeak && isa<VarDecl>(D) &&
       Ty.getObjCLifetime() == Qualifiers::OCL_Weak && !isUnevaluatedContext() &&
       !Diags.isIgnored(diag::warn_arc_repeated_use_of_weak, E->getBeginLoc()))
@@ -2710,6 +2725,20 @@ Sema::PerformObjectMemberConversion(Expr *From,
       FromRecordType = FromType;
       DestType = DestRecordType;
     }
+
+    LangAS FromAS = FromRecordType.getAddressSpace();
+    LangAS DestAS = DestRecordType.getAddressSpace();
+    if (FromAS != DestAS) {
+      QualType FromRecordTypeWithoutAS =
+          Context.removeAddrSpaceQualType(FromRecordType);
+      QualType FromTypeWithDestAS =
+          Context.getAddrSpaceQualType(FromRecordTypeWithoutAS, DestAS);
+      if (PointerConversions)
+        FromTypeWithDestAS = Context.getPointerType(FromTypeWithDestAS);
+      From = ImpCastExprToType(From, FromTypeWithDestAS,
+                               CK_AddressSpaceConversion, From->getValueKind())
+                 .get();
+    }
   } else {
     // No conversion necessary.
     return From;
@@ -2999,14 +3028,6 @@ ExprResult Sema::BuildDeclarationNameExpr(
     QualType type = VD->getType();
     if (type.isNull())
       return ExprError();
-    if (auto *FPT = type->getAs<FunctionProtoType>()) {
-      // C++ [except.spec]p17:
-      //   An exception-specification is considered to be needed when:
-      //   - in an expression, the function is the unique lookup result or
-      //     the selected member of a set of overloaded functions.
-      ResolveExceptionSpec(Loc, FPT);
-      type = VD->getType();
-    }
     ExprValueKind valueKind = VK_RValue;
 
     switch (D->getKind()) {
@@ -5310,6 +5331,9 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
       for (Expr *A : Args.slice(ArgIx)) {
         ExprResult Arg = DefaultVariadicArgumentPromotion(A, CallType, FDecl);
         Invalid |= Arg.isInvalid();
+        // Copy blocks to the heap.
+        if (A->getType()->isBlockPointerType())
+          maybeExtendBlockObject(Arg);
         AllArgs.push_back(Arg.get());
       }
     }
@@ -5503,15 +5527,15 @@ static FunctionDecl *rewriteBuiltinFunctionDecl(Sema *Sema, ASTContext &Context,
     Expr *Arg = ArgRes.get();
     QualType ArgType = Arg->getType();
     if (!ParamType->isPointerType() ||
-        ParamType.getQualifiers().hasAddressSpace() ||
+        ParamType.hasAddressSpace() ||
         !ArgType->isPointerType() ||
-        !ArgType->getPointeeType().getQualifiers().hasAddressSpace()) {
+        !ArgType->getPointeeType().hasAddressSpace()) {
       OverloadParams.push_back(ParamType);
       continue;
     }
 
     QualType PointeeType = ParamType->getPointeeType();
-    if (PointeeType.getQualifiers().hasAddressSpace())
+    if (PointeeType.hasAddressSpace())
       continue;
 
     NeedsNewDecl = true;
@@ -7786,7 +7810,7 @@ static bool IsArithmeticBinaryExpr(Expr *E, BinaryOperatorKind *Opcode,
   E = E->IgnoreConversionOperator();
   E = E->IgnoreImpCasts();
   if (auto *MTE = dyn_cast<MaterializeTemporaryExpr>(E)) {
-    E = MTE->GetTemporaryExpr();
+    E = MTE->getSubExpr();
     E = E->IgnoreImpCasts();
   }
 
@@ -8842,7 +8866,7 @@ namespace {
 struct OriginalOperand {
   explicit OriginalOperand(Expr *Op) : Orig(Op), Conversion(nullptr) {
     if (auto *MTE = dyn_cast<MaterializeTemporaryExpr>(Op))
-      Op = MTE->GetTemporaryExpr();
+      Op = MTE->getSubExpr();
     if (auto *BTE = dyn_cast<CXXBindTemporaryExpr>(Op))
       Op = BTE->getSubExpr();
     if (auto *ICE = dyn_cast<ImplicitCastExpr>(Op)) {
@@ -9104,6 +9128,12 @@ static bool tryGCCVectorConvertAndSplat(Sema &S, ExprResult *Scalar,
       return true;
 
     ScalarCast = CK_IntegralCast;
+  } else if (VectorEltTy->isIntegralType(S.Context) &&
+             ScalarTy->isRealFloatingType()) {
+    if (S.Context.getTypeSize(VectorEltTy) == S.Context.getTypeSize(ScalarTy))
+      ScalarCast = CK_FloatingToIntegral;
+    else
+      return true;
   } else if (VectorEltTy->isRealFloatingType()) {
     if (ScalarTy->isRealFloatingType()) {
 
@@ -10530,7 +10560,6 @@ static void diagnoseTautologicalComparison(Sema &S, SourceLocation Loc,
   QualType RHSType = RHS->getType();
   if (LHSType->hasFloatingRepresentation() ||
       (LHSType->isBlockPointerType() && !BinaryOperator::isEqualityOp(Opc)) ||
-      LHS->getBeginLoc().isMacroID() || RHS->getBeginLoc().isMacroID() ||
       S.inTemplateInstantiation())
     return;
 
@@ -10558,45 +10587,51 @@ static void diagnoseTautologicalComparison(Sema &S, SourceLocation Loc,
     AlwaysEqual, // std::strong_ordering::equal from operator<=>
   };
 
-  if (Expr::isSameComparisonOperand(LHS, RHS)) {
-    unsigned Result;
-    switch (Opc) {
-    case BO_EQ: case BO_LE: case BO_GE:
-      Result = AlwaysTrue;
-      break;
-    case BO_NE: case BO_LT: case BO_GT:
-      Result = AlwaysFalse;
-      break;
-    case BO_Cmp:
-      Result = AlwaysEqual;
-      break;
-    default:
-      Result = AlwaysConstant;
-      break;
+  if (!LHS->getBeginLoc().isMacroID() && !RHS->getBeginLoc().isMacroID()) {
+    if (Expr::isSameComparisonOperand(LHS, RHS)) {
+      unsigned Result;
+      switch (Opc) {
+      case BO_EQ:
+      case BO_LE:
+      case BO_GE:
+        Result = AlwaysTrue;
+        break;
+      case BO_NE:
+      case BO_LT:
+      case BO_GT:
+        Result = AlwaysFalse;
+        break;
+      case BO_Cmp:
+        Result = AlwaysEqual;
+        break;
+      default:
+        Result = AlwaysConstant;
+        break;
+      }
+      S.DiagRuntimeBehavior(Loc, nullptr,
+                            S.PDiag(diag::warn_comparison_always)
+                                << 0 /*self-comparison*/
+                                << Result);
+    } else if (checkForArray(LHSStripped) && checkForArray(RHSStripped)) {
+      // What is it always going to evaluate to?
+      unsigned Result;
+      switch (Opc) {
+      case BO_EQ: // e.g. array1 == array2
+        Result = AlwaysFalse;
+        break;
+      case BO_NE: // e.g. array1 != array2
+        Result = AlwaysTrue;
+        break;
+      default: // e.g. array1 <= array2
+        // The best we can say is 'a constant'
+        Result = AlwaysConstant;
+        break;
+      }
+      S.DiagRuntimeBehavior(Loc, nullptr,
+                            S.PDiag(diag::warn_comparison_always)
+                                << 1 /*array comparison*/
+                                << Result);
     }
-    S.DiagRuntimeBehavior(Loc, nullptr,
-                          S.PDiag(diag::warn_comparison_always)
-                              << 0 /*self-comparison*/
-                              << Result);
-  } else if (checkForArray(LHSStripped) && checkForArray(RHSStripped)) {
-    // What is it always going to evaluate to?
-    unsigned Result;
-    switch(Opc) {
-    case BO_EQ: // e.g. array1 == array2
-      Result = AlwaysFalse;
-      break;
-    case BO_NE: // e.g. array1 != array2
-      Result = AlwaysTrue;
-      break;
-    default: // e.g. array1 <= array2
-      // The best we can say is 'a constant'
-      Result = AlwaysConstant;
-      break;
-    }
-    S.DiagRuntimeBehavior(Loc, nullptr,
-                          S.PDiag(diag::warn_comparison_always)
-                              << 1 /*array comparison*/
-                              << Result);
   }
 
   if (isa<CastExpr>(LHSStripped))
@@ -10605,7 +10640,7 @@ static void diagnoseTautologicalComparison(Sema &S, SourceLocation Loc,
     RHSStripped = RHSStripped->IgnoreParenCasts();
 
   // Warn about comparisons against a string constant (unless the other
-  // operand is null); the user probably wants strcmp.
+  // operand is null); the user probably wants string comparison function.
   Expr *LiteralString = nullptr;
   Expr *LiteralStringStripped = nullptr;
   if ((isa<StringLiteral>(LHSStripped) || isa<ObjCEncodeExpr>(LHSStripped)) &&
@@ -10713,8 +10748,6 @@ static QualType checkArithmeticOrEnumeralThreeWayCompare(Sema &S,
                                                          ExprResult &LHS,
                                                          ExprResult &RHS,
                                                          SourceLocation Loc) {
-  using CCT = ComparisonCategoryType;
-
   QualType LHSType = LHS.get()->getType();
   QualType RHSType = RHS.get()->getType();
   // Dig out the original argument type and expression before implicit casts
@@ -10774,6 +10807,8 @@ static QualType checkArithmeticOrEnumeralThreeWayCompare(Sema &S,
     return S.InvalidOperands(Loc, LHS, RHS);
   assert(Type->isArithmeticType() || Type->isEnumeralType());
 
+  // FIXME: Reject complex types, consistent with P1959R0.
+
   bool HasNarrowing = checkThreeWayNarrowingConversion(
       S, Type, LHS.get(), LHSType, LHS.get()->getBeginLoc());
   HasNarrowing |= checkThreeWayNarrowingConversion(S, Type, RHS.get(), RHSType,
@@ -10783,20 +10818,9 @@ static QualType checkArithmeticOrEnumeralThreeWayCompare(Sema &S,
 
   assert(!Type.isNull() && "composite type for <=> has not been set");
 
-  auto TypeKind = [&]() {
-    if (const ComplexType *CT = Type->getAs<ComplexType>()) {
-      if (CT->getElementType()->hasFloatingRepresentation())
-        return CCT::WeakEquality;
-      return CCT::StrongEquality;
-    }
-    if (Type->isIntegralOrEnumerationType())
-      return CCT::StrongOrdering;
-    if (Type->hasFloatingRepresentation())
-      return CCT::PartialOrdering;
-    llvm_unreachable("other types are unimplemented");
-  }();
-
-  return S.CheckComparisonCategoryType(TypeKind, Loc);
+  return S.CheckComparisonCategoryType(
+      *getComparisonCategoryForBuiltinCmp(Type), Loc,
+      Sema::ComparisonCategoryUsage::OperatorInExpression);
 }
 
 static QualType checkArithmeticOrEnumeralCompare(Sema &S, ExprResult &LHS,
@@ -10933,34 +10957,21 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
     QualType CompositeTy = LHS.get()->getType();
     assert(!CompositeTy->isReferenceType());
 
-    auto buildResultTy = [&](ComparisonCategoryType Kind) {
-      return CheckComparisonCategoryType(Kind, Loc);
-    };
+    Optional<ComparisonCategoryType> CCT =
+        getComparisonCategoryForBuiltinCmp(CompositeTy);
+    if (!CCT)
+      return InvalidOperands(Loc, LHS, RHS);
 
-    // C++2a [expr.spaceship]p7: If the composite pointer type is a function
-    // pointer type, a pointer-to-member type, or std::nullptr_t, the
-    // result is of type std::strong_equality
-    if (CompositeTy->isFunctionPointerType() ||
-        CompositeTy->isMemberPointerType() || CompositeTy->isNullPtrType())
-      // FIXME: consider making the function pointer case produce
-      // strong_ordering not strong_equality, per P0946R0-Jax18 discussion
-      // and direction polls
-      return buildResultTy(ComparisonCategoryType::StrongEquality);
-
-    // C++2a [expr.spaceship]p8: If the composite pointer type is an object
-    // pointer type, p <=> q is of type std::strong_ordering.
-    if (CompositeTy->isPointerType()) {
+    if (CompositeTy->isPointerType() && LHSIsNull != RHSIsNull) {
       // P0946R0: Comparisons between a null pointer constant and an object
       // pointer result in std::strong_equality
-      if (LHSIsNull != RHSIsNull)
-        return buildResultTy(ComparisonCategoryType::StrongEquality);
-      return buildResultTy(ComparisonCategoryType::StrongOrdering);
+      // FIXME: Reject this, consistent with P1959R0 + P0946R0.
+      CCT = ComparisonCategoryType::StrongEquality;
     }
-    // C++2a [expr.spaceship]p9: Otherwise, the program is ill-formed.
-    // TODO: Extend support for operator<=> to ObjC types.
-    return InvalidOperands(Loc, LHS, RHS);
-  };
 
+    return CheckComparisonCategoryType(
+        *CCT, Loc, ComparisonCategoryUsage::OperatorInExpression);
+  };
 
   if (!IsRelational && LHSIsNull != RHSIsNull) {
     bool IsEquality = Opc == BO_EQ;
@@ -13262,6 +13273,14 @@ ExprResult Sema::CreateBuiltinBinOp(SourceLocation OpLoc,
   }
   if (ResultTy.isNull() || LHS.isInvalid() || RHS.isInvalid())
     return ExprError();
+
+  if (ResultTy->isRealFloatingType() &&
+      (getLangOpts().getFPRoundingMode() != LangOptions::FPR_ToNearest ||
+       getLangOpts().getFPExceptionMode() != LangOptions::FPE_Ignore))
+    // Mark the current function as usng floating point constrained intrinsics
+    if (FunctionDecl *F = dyn_cast<FunctionDecl>(CurContext)) {
+      F->setUsesFPIntrin(true);
+    }
 
   // Some of the binary operations require promoting operands of half vector to
   // float vectors and truncating the result back to half vector. For now, we do
@@ -15650,9 +15669,8 @@ static OdrUseContext isOdrUseContext(Sema &SemaRef) {
 }
 
 static bool isImplicitlyDefinableConstexprFunction(FunctionDecl *Func) {
-  CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Func);
   return Func->isConstexpr() &&
-         (Func->isImplicitlyInstantiable() || (MD && !MD->isUserProvided()));
+         (Func->isImplicitlyInstantiable() || !Func->isUserProvided());
 }
 
 namespace
@@ -15766,19 +15784,6 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
        Func->getMemberSpecializationInfo()))
     checkSpecializationVisibility(Loc, Func);
 
-  // C++14 [except.spec]p17:
-  //   An exception-specification is considered to be needed when:
-  //   - the function is odr-used or, if it appears in an unevaluated operand,
-  //     would be odr-used if the expression were potentially-evaluated;
-  //
-  // Note, we do this even if MightBeOdrUse is false. That indicates that the
-  // function is a pure virtual function we're calling, and in that case the
-  // function was selected by overload resolution and we need to resolve its
-  // exception specification for a different reason.
-  const FunctionProtoType *FPT = Func->getType()->getAs<FunctionProtoType>();
-  if (FPT && isUnresolvedExceptionSpec(FPT->getExceptionSpecType()))
-    ResolveExceptionSpec(Loc, FPT);
-
   if (getLangOpts().CUDA)
     CheckCUDACall(Loc, Func);
 
@@ -15864,6 +15869,12 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
           MarkVTableUsed(Loc, MethodDecl->getParent());
       }
 
+      if (Func->isDefaulted() && !Func->isDeleted()) {
+        DefaultedComparisonKind DCK = getDefaultedComparisonKind(Func);
+        if (DCK != DefaultedComparisonKind::None)
+          DefineDefaultedComparison(Loc, Func, DCK);
+      }
+
       // Implicit instantiation of function templates and member functions of
       // class templates.
       if (Func->isImplicitlyInstantiable()) {
@@ -15910,6 +15921,19 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
       }
     });
   }
+
+  // C++14 [except.spec]p17:
+  //   An exception-specification is considered to be needed when:
+  //   - the function is odr-used or, if it appears in an unevaluated operand,
+  //     would be odr-used if the expression were potentially-evaluated;
+  //
+  // Note, we do this even if MightBeOdrUse is false. That indicates that the
+  // function is a pure virtual function we're calling, and in that case the
+  // function was selected by overload resolution and we need to resolve its
+  // exception specification for a different reason.
+  const FunctionProtoType *FPT = Func->getType()->getAs<FunctionProtoType>();
+  if (FPT && isUnresolvedExceptionSpec(FPT->getExceptionSpecType()))
+    ResolveExceptionSpec(Loc, FPT);
 
   // If this is the first "real" use, act on that.
   if (OdrUse == OdrUseContext::Used && !Func->isUsed(/*CheckUsedAttr=*/false)) {

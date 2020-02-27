@@ -2,7 +2,6 @@
 Test lldb-vscode setBreakpoints request
 """
 
-from __future__ import print_function
 
 import unittest2
 import vscode
@@ -46,7 +45,6 @@ class TestVSCode_attach(lldbvscode_testcase.VSCodeTestCaseBase):
 
 
     @skipIfWindows
-    @skipIfDarwin # Skip this test for now until we can figure out why tings aren't working on build bots
     @skipIfNetBSD # Hangs on NetBSD as well
     @no_debug_info_test
     def test_by_pid(self):
@@ -63,7 +61,6 @@ class TestVSCode_attach(lldbvscode_testcase.VSCodeTestCaseBase):
         self.set_and_hit_breakpoint(continueToExit=True)
 
     @skipIfWindows
-    @skipIfDarwin # Skip this test for now until we can figure out why tings aren't working on build bots
     @skipIfNetBSD # Hangs on NetBSD as well
     @no_debug_info_test
     def test_by_name(self):
@@ -99,7 +96,7 @@ class TestVSCode_attach(lldbvscode_testcase.VSCodeTestCaseBase):
         self.set_and_hit_breakpoint(continueToExit=True)
 
     @skipUnlessDarwin
-    @skipIfDarwin # Skip this test for now until we can figure out why tings aren't working on build bots
+    @skipIfDarwin
     @skipIfNetBSD # Hangs on NetBSD as well
     @no_debug_info_test
     def test_by_name_waitFor(self):
@@ -117,7 +114,7 @@ class TestVSCode_attach(lldbvscode_testcase.VSCodeTestCaseBase):
         self.set_and_hit_breakpoint(continueToExit=True)
 
     @skipIfWindows
-    @skipIfDarwin # Skip this test for now until we can figure out why tings aren't working on build bots
+    @skipIfDarwin
     @skipIfNetBSD # Hangs on NetBSD as well
     @no_debug_info_test
     def test_commands(self):

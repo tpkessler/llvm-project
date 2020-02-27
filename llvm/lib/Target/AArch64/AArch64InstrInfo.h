@@ -131,15 +131,15 @@ public:
                            unsigned NumLoads) const override;
 
   void copyPhysRegTuple(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                        const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
-                        bool KillSrc, unsigned Opcode,
+                        const DebugLoc &DL, MCRegister DestReg,
+                        MCRegister SrcReg, bool KillSrc, unsigned Opcode,
                         llvm::ArrayRef<unsigned> Indices) const;
   void copyGPRRegTuple(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                        DebugLoc DL, unsigned DestReg, unsigned SrcReg,
                        bool KillSrc, unsigned Opcode, unsigned ZeroReg,
                        llvm::ArrayRef<unsigned> Indices) const;
   void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
+                   const DebugLoc &DL, MCRegister DestReg, MCRegister SrcReg,
                    bool KillSrc) const override;
 
   void storeRegToStackSlot(MachineBasicBlock &MBB,
@@ -265,11 +265,11 @@ public:
   /// on Windows.
   static bool isSEHInstruction(const MachineInstr &MI);
 
-  Optional<DestSourcePair> isAddImmediate(const MachineInstr &MI,
-                                          int64_t &Offset) const override;
+  Optional<RegImmPair> isAddImmediate(const MachineInstr &MI,
+                                      Register Reg) const override;
 
-  Optional<ParamLoadedValue>
-  describeLoadedValue(const MachineInstr &MI) const override;
+  Optional<ParamLoadedValue> describeLoadedValue(const MachineInstr &MI,
+                                                 Register Reg) const override;
 
 #define GET_INSTRINFO_HELPER_DECLS
 #include "AArch64GenInstrInfo.inc"

@@ -508,8 +508,8 @@ bool SIInstrInfo::shouldScheduleLoadsNear(SDNode *Load0, SDNode *Load1,
 
 static void reportIllegalCopy(const SIInstrInfo *TII, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator MI,
-                              const DebugLoc &DL, unsigned DestReg,
-                              unsigned SrcReg, bool KillSrc) {
+                              const DebugLoc &DL, MCRegister DestReg,
+                              MCRegister SrcReg, bool KillSrc) {
   MachineFunction *MF = MBB.getParent();
   DiagnosticInfoUnsupported IllegalCopy(MF->getFunction(),
                                         "illegal SGPR to VGPR copy",
@@ -523,8 +523,8 @@ static void reportIllegalCopy(const SIInstrInfo *TII, MachineBasicBlock &MBB,
 
 void SIInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator MI,
-                              const DebugLoc &DL, unsigned DestReg,
-                              unsigned SrcReg, bool KillSrc) const {
+                              const DebugLoc &DL, MCRegister DestReg,
+                              MCRegister SrcReg, bool KillSrc) const {
   const TargetRegisterClass *RC = RI.getPhysRegClass(DestReg);
 
   if (RC == &AMDGPU::VGPR_32RegClass) {
@@ -542,7 +542,7 @@ void SIInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
       RC == &AMDGPU::SReg_32RegClass) {
     if (SrcReg == AMDGPU::SCC) {
       BuildMI(MBB, MI, DL, get(AMDGPU::S_CSELECT_B32), DestReg)
-          .addImm(-1)
+          .addImm(1)
           .addImm(0);
       return;
     }
@@ -840,7 +840,7 @@ void SIInstrInfo::insertVectorSelect(MachineBasicBlock &MBB,
       Register SReg = MRI.createVirtualRegister(BoolXExecRC);
       BuildMI(MBB, I, DL, get(ST.isWave32() ? AMDGPU::S_CSELECT_B32
                                             : AMDGPU::S_CSELECT_B64), SReg)
-        .addImm(-1)
+        .addImm(1)
         .addImm(0);
       BuildMI(MBB, I, DL, get(AMDGPU::V_CNDMASK_B32_e64), DstReg)
         .addImm(0)
@@ -855,7 +855,7 @@ void SIInstrInfo::insertVectorSelect(MachineBasicBlock &MBB,
       BuildMI(MBB, I, DL, get(ST.isWave32() ? AMDGPU::S_CSELECT_B32
                                             : AMDGPU::S_CSELECT_B64), SReg)
         .addImm(0)
-        .addImm(-1);
+        .addImm(1);
       BuildMI(MBB, I, DL, get(AMDGPU::V_CNDMASK_B32_e64), DstReg)
         .addImm(0)
         .addReg(FalseReg)
@@ -900,7 +900,7 @@ void SIInstrInfo::insertVectorSelect(MachineBasicBlock &MBB,
         .addImm(0);
       BuildMI(MBB, I, DL, get(ST.isWave32() ? AMDGPU::S_CSELECT_B32
                                             : AMDGPU::S_CSELECT_B64), SReg)
-        .addImm(-1)
+        .addImm(1)
         .addImm(0);
       BuildMI(MBB, I, DL, get(AMDGPU::V_CNDMASK_B32_e64), DstReg)
         .addImm(0)
@@ -919,7 +919,7 @@ void SIInstrInfo::insertVectorSelect(MachineBasicBlock &MBB,
       BuildMI(MBB, I, DL, get(ST.isWave32() ? AMDGPU::S_CSELECT_B32
                                             : AMDGPU::S_CSELECT_B64), SReg)
         .addImm(0)
-        .addImm(-1);
+        .addImm(1);
       BuildMI(MBB, I, DL, get(AMDGPU::V_CNDMASK_B32_e64), DstReg)
         .addImm(0)
         .addReg(FalseReg)
@@ -3486,32 +3486,6 @@ bool SIInstrInfo::verifyInstruction(const MachineInstr &MI,
     }
   }
 
-  // Special case for writelane - this can break the multiple constant bus rule,
-  // but still can't use more than one SGPR register
-  if (Desc.getOpcode() == AMDGPU::V_WRITELANE_B32) {
-    unsigned SGPRCount = 0;
-    Register SGPRUsed = AMDGPU::NoRegister;
-
-    for (int OpIdx : {Src0Idx, Src1Idx, Src2Idx}) {
-      if (OpIdx == -1)
-        break;
-
-      const MachineOperand &MO = MI.getOperand(OpIdx);
-
-      if (usesConstantBus(MRI, MO, MI.getDesc().OpInfo[OpIdx])) {
-        if (MO.isReg() && MO.getReg() != AMDGPU::M0) {
-          if (MO.getReg() != SGPRUsed)
-            ++SGPRCount;
-          SGPRUsed = MO.getReg();
-        }
-      }
-      if (SGPRCount > ST.getConstantBusLimit(Opcode)) {
-        ErrInfo = "WRITELANE instruction violates constant bus restriction";
-        return false;
-      }
-    }
-  }
-
   // Verify misc. restrictions on specific instructions.
   if (Desc.getOpcode() == AMDGPU::V_DIV_SCALE_F32 ||
       Desc.getOpcode() == AMDGPU::V_DIV_SCALE_F64) {
@@ -4299,7 +4273,7 @@ void SIInstrInfo::legalizeGenericOperand(MachineBasicBlock &InsertMBB,
     return;
 
   // Try to eliminate the copy if it is copying an immediate value.
-  if (Def->isMoveImmediate() && DstRC != &AMDGPU::VReg_1RegClass)
+  if (Def->isMoveImmediate())
     FoldImmediate(*Copy, *Def, OpReg, &MRI);
 
   bool ImpDef = Def->isImplicitDef();
@@ -4559,16 +4533,8 @@ void SIInstrInfo::legalizeOperands(MachineInstr &MI,
     if (VRC || !RI.isSGPRClass(getOpRegClass(MI, 0))) {
       if (!VRC) {
         assert(SRC);
-        if (getOpRegClass(MI, 0) == &AMDGPU::VReg_1RegClass) {
-          VRC = &AMDGPU::VReg_1RegClass;
-        } else
-          VRC = RI.hasAGPRs(getOpRegClass(MI, 0))
-                    ? RI.getEquivalentAGPRClass(SRC)
-                    : RI.getEquivalentVGPRClass(SRC);
-      } else {
-          VRC = RI.hasAGPRs(getOpRegClass(MI, 0))
-                    ? RI.getEquivalentAGPRClass(VRC)
-                    : RI.getEquivalentVGPRClass(VRC);
+        VRC = RI.hasAGPRs(getOpRegClass(MI, 0)) ? RI.getEquivalentAGPRClass(SRC)
+                                                : RI.getEquivalentVGPRClass(SRC);
       }
       RC = VRC;
     } else {
@@ -5766,7 +5732,7 @@ const TargetRegisterClass *SIInstrInfo::getDestEquivalentVGPRClass(
       if (!NewDstRC)
         return nullptr;
     } else {
-      if (RI.hasVGPRs(NewDstRC) || NewDstRC == &AMDGPU::VReg_1RegClass)
+       if (RI.hasVGPRs(NewDstRC))
         return nullptr;
 
       NewDstRC = RI.getEquivalentVGPRClass(NewDstRC);
@@ -6211,7 +6177,11 @@ MachineInstrBuilder SIInstrInfo::getAddNoCarry(MachineBasicBlock &MBB,
   if (ST.hasAddNoCarry())
     return BuildMI(MBB, I, DL, get(AMDGPU::V_ADD_U32_e32), DestReg);
 
-  Register UnusedCarry = RS.scavengeRegister(RI.getBoolRC(), I, 0, false);
+  // If available, prefer to use vcc.
+  Register UnusedCarry = !RS.isRegUsed(AMDGPU::VCC)
+                             ? Register(RI.getVCC())
+                             : RS.scavengeRegister(RI.getBoolRC(), I, 0, false);
+
   // TODO: Users need to deal with this.
   if (!UnusedCarry.isValid())
     return MachineInstrBuilder();
@@ -6329,6 +6299,26 @@ static SIEncodingFamily subtargetEncodingFamily(const GCNSubtarget &ST) {
   llvm_unreachable("Unknown subtarget generation!");
 }
 
+bool SIInstrInfo::isAsmOnlyOpcode(int MCOp) const {
+  switch(MCOp) {
+  // These opcodes use indirect register addressing so
+  // they need special handling by codegen (currently missing).
+  // Therefore it is too risky to allow these opcodes
+  // to be selected by dpp combiner or sdwa peepholer.
+  case AMDGPU::V_MOVRELS_B32_dpp_gfx10:
+  case AMDGPU::V_MOVRELS_B32_sdwa_gfx10:
+  case AMDGPU::V_MOVRELD_B32_dpp_gfx10:
+  case AMDGPU::V_MOVRELD_B32_sdwa_gfx10:
+  case AMDGPU::V_MOVRELSD_B32_dpp_gfx10:
+  case AMDGPU::V_MOVRELSD_B32_sdwa_gfx10:
+  case AMDGPU::V_MOVRELSD_2_B32_dpp_gfx10:
+  case AMDGPU::V_MOVRELSD_2_B32_sdwa_gfx10:
+    return true;
+  default:
+    return false;
+  }
+}
+
 int SIInstrInfo::pseudoToMCOpcode(int Opcode) const {
   SIEncodingFamily Gen = subtargetEncodingFamily(ST);
 
@@ -6365,6 +6355,9 @@ int SIInstrInfo::pseudoToMCOpcode(int Opcode) const {
   // (uint16_t)-1 means that Opcode is a pseudo instruction that has
   // no encoding in the given subtarget generation.
   if (MCOp == (uint16_t)-1)
+    return -1;
+
+  if (isAsmOnlyOpcode(MCOp))
     return -1;
 
   return MCOp;
