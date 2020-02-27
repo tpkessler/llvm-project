@@ -52,16 +52,12 @@ class PromotePointerKernArgsToGlobal : public FunctionPass {
 
         Builder.SetInsertPoint(UI->getNextNonDebugInstruction());
 
-        Value *TmpAlloca = Builder.CreateAlloca(UI->getType());
-        Value *Tmp = Builder.CreateLoad(TmpAlloca, "Tmp");
 
-        createPromotableCast(Builder, UI, Tmp);
+        createPromotableCast(Builder, UI, UndefValue::get(UI->getType()));
     }
 
     void promoteArgument(IRBuilder<>& Builder, Argument *Arg) {
-        Argument Tmp(Arg->getType(), Arg->getName());
-
-        createPromotableCast(Builder, Arg, &Tmp);
+        createPromotableCast(Builder, Arg, UndefValue::get(Arg->getType()));
     }
 public:
     static char ID;
