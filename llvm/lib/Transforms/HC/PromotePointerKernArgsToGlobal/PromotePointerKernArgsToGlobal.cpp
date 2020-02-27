@@ -50,7 +50,7 @@ class PromotePointerKernArgsToGlobal : public FunctionPass {
         if (!UI)
             return;
 
-        Builder.SetInsertPoint(UI);
+        Builder.SetInsertPoint(UI->getNextNonDebugInstruction());
 
         Value *TmpAlloca = Builder.CreateAlloca(UI->getType());
         Value *Tmp = Builder.CreateLoad(TmpAlloca, "Tmp");
