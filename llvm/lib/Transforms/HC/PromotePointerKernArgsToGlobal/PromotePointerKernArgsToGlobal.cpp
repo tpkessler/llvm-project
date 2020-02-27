@@ -52,7 +52,6 @@ class PromotePointerKernArgsToGlobal : public FunctionPass {
 
         Builder.SetInsertPoint(UI->getNextNonDebugInstruction());
 
-
         createPromotableCast(Builder, UI, UndefValue::get(UI->getType()));
     }
 
