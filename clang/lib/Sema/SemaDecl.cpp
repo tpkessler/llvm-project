@@ -14392,7 +14392,7 @@ Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Declarator &D,
   D.setFunctionDefinitionKind(FDK_Definition);
   Decl *DP = HandleDeclarator(ParentScope, D, TemplateParameterLists);
 
-  if (LangOpts.CPlusPlusAMP && SkipBody) {
+  if (LangOpts.CPlusPlusAMP && SkipBody && DP) {
     const bool IsHC = DP->hasAttr<CXXAMPRestrictAMPAttr>();
     const bool IsCPU = DP->hasAttr<CXXAMPRestrictCPUAttr>();
 
