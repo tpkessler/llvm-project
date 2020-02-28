@@ -23,10 +23,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Pass.h"
 
-#include <algorithm>
-
 using namespace llvm;
-using namespace std;
 
 namespace {
 class PromotePointerKernArgsToGlobal : public FunctionPass {
@@ -52,11 +49,15 @@ class PromotePointerKernArgsToGlobal : public FunctionPass {
 
         Builder.SetInsertPoint(UI->getNextNonDebugInstruction());
 
-        createPromotableCast(Builder, UI, UndefValue::get(UI->getType()));
+        Value *Tmp = Builder.CreateBitCast(UndefValue::get(UI->getType()),
+                                           UI->getType());
+        createPromotableCast(Builder, UI, Tmp);
     }
 
     void promoteArgument(IRBuilder<>& Builder, Argument *Arg) {
-        createPromotableCast(Builder, Arg, UndefValue::get(Arg->getType()));
+        Value *Tmp = Builder.CreateBitCast(UndefValue::get(Arg->getType()),
+                                           Arg->getType());
+        createPromotableCast(Builder, Arg, Tmp);
     }
 public:
     static char ID;
