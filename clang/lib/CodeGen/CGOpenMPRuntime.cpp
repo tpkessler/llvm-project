@@ -22,6 +22,7 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/BitmaskEnum.h"
 #include "clang/Basic/OpenMPKinds.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/CodeGen/ConstantInitBuilder.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SetOperations.h"
@@ -11075,9 +11076,7 @@ static const FunctionDecl *getDeclareVariantFunction(CodeGenModule &CGM,
   SmallVector<Expr *, 8> VariantExprs;
   SmallVector<VariantMatchInfo, 8> VMIs;
   for (const auto *A : FD->specific_attrs<OMPDeclareVariantAttr>()) {
-    A->printPretty(llvm::dbgs(), PrintingPolicy(LangOptions()));
     const OMPTraitInfo &TI = A->getTraitInfos();
-    TI.print(llvm::dbgs(), PrintingPolicy(LangOptions()));
     VMIs.push_back(VariantMatchInfo());
     TI.getAsVariantMatchInfo(CGM.getContext(), VMIs.back());
     VariantExprs.push_back(A->getVariantFuncRef());

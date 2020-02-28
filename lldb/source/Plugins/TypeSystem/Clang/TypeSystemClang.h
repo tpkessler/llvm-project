@@ -23,6 +23,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTFwd.h"
 #include "clang/AST/TemplateBase.h"
+#include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -597,9 +598,7 @@ public:
 
   ConstString GetTypeName(lldb::opaque_compiler_type_t type) override;
 
-  ConstString GetDisplayTypeName(lldb::opaque_compiler_type_t type) override {
-    return GetTypeName(type);
-  }
+  ConstString GetDisplayTypeName(lldb::opaque_compiler_type_t type) override;
 
   uint32_t GetTypeInfo(lldb::opaque_compiler_type_t type,
                        CompilerType *pointee_or_element_compiler_type) override;
