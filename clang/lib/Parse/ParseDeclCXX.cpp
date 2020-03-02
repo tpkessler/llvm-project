@@ -4498,7 +4498,12 @@ bool Parser::CXXAMPFindRestrictionSeq(CachedTokens &Toks,
       break;
     case tok::semi:
         return false;
-      // FALL THROUGH.
+    case tok::identifier: {
+        StringRef VirtQualifierName = Tok.getIdentifierInfo()->getName();
+        if (VirtQualifierName == "override" || VirtQualifierName == "final")
+            return false;
+    }
+    // FALL THROUGH.
     default:
       // consume this token.
       Toks.push_back(Tok);
