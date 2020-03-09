@@ -54,6 +54,7 @@ namespace format {
   TYPE(InheritanceComma)                                                       \
   TYPE(InlineASMBrace)                                                         \
   TYPE(InlineASMColon)                                                         \
+  TYPE(InlineASMSymbolicNameLSquare)                                           \
   TYPE(JavaAnnotation)                                                         \
   TYPE(JsComputedPropertyName)                                                 \
   TYPE(JsExponentiation)                                                       \
@@ -102,9 +103,11 @@ namespace format {
   TYPE(TypenameMacro)                                                          \
   TYPE(UnaryOperator)                                                          \
   TYPE(CSharpStringLiteral)                                                    \
-  TYPE(CSharpNullCoalescing)                                                   \
   TYPE(CSharpNamedArgumentColon)                                               \
-  TYPE(CSharpNullableTypeQuestionMark)                                         \
+  TYPE(CSharpNullable)                                                         \
+  TYPE(CSharpNullCoalescing)                                                   \
+  TYPE(CSharpNullConditional)                                                  \
+  TYPE(CSharpNullConditionalLSquare)                                           \
   TYPE(Unknown)
 
 enum TokenType {

@@ -311,7 +311,7 @@ static const char *getLDMOption(const llvm::Triple &T, const ArgList &Args) {
   }
 }
 
-static bool getPIE(const ArgList &Args, const toolchains::Linux &ToolChain) {
+static bool getPIE(const ArgList &Args, const ToolChain &TC) {
   if (Args.hasArg(options::OPT_shared) || Args.hasArg(options::OPT_static) ||
       Args.hasArg(options::OPT_r) || Args.hasArg(options::OPT_static_pie))
     return false;
@@ -319,17 +319,16 @@ static bool getPIE(const ArgList &Args, const toolchains::Linux &ToolChain) {
   Arg *A = Args.getLastArg(options::OPT_pie, options::OPT_no_pie,
                            options::OPT_nopie);
   if (!A)
-    return ToolChain.isPIEDefault();
+    return TC.isPIEDefault();
   return A->getOption().matches(options::OPT_pie);
 }
 
-static bool getStaticPIE(const ArgList &Args,
-                         const toolchains::Linux &ToolChain) {
+static bool getStaticPIE(const ArgList &Args, const ToolChain &TC) {
   bool HasStaticPIE = Args.hasArg(options::OPT_static_pie);
   // -no-pie is an alias for -nopie. So, handling -nopie takes care of
   // -no-pie as well.
   if (HasStaticPIE && Args.hasArg(options::OPT_nopie)) {
-    const Driver &D = ToolChain.getDriver();
+    const Driver &D = TC.getDriver();
     const llvm::opt::OptTable &Opts = D.getOpts();
     const char *StaticPIEName = Opts.getOptionName(options::OPT_static_pie);
     const char *NoPIEName = Opts.getOptionName(options::OPT_nopie);
@@ -342,7 +341,6 @@ static bool getStatic(const ArgList &Args) {
   return Args.hasArg(options::OPT_static) &&
       !Args.hasArg(options::OPT_static_pie);
 }
-
 
 void tools::gnutools::Linker::ConstructLinkerJob(Compilation &C,
                                     const JobAction &JA,
@@ -421,8 +419,7 @@ void tools::gnutools::Linker::ConstructLinkerJob(Compilation &C,
   if (isAndroid)
       CmdArgs.push_back("--warn-shared-textrel");
 
-  for (const auto &Opt : ToolChain.ExtraOpts)
-    CmdArgs.push_back(Opt.c_str());
+  ToolChain.addExtraOpts(CmdArgs);
 
   CmdArgs.push_back("--eh-frame-hdr");
 

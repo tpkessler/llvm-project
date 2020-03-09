@@ -10080,6 +10080,10 @@ public:
   StmtResult ActOnOpenMPFlushDirective(ArrayRef<OMPClause *> Clauses,
                                        SourceLocation StartLoc,
                                        SourceLocation EndLoc);
+  /// Called on well-formed '\#pragma omp depobj'.
+  StmtResult ActOnOpenMPDepobjDirective(ArrayRef<OMPClause *> Clauses,
+                                        SourceLocation StartLoc,
+                                        SourceLocation EndLoc);
   /// Called on well-formed '\#pragma omp ordered' after parsing of the
   /// associated statement.
   StmtResult ActOnOpenMPOrderedDirective(ArrayRef<OMPClause *> Clauses,
@@ -10259,7 +10263,8 @@ public:
   /// Checks that the specified declaration matches requirements for the linear
   /// decls.
   bool CheckOpenMPLinearDecl(const ValueDecl *D, SourceLocation ELoc,
-                             OpenMPLinearClauseKind LinKind, QualType Type);
+                             OpenMPLinearClauseKind LinKind, QualType Type,
+                             bool IsDeclareSimd = false);
 
   /// Called on well-formed '\#pragma omp declare simd' after parsing of
   /// the associated method/function.
@@ -10374,6 +10379,12 @@ public:
                                     SourceLocation StartLoc,
                                     SourceLocation LParenLoc,
                                     SourceLocation EndLoc);
+  /// Called on well-formed 'update' clause.
+  OMPClause *ActOnOpenMPUpdateClause(OpenMPDependClauseKind Kind,
+                                     SourceLocation KindLoc,
+                                     SourceLocation StartLoc,
+                                     SourceLocation LParenLoc,
+                                     SourceLocation EndLoc);
 
   OMPClause *ActOnOpenMPSingleExprWithArgClause(
       OpenMPClauseKind Kind, ArrayRef<unsigned> Arguments, Expr *Expr,
@@ -10424,6 +10435,9 @@ public:
                                       SourceLocation EndLoc);
   /// Called on well-formed 'relaxed' clause.
   OMPClause *ActOnOpenMPRelaxedClause(SourceLocation StartLoc,
+                                      SourceLocation EndLoc);
+  /// Called on well-formed 'destroy' clause.
+  OMPClause *ActOnOpenMPDestroyClause(SourceLocation StartLoc,
                                       SourceLocation EndLoc);
   /// Called on well-formed 'threads' clause.
   OMPClause *ActOnOpenMPThreadsClause(SourceLocation StartLoc,
@@ -10537,6 +10551,10 @@ public:
                                     SourceLocation StartLoc,
                                     SourceLocation LParenLoc,
                                     SourceLocation EndLoc);
+  /// Called on well-formed 'depobj' pseudo clause.
+  OMPClause *ActOnOpenMPDepobjClause(Expr *Depobj, SourceLocation StartLoc,
+                                     SourceLocation LParenLoc,
+                                     SourceLocation EndLoc);
   /// Called on well-formed 'depend' clause.
   OMPClause *
   ActOnOpenMPDependClause(OpenMPDependClauseKind DepKind, SourceLocation DepLoc,

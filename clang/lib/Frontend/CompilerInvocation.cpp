@@ -1909,6 +1909,11 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
   Opts.ModulesEmbedAllFiles = Args.hasArg(OPT_fmodules_embed_all_files);
   Opts.IncludeTimestamps = !Args.hasArg(OPT_fno_pch_timestamp);
   Opts.UseTemporary = !Args.hasArg(OPT_fno_temp_file);
+  Opts.IsSystemModule = Args.hasArg(OPT_fsystem_module);
+
+  if (Opts.ProgramAction != frontend::GenerateModule && Opts.IsSystemModule)
+    Diags.Report(diag::err_drv_argument_only_allowed_with) << "-fsystem-module"
+                                                           << "-emit-module";
 
   Opts.CodeCompleteOpts.IncludeMacros
     = Args.hasArg(OPT_code_completion_macros);
@@ -2069,12 +2074,16 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
         DashX = IK;
     }
 
+    bool IsSystem = false;
+
     // The -emit-module action implicitly takes a module map.
     if (Opts.ProgramAction == frontend::GenerateModule &&
-        IK.getFormat() == InputKind::Source)
+        IK.getFormat() == InputKind::Source) {
       IK = IK.withFormat(InputKind::ModuleMap);
+      IsSystem = Opts.IsSystemModule;
+    }
 
-    Opts.Inputs.emplace_back(std::move(Inputs[i]), IK);
+    Opts.Inputs.emplace_back(std::move(Inputs[i]), IK, IsSystem);
   }
 
   return DashX;
@@ -2271,7 +2280,7 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
       if (T.isPS4())
         LangStd = LangStandard::lang_gnu99;
       else
-        LangStd = LangStandard::lang_gnu11;
+        LangStd = LangStandard::lang_gnu17;
 #endif
       break;
     case Language::ObjC:
@@ -2542,6 +2551,24 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     }
     else
       LangStd = OpenCLLangStd;
+  }
+
+  Opts.SYCL = Args.hasArg(options::OPT_fsycl);
+  Opts.SYCLIsDevice = Opts.SYCL && Args.hasArg(options::OPT_fsycl_is_device);
+  if (Opts.SYCL) {
+    // -sycl-std applies to any SYCL source, not only those containing kernels,
+    // but also those using the SYCL API
+    if (const Arg *A = Args.getLastArg(OPT_sycl_std_EQ)) {
+      Opts.SYCLVersion = llvm::StringSwitch<unsigned>(A->getValue())
+                             .Cases("2017", "1.2.1", "121", "sycl-1.2.1", 2017)
+                             .Default(0U);
+
+      if (Opts.SYCLVersion == 0U) {
+        // User has passed an invalid value to the flag, this is an error
+        Diags.Report(diag::err_drv_invalid_value)
+            << A->getAsString(Args) << A->getValue();
+      }
+    }
   }
 
   Opts.IncludeDefaultHeader = Args.hasArg(OPT_finclude_default_header);

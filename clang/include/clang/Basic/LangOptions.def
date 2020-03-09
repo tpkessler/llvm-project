@@ -237,7 +237,9 @@ LANGOPT(HSAExtension      , 1, 0, "C++AMP Extension for HSA")
 LANGOPT(AutoAuto          , 1, 0, "Enable auto-auto")
 LANGOPT(AutoCompileForAccelerator, 1, 0, "Enable auto-compile-for-accelerator")
 
+LANGOPT(SYCL              , 1, 0, "SYCL")
 LANGOPT(SYCLIsDevice      , 1, 0, "Generate code for SYCL device")
+LANGOPT(SYCLVersion       , 32, 0, "Version of the SYCL standard used")
 
 LANGOPT(HIPUseNewLaunchAPI, 1, 0, "Use new kernel launching API for HIP")
 
