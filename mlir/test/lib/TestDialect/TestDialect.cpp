@@ -164,6 +164,17 @@ TestDialect::verifyRegionResultAttribute(Operation *op, unsigned regionIndex,
 }
 
 //===----------------------------------------------------------------------===//
+// TestBranchOp
+//===----------------------------------------------------------------------===//
+
+Optional<OperandRange> TestBranchOp::getSuccessorOperands(unsigned index) {
+  assert(index == 0 && "invalid successor index");
+  return getOperands();
+}
+
+bool TestBranchOp::canEraseSuccessorOperand() { return true; }
+
+//===----------------------------------------------------------------------===//
 // Test IsolatedRegionOp - parse passthrough region arguments.
 //===----------------------------------------------------------------------===//
 
@@ -300,20 +311,20 @@ LogicalResult TestOpWithVariadicResultsAndFolder::fold(
 LogicalResult mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
     MLIRContext *, Optional<Location> location, ValueRange operands,
     ArrayRef<NamedAttribute> attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferedReturnTypes) {
+    SmallVectorImpl<Type> &inferredReturnTypes) {
   if (operands[0].getType() != operands[1].getType()) {
     return emitOptionalError(location, "operand type mismatch ",
                              operands[0].getType(), " vs ",
                              operands[1].getType());
   }
-  inferedReturnTypes.assign({operands[0].getType()});
+  inferredReturnTypes.assign({operands[0].getType()});
   return success();
 }
 
 LogicalResult OpWithShapedTypeInferTypeInterfaceOp::inferReturnTypeComponents(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     ArrayRef<NamedAttribute> attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents> &inferedReturnShapes) {
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   // Create return type consisting of the last element of the first operand.
   auto operandType = *operands.getTypes().begin();
   auto sval = operandType.dyn_cast<ShapedType>();
@@ -323,7 +334,7 @@ LogicalResult OpWithShapedTypeInferTypeInterfaceOp::inferReturnTypeComponents(
   int64_t dim =
       sval.hasRank() ? sval.getShape().front() : ShapedType::kDynamicSize;
   auto type = IntegerType::get(17, context);
-  inferedReturnShapes.push_back(ShapedTypeComponents({dim}, type));
+  inferredReturnShapes.push_back(ShapedTypeComponents({dim}, type));
   return success();
 }
 
@@ -333,6 +344,56 @@ LogicalResult OpWithShapedTypeInferTypeInterfaceOp::reifyReturnTypeShapes(
       builder.createOrFold<mlir::DimOp>(getLoc(), getOperand(0), 0)};
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Test SideEffect interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// A test resource for side effects.
+struct TestResource : public SideEffects::Resource::Base<TestResource> {
+  StringRef getName() final { return "<Test>"; }
+};
+} // end anonymous namespace
+
+void SideEffectOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  // Check for an effects attribute on the op instance.
+  ArrayAttr effectsAttr = getAttrOfType<ArrayAttr>("effects");
+  if (!effectsAttr)
+    return;
+
+  // If there is one, it is an array of dictionary attributes that hold
+  // information on the effects of this operation.
+  for (Attribute element : effectsAttr) {
+    DictionaryAttr effectElement = element.cast<DictionaryAttr>();
+
+    // Get the specific memory effect.
+    MemoryEffects::Effect *effect =
+        llvm::StringSwitch<MemoryEffects::Effect *>(
+            effectElement.get("effect").cast<StringAttr>().getValue())
+            .Case("allocate", MemoryEffects::Allocate::get())
+            .Case("free", MemoryEffects::Free::get())
+            .Case("read", MemoryEffects::Read::get())
+            .Case("write", MemoryEffects::Write::get());
+
+    // Check for a result to affect.
+    Value value;
+    if (effectElement.get("on_result"))
+      value = getResult();
+
+    // Check for a non-default resource to use.
+    SideEffects::Resource *resource = SideEffects::DefaultResource::get();
+    if (effectElement.get("test_resource"))
+      resource = TestResource::get();
+
+    effects.emplace_back(effect, value, resource);
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Dialect Registration
+//===----------------------------------------------------------------------===//
 
 // Static initialization for Test dialect registration.
 static mlir::DialectRegistration<mlir::TestDialect> testDialect;

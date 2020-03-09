@@ -431,7 +431,21 @@ TEST(SourceCodeTests, GetMacros) {
   ASSERT_TRUE(bool(CurLoc));
   const auto *Id = syntax::spelledIdentifierTouching(*CurLoc, AST.getTokens());
   ASSERT_TRUE(Id);
-  auto Result = locateMacroAt(Id->location(), AST.getPreprocessor());
+  auto Result = locateMacroAt(*Id, AST.getPreprocessor());
+  ASSERT_TRUE(Result);
+  EXPECT_THAT(*Result, MacroName("MACRO"));
+}
+
+TEST(SourceCodeTests, WorksAtBeginOfFile) {
+  Annotations Code("^MACRO");
+  TestTU TU = TestTU::withCode(Code.code());
+  TU.HeaderCode = "#define MACRO int x;";
+  auto AST = TU.build();
+  auto CurLoc = sourceLocationInMainFile(AST.getSourceManager(), Code.point());
+  ASSERT_TRUE(bool(CurLoc));
+  const auto *Id = syntax::spelledIdentifierTouching(*CurLoc, AST.getTokens());
+  ASSERT_TRUE(Id);
+  auto Result = locateMacroAt(*Id, AST.getPreprocessor());
   ASSERT_TRUE(Result);
   EXPECT_THAT(*Result, MacroName("MACRO"));
 }
@@ -447,10 +461,12 @@ TEST(SourceCodeTests, IsInsideMainFile){
     class Header {};
   )cpp";
   TU.Code = R"cpp(
+    #define DEFINE_MAIN4 class Main4{};
     class Main1 {};
     DEFINE_CLASS(Main2)
     DEFINE_YY
     class Main {};
+    DEFINE_MAIN4
   )cpp";
   TU.ExtraArgs.push_back("-DHeader=Header3");
   TU.ExtraArgs.push_back("-DMain=Main3");
@@ -460,10 +476,13 @@ TEST(SourceCodeTests, IsInsideMainFile){
     return findDecl(AST, Name).getLocation();
   };
   for (const auto *HeaderDecl : {"Header1", "Header2", "Header3"})
-    EXPECT_FALSE(isInsideMainFile(DeclLoc(HeaderDecl), SM));
+    EXPECT_FALSE(isInsideMainFile(DeclLoc(HeaderDecl), SM)) << HeaderDecl;
 
-  for (const auto *MainDecl : {"Main1", "Main2", "Main3", "YY"})
-    EXPECT_TRUE(isInsideMainFile(DeclLoc(MainDecl), SM));
+  for (const auto *MainDecl : {"Main1", "Main2", "Main3", "Main4", "YY"})
+    EXPECT_TRUE(isInsideMainFile(DeclLoc(MainDecl), SM)) << MainDecl;
+
+  // Main4 is *spelled* in the preamble, but in the main-file part of it.
+  EXPECT_TRUE(isInsideMainFile(SM.getSpellingLoc(DeclLoc("Main4")), SM));
 }
 
 // Test for functions toHalfOpenFileRange and getHalfOpenFileRange

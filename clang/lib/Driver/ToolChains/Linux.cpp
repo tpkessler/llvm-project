@@ -1013,3 +1013,8 @@ llvm::DenormalMode Linux::getDefaultDenormalModeForType(
     return llvm::DenormalMode::getIEEE();
   }
 }
+
+void Linux::addExtraOpts(llvm::opt::ArgStringList &CmdArgs) const {
+  for (const auto &Opt : ExtraOpts)
+    CmdArgs.push_back(Opt.c_str());
+}

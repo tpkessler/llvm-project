@@ -1320,14 +1320,30 @@ RValue CodeGenFunction::emitBuiltinOSLogFormat(const CallExpr &E) {
     } else if (const Expr *TheExpr = Item.getExpr()) {
       ArgVal = EmitScalarExpr(TheExpr, /*Ignore*/ false);
 
-      // Check if this is a retainable type.
+      // If this is a retainable type, push a lifetime-extended cleanup to
+      // ensure the lifetime of the argument is extended to the end of the
+      // enclosing block scope.
+      // FIXME: We only have to do this if the argument is a temporary, which
+      //        gets released after the full expression.
       if (TheExpr->getType()->isObjCRetainableType()) {
         assert(getEvaluationKind(TheExpr->getType()) == TEK_Scalar &&
                "Only scalar can be a ObjC retainable type");
-        // Check if the object is constant, if not, save it in
-        // RetainableOperands.
-        if (!isa<Constant>(ArgVal))
-          RetainableOperands.push_back(ArgVal);
+        if (!isa<Constant>(ArgVal)) {
+          CleanupKind Cleanup = getARCCleanupKind();
+          QualType Ty = TheExpr->getType();
+          Address Alloca = Address::invalid();
+          Address Addr = CreateMemTemp(Ty, "os.log.arg", &Alloca);
+          ArgVal = EmitARCRetain(Ty, ArgVal);
+          Builder.CreateStore(ArgVal, Addr);
+          pushLifetimeExtendedDestroy(Cleanup, Alloca, Ty,
+                                      CodeGenFunction::destroyARCStrongPrecise,
+                                      Cleanup & EHCleanup);
+
+          // Push a clang.arc.use call to ensure ARC optimizer knows that the
+          // argument has to be alive.
+          if (CGM.getCodeGenOpts().OptimizationLevel != 0)
+            pushCleanupAfterFullExpr<CallObjCArcUse>(Cleanup, ArgVal);
+        }
       }
     } else {
       ArgVal = Builder.getInt32(Item.getConstValue().getQuantity());
@@ -1349,18 +1365,6 @@ RValue CodeGenFunction::emitBuiltinOSLogFormat(const CallExpr &E) {
   llvm::Function *F = CodeGenFunction(CGM).generateBuiltinOSLogHelperFunction(
       Layout, BufAddr.getAlignment());
   EmitCall(FI, CGCallee::forDirect(F), ReturnValueSlot(), Args);
-
-  // Push a clang.arc.use cleanup for each object in RetainableOperands. The
-  // cleanup will cause the use to appear after the final log call, keeping
-  // the object valid while it’s held in the log buffer.  Note that if there’s
-  // a release cleanup on the object, it will already be active; since
-  // cleanups are emitted in reverse order, the use will occur before the
-  // object is released.
-  if (!RetainableOperands.empty() && getLangOpts().ObjCAutoRefCount &&
-      CGM.getCodeGenOpts().OptimizationLevel != 0)
-    for (llvm::Value *Object : RetainableOperands)
-      pushFullExprCleanup<CallObjCArcUse>(getARCCleanupKind(), Object);
-
   return RValue::get(BufAddr.getPointer());
 }
 
@@ -1521,8 +1525,7 @@ static llvm::Value *dumpRecord(CodeGenFunction &CGF, QualType RType,
 
     // We check whether we are in a recursive type
     if (CanonicalType->isRecordType()) {
-      Value *TmpRes =
-          dumpRecord(CGF, CanonicalType, FieldPtr, Align, Func, Lvl + 1);
+      TmpRes = dumpRecord(CGF, CanonicalType, FieldPtr, Align, Func, Lvl + 1);
       Res = CGF.Builder.CreateAdd(TmpRes, Res);
       continue;
     }
@@ -10329,6 +10332,46 @@ Value *CodeGenFunction::EmitX86CpuIs(const CallExpr *E) {
   return EmitX86CpuIs(CPUStr);
 }
 
+// Convert F16 halfs to floats.
+static Value *EmitX86CvtF16ToFloatExpr(CodeGenFunction &CGF,
+                                       ArrayRef<Value *> Ops,
+                                       llvm::Type *DstTy) {
+  assert((Ops.size() == 1 || Ops.size() == 3 || Ops.size() == 4) &&
+         "Unknown cvtph2ps intrinsic");
+
+  // If the SAE intrinsic doesn't use default rounding then we can't upgrade.
+  if (Ops.size() == 4 && cast<llvm::ConstantInt>(Ops[3])->getZExtValue() != 4) {
+    Intrinsic::ID IID = Intrinsic::x86_avx512_mask_vcvtph2ps_512;
+    Function *F =
+        CGF.CGM.getIntrinsic(IID, {DstTy, Ops[0]->getType(), Ops[1]->getType(),
+                                   Ops[2]->getType(), Ops[3]->getType()});
+    return CGF.Builder.CreateCall(F, {Ops[0], Ops[1], Ops[2], Ops[3]});
+  }
+
+  unsigned NumDstElts = DstTy->getVectorNumElements();
+  Value *Src = Ops[0];
+
+  // Extract the subvector.
+  if (NumDstElts != Src->getType()->getVectorNumElements()) {
+    assert(NumDstElts == 4 && "Unexpected vector size");
+    uint32_t ShuffleMask[4] = {0, 1, 2, 3};
+    Src = CGF.Builder.CreateShuffleVector(Src, UndefValue::get(Src->getType()),
+                                          ShuffleMask);
+  }
+
+  // Bitcast from vXi16 to vXf16.
+  llvm::Type *HalfTy = llvm::VectorType::get(
+      llvm::Type::getHalfTy(CGF.getLLVMContext()), NumDstElts);
+  Src = CGF.Builder.CreateBitCast(Src, HalfTy);
+
+  // Perform the fp-extension.
+  Value *Res = CGF.Builder.CreateFPExt(Src, DstTy, "cvtph2ps");
+
+  if (Ops.size() >= 3)
+    Res = EmitX86Select(CGF, Ops[2], Res, Ops[1]);
+  return Res;
+}
+
 // Convert a BF16 to a float.
 static Value *EmitX86CvtBF16ToFloatExpr(CodeGenFunction &CGF,
                                         const CallExpr *E,
@@ -12532,6 +12575,14 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     return getCmpIntrinsicCall(Intrinsic::x86_sse2_cmp_sd, 6);
   case X86::BI__builtin_ia32_cmpordsd:
     return getCmpIntrinsicCall(Intrinsic::x86_sse2_cmp_sd, 7);
+
+  // f16c half2float intrinsics
+  case X86::BI__builtin_ia32_vcvtph2ps:
+  case X86::BI__builtin_ia32_vcvtph2ps256:
+  case X86::BI__builtin_ia32_vcvtph2ps_mask:
+  case X86::BI__builtin_ia32_vcvtph2ps256_mask:
+  case X86::BI__builtin_ia32_vcvtph2ps512_mask:
+    return EmitX86CvtF16ToFloatExpr(*this, Ops, ConvertType(E->getType()));
 
 // AVX512 bf16 intrinsics
   case X86::BI__builtin_ia32_cvtneps2bf16_128_mask: {
@@ -14854,6 +14905,47 @@ Value *CodeGenFunction::EmitWebAssemblyBuiltinExpr(unsigned BuiltinID,
     Value *RHS = EmitScalarExpr(E->getArg(1));
     Function *Callee = CGM.getIntrinsic(IntNo, ConvertType(E->getType()));
     return Builder.CreateCall(Callee, {LHS, RHS});
+  }
+  case WebAssembly::BI__builtin_wasm_min_s_i8x16:
+  case WebAssembly::BI__builtin_wasm_min_u_i8x16:
+  case WebAssembly::BI__builtin_wasm_max_s_i8x16:
+  case WebAssembly::BI__builtin_wasm_max_u_i8x16:
+  case WebAssembly::BI__builtin_wasm_min_s_i16x8:
+  case WebAssembly::BI__builtin_wasm_min_u_i16x8:
+  case WebAssembly::BI__builtin_wasm_max_s_i16x8:
+  case WebAssembly::BI__builtin_wasm_max_u_i16x8:
+  case WebAssembly::BI__builtin_wasm_min_s_i32x4:
+  case WebAssembly::BI__builtin_wasm_min_u_i32x4:
+  case WebAssembly::BI__builtin_wasm_max_s_i32x4:
+  case WebAssembly::BI__builtin_wasm_max_u_i32x4: {
+    Value *LHS = EmitScalarExpr(E->getArg(0));
+    Value *RHS = EmitScalarExpr(E->getArg(1));
+    Value *ICmp;
+    switch (BuiltinID) {
+    case WebAssembly::BI__builtin_wasm_min_s_i8x16:
+    case WebAssembly::BI__builtin_wasm_min_s_i16x8:
+    case WebAssembly::BI__builtin_wasm_min_s_i32x4:
+      ICmp = Builder.CreateICmpSLT(LHS, RHS);
+      break;
+    case WebAssembly::BI__builtin_wasm_min_u_i8x16:
+    case WebAssembly::BI__builtin_wasm_min_u_i16x8:
+    case WebAssembly::BI__builtin_wasm_min_u_i32x4:
+      ICmp = Builder.CreateICmpULT(LHS, RHS);
+      break;
+    case WebAssembly::BI__builtin_wasm_max_s_i8x16:
+    case WebAssembly::BI__builtin_wasm_max_s_i16x8:
+    case WebAssembly::BI__builtin_wasm_max_s_i32x4:
+      ICmp = Builder.CreateICmpSGT(LHS, RHS);
+      break;
+    case WebAssembly::BI__builtin_wasm_max_u_i8x16:
+    case WebAssembly::BI__builtin_wasm_max_u_i16x8:
+    case WebAssembly::BI__builtin_wasm_max_u_i32x4:
+      ICmp = Builder.CreateICmpUGT(LHS, RHS);
+      break;
+    default:
+      llvm_unreachable("unexpected builtin ID");
+    }
+    return Builder.CreateSelect(ICmp, LHS, RHS);
   }
   case WebAssembly::BI__builtin_wasm_avgr_u_i8x16:
   case WebAssembly::BI__builtin_wasm_avgr_u_i16x8: {
