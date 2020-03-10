@@ -23,61 +23,99 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Pass.h"
 
-#include <algorithm>
-
 using namespace llvm;
-using namespace std;
 
 namespace {
 class PromotePointerKernArgsToGlobal : public FunctionPass {
-    // TODO: query the address space robustly.
-    static constexpr unsigned int GenericAddrSpace{0u};
-    static constexpr unsigned int GlobalAddrSpace{1u};
+  // TODO: query the address space robustly.
+  static constexpr unsigned int FlatAddrSpace = 0u;
+  static constexpr unsigned int GlobalAddrSpace = 1u;
+
+  void createPromotableCast(IRBuilder<>& Builder, Value *From, Value *To) {
+    From->replaceAllUsesWith(To);
+
+    Value *FToG = Builder.CreateAddrSpaceCast(
+      From,
+      cast<PointerType>(
+        From->getType())->getElementType()->getPointerTo(GlobalAddrSpace));
+      Value *GToF = Builder.CreateAddrSpaceCast(FToG, From->getType());
+
+    To->replaceAllUsesWith(GToF);
+  }
+
+  Value *createTemporary(IRBuilder<>& Builder, Type *Ty) {
+    // We cannot use IRBuilder since it might do the obvious folding, which
+    // would yield an undef value of a possibly primitive type, which cannot be
+    // disambiguated from other undefs of the same primitive type and would
+    // cause havoc when replaced with the promotable cast created later.
+    Value *UD = UndefValue::get(Builder.getInt8Ty());
+
+    return CastInst::CreateBitOrPointerCast(UD, Ty, "Tmp",
+                                            &*Builder.GetInsertPoint());
+  }
+
+  void maybePromoteUse(IRBuilder<>& Builder, Instruction *UI) {
+    if (!UI)
+      return;
+
+    Builder.SetInsertPoint(UI->getNextNonDebugInstruction());
+
+    createPromotableCast(Builder, UI, createTemporary(Builder, UI->getType()));
+  }
+
+  void promoteArgument(IRBuilder<>& Builder, Argument *Arg) {
+    createPromotableCast(Builder, Arg,
+                         createTemporary(Builder, Arg->getType()));
+  }
 public:
-    static char ID;
-    PromotePointerKernArgsToGlobal() : FunctionPass{ID} {}
+  static char ID;
+  PromotePointerKernArgsToGlobal() : FunctionPass(ID) {}
 
-    bool runOnFunction(Function &F) override
-    {
-        if (F.getCallingConv() != CallingConv::AMDGPU_KERNEL) return false;
+  bool runOnFunction(Function &F) override
+  {
+    if (F.getCallingConv() != CallingConv::AMDGPU_KERNEL)
+      return false;
 
-        SmallVector<Argument *, 8> PtrArgs;
-        for_each(F.arg_begin(), F.arg_end(), [&](Argument &Arg) {
-            if (!Arg.getType()->isPointerTy()) return;
-            if (Arg.getType()->getPointerAddressSpace() != GenericAddrSpace) {
-                return;
-            }
+    SmallVector<Argument *, 8> PromotableArgs;
+    SmallVector<User *, 8> PromotableUses;
+    for (auto &&Arg : F.args()) {
+      for (auto &&U : Arg.users()) {
+        if (!U->getType()->isPointerTy())
+          continue;
+        if (U->getType()->getPointerAddressSpace() != FlatAddrSpace)
+          continue;
 
-            PtrArgs.push_back(&Arg);
-        });
+        PromotableUses.push_back(U);
+      }
 
-        if (PtrArgs.empty()) return false;
+      if (!Arg.getType()->isPointerTy())
+        continue;
+      if (Arg.getType()->getPointerAddressSpace() != FlatAddrSpace)
+        continue;
 
-        static IRBuilder<> Builder{F.getContext()};
-        Builder.SetInsertPoint(&F.getEntryBlock().front());
-
-        for_each(PtrArgs.begin(), PtrArgs.end(), [](Argument *PArg) {
-            Argument Tmp{PArg->getType(), PArg->getName()};
-            PArg->replaceAllUsesWith(&Tmp);
-
-            Value *FToG = Builder.CreateAddrSpaceCast(
-                PArg,
-                cast<PointerType>(PArg->getType())
-                    ->getElementType()->getPointerTo(GlobalAddrSpace));
-            Value *GToF = Builder.CreateAddrSpaceCast(FToG, PArg->getType());
-
-            Tmp.replaceAllUsesWith(GToF);
-        });
-
-        return true;
+      PromotableArgs.push_back(&Arg);
     }
+
+    if (PromotableArgs.empty() && PromotableUses.empty())
+      return false;
+
+    IRBuilder<> Builder(F.getContext());
+    for (auto &&PU : PromotableUses)
+      maybePromoteUse(Builder, dyn_cast<Instruction>(PU));
+
+    Builder.SetInsertPoint(&F.getEntryBlock().front());
+    for (auto &&Arg : PromotableArgs)
+      promoteArgument(Builder, Arg);
+
+    return true;
+  }
 };
 char PromotePointerKernArgsToGlobal::ID = 0;
 
-static RegisterPass<PromotePointerKernArgsToGlobal> X{
-    "promote-pointer-kernargs-to-global",
-    "Promotes kernel formals of pointer type to point to the global address "
-    "space, since the actuals can only represent a global address.",
-    false,
-    false};
+static RegisterPass<PromotePointerKernArgsToGlobal> X(
+  "promote-pointer-kernargs-to-global",
+  "Promotes kernel formals of pointer type to point to the global address "
+  "space, since the actuals can only represent a global address.",
+  false,
+  false);
 }
