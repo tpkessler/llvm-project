@@ -2821,13 +2821,8 @@ namespace
 
       bool r = true;
 
-      if (!x->hasAttr<HCCTileStaticAttr>() &&
-          (x->isStaticLocal() ||
-          x->hasExternalStorage() ||
-          x->hasGlobalStorage() ||
-          x->isExceptionVariable()))  {
-            r = false;
-      }
+      if (!x->hasAttr<HCCTileStaticAttr>() && x->isExceptionVariable())
+        r = false;
 
       d_[x] = r;
 
@@ -2961,7 +2956,8 @@ void CodeGenModule::EmitGlobalDefinition(GlobalDecl GD, llvm::GlobalValue *GV) {
   if (LangOpts.CPlusPlusAMP && !CodeGenOpts.AMPCPU) {
     if (CodeGenOpts.AMPIsDevice) {
       // If -famp-is-device switch is on, we are in GPU build path.
-      if (!isWhiteListForHCC(*this, GD)) return;
+      if (!isWhiteListForHCC(*this, GD))
+        return;
     }
     else if (!isa<VarDecl>(D) &&
       D->hasAttr<CXXAMPRestrictAMPAttr>() &&
