@@ -170,6 +170,16 @@ static LegalityPredicate elementTypeIs(unsigned TypeIdx, LLT Type) {
   };
 }
 
+static LegalityPredicate elementTypeIsLegal(unsigned TypeIdx) {
+  return [=](const LegalityQuery &Query) {
+    const LLT QueryTy = Query.Types[TypeIdx];
+    if (!QueryTy.isVector())
+      return false;
+    const LLT EltTy = QueryTy.getElementType();
+    return EltTy == LLT::scalar(16) || EltTy.getSizeInBits() >= 32;
+  };
+}
+
 static LegalityPredicate isWideScalarTruncStore(unsigned TypeIdx) {
   return [=](const LegalityQuery &Query) {
     const LLT Ty = Query.Types[TypeIdx];
@@ -484,7 +494,15 @@ AMDGPULegalizerInfo::AMDGPULegalizerInfo(const GCNSubtarget &ST_,
   FMad.scalarize(0)
       .lower();
 
+  // TODO: Do we need to clamp maximum bitwidth?
   getActionDefinitionsBuilder(G_TRUNC)
+    .legalIf(isScalar(0))
+    .legalFor({{V2S16, V2S32}})
+    .clampMaxNumElements(0, S16, 2)
+    // Avoid scalarizing in cases that should be truly illegal. In unresolvable
+    // situations (like an invalid implicit use), we don't want to infinite loop
+    // in the legalizer.
+    .fewerElementsIf(elementTypeIsLegal(0), LegalizeMutations::scalarize(0))
     .alwaysLegal();
 
   getActionDefinitionsBuilder({G_SEXT, G_ZEXT, G_ANYEXT})
@@ -1949,8 +1967,19 @@ bool AMDGPULegalizerInfo::legalizeGlobalValue(
     if (!MFI->isEntryFunction()) {
       const Function &Fn = MF.getFunction();
       DiagnosticInfoUnsupported BadLDSDecl(
-        Fn, "local memory global used by non-kernel function", MI.getDebugLoc());
+        Fn, "local memory global used by non-kernel function", MI.getDebugLoc(),
+        DS_Warning);
       Fn.getContext().diagnose(BadLDSDecl);
+
+      // We currently don't have a way to correctly allocate LDS objects that
+      // aren't directly associated with a kernel. We do force inlining of
+      // functions that use local objects. However, if these dead functions are
+      // not eliminated, we don't want a compile time error. Just emit a warning
+      // and a trap, since there should be no callable path here.
+      B.buildIntrinsic(Intrinsic::trap, ArrayRef<Register>(), true);
+      B.buildUndef(DstReg);
+      MI.eraseFromParent();
+      return true;
     }
 
     // TODO: We could emit code to handle the initialization somewhere.
@@ -3718,6 +3747,14 @@ bool AMDGPULegalizerInfo::legalizeIntrinsic(MachineInstr &MI,
     return false;
   }
   case Intrinsic::amdgcn_kernarg_segment_ptr:
+    if (!AMDGPU::isKernel(B.getMF().getFunction().getCallingConv())) {
+      B.setInstr(MI);
+      // This only makes sense to call in a kernel, so just lower to null.
+      B.buildConstant(MI.getOperand(0).getReg(), 0);
+      MI.eraseFromParent();
+      return true;
+    }
+
     return legalizePreloadedArgIntrin(
       MI, MRI, B, AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
   case Intrinsic::amdgcn_implicitarg_ptr:
