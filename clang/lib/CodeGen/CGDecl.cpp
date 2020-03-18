@@ -250,7 +250,9 @@ llvm::Constant *CodeGenModule::getOrCreateStaticVarDecl(
   // HCC tile_static variables cannot have an initializer.
   llvm::Constant *Init = nullptr;
   if (Ty.getAddressSpace() == LangAS::opencl_local ||
-      D.hasAttr<CUDASharedAttr>() || D.hasAttr<HCCTileStaticAttr>())
+      D.hasAttr<CUDASharedAttr>() ||
+      D.hasAttr<HCCTileStaticAttr>() ||
+      D.hasAttr<LoaderUninitializedAttr>())
     Init = llvm::UndefValue::get(LTy);
   else
     Init = EmitNullConstant(Ty);

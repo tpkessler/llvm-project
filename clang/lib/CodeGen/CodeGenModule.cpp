@@ -4105,7 +4105,8 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
       (IsCUDASharedVar || IsCUDAShadowVar || IsHIPPinnedShadowVar))
     Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
   else if (getLangOpts().CPlusPlusAMP && getLangOpts().DevicePath &&
-           D->hasAttr<HCCTileStaticAttr>())
+           D->hasAttr<HCCTileStaticAttr>() &&
+           D->hasAttr<LoaderUninitializedAttr>())
     Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
   else if (!InitExpr) {
     // This is a tentative definition; tentative definitions are
