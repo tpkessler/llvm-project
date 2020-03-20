@@ -1610,7 +1610,9 @@ Parser::TryAnnotateName(CorrectionCandidateCallback *CCC) {
 
   CXXScopeSpec SS;
   if (getLangOpts().CPlusPlus &&
-      ParseOptionalCXXScopeSpecifier(SS, nullptr, EnteringContext))
+      ParseOptionalCXXScopeSpecifier(SS, /*ObjectType=*/nullptr,
+                                     /*ObjectHadErrors=*/false,
+                                     EnteringContext))
     return ANK_Error;
 
   if (Tok.isNot(tok::identifier) || SS.isInvalid()) {
@@ -1847,6 +1849,7 @@ bool Parser::TryAnnotateTypeOrScopeToken() {
     SourceLocation TypenameLoc = ConsumeToken();
     CXXScopeSpec SS;
     if (ParseOptionalCXXScopeSpecifier(SS, /*ObjectType=*/nullptr,
+                                       /*ObjectHadErrors=*/false,
                                        /*EnteringContext=*/false, nullptr,
                                        /*IsTypename*/ true))
       return true;
@@ -1919,7 +1922,9 @@ bool Parser::TryAnnotateTypeOrScopeToken() {
 
   CXXScopeSpec SS;
   if (getLangOpts().CPlusPlus)
-    if (ParseOptionalCXXScopeSpecifier(SS, nullptr, /*EnteringContext*/false))
+    if (ParseOptionalCXXScopeSpecifier(SS, /*ObjectType=*/nullptr,
+                                       /*ObjectHadErrors=*/false,
+                                       /*EnteringContext*/ false))
       return true;
 
   return TryAnnotateTypeOrScopeTokenAfterScopeSpec(SS, !WasScopeAnnotation);
@@ -2049,7 +2054,9 @@ bool Parser::TryAnnotateCXXScopeToken(bool EnteringContext) {
   assert(MightBeCXXScopeToken() && "Cannot be a type or scope token!");
 
   CXXScopeSpec SS;
-  if (ParseOptionalCXXScopeSpecifier(SS, nullptr, EnteringContext))
+  if (ParseOptionalCXXScopeSpecifier(SS, /*ObjectType=*/nullptr,
+                                     /*ObjectHadErrors=*/false,
+                                     EnteringContext))
     return true;
   if (SS.isEmpty())
     return false;
@@ -2158,7 +2165,8 @@ bool Parser::ParseMicrosoftIfExistsCondition(IfExistsCondition& Result) {
 
   // Parse nested-name-specifier.
   if (getLangOpts().CPlusPlus)
-    ParseOptionalCXXScopeSpecifier(Result.SS, nullptr,
+    ParseOptionalCXXScopeSpecifier(Result.SS, /*ObjectType=*/nullptr,
+                                   /*ObjectHadErrors=*/false,
                                    /*EnteringContext=*/false);
 
   // Check nested-name specifier.
@@ -2169,10 +2177,12 @@ bool Parser::ParseMicrosoftIfExistsCondition(IfExistsCondition& Result) {
 
   // Parse the unqualified-id.
   SourceLocation TemplateKWLoc; // FIXME: parsed, but unused.
-  if (ParseUnqualifiedId(
-          Result.SS, /*EnteringContext*/false, /*AllowDestructorName*/true,
-          /*AllowConstructorName*/true, /*AllowDeductionGuide*/false, nullptr,
-          &TemplateKWLoc, Result.Name)) {
+  if (ParseUnqualifiedId(Result.SS, /*ObjectType=*/nullptr,
+                         /*ObjectHadErrors=*/false, /*EnteringContext*/ false,
+                         /*AllowDestructorName*/ true,
+                         /*AllowConstructorName*/ true,
+                         /*AllowDeductionGuide*/ false, &TemplateKWLoc,
+                         Result.Name)) {
     T.skipToEnd();
     return true;
   }
