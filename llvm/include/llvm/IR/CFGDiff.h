@@ -170,7 +170,9 @@ struct CFGViewChildren {
 
     // filter iterator init:
     auto R = make_range(GT::child_begin(N.second), GT::child_end(N.second));
-    auto First = make_filter_range(makeChildRange(R, N.first), [&](NodeRef C) {
+    // This lambda is copied into the iterators and persists to callers, ensure
+    // captures are by value or otherwise have sufficient lifetime.
+    auto First = make_filter_range(makeChildRange(R, N.first), [N](NodeRef C) {
       return !C.first->ignoreChild(N.second, C.second, InverseEdge);
     });
 

@@ -1497,7 +1497,7 @@ private:
       return CachedLocalOrUnnamed;
     }
   };
-  enum { NumTypeBits = 18 };
+  enum { NumTypeBits = 8 + TypeDependenceBits + 6 };
 
 protected:
   // These classes allow subclasses to somewhat cleanly pack bitfields
