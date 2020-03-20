@@ -848,7 +848,7 @@ bool GCNPassConfig::addPreISel() {
   // regions formed by them.
   addPass(&AMDGPUUnifyDivergentExitNodesID);
   if (!LateCFGStructurize) {
-    addPass(createStructurizeCFGPass(true)); // true -> SkipUniformRegions
+    addPass(createStructurizeCFGPass(false)); // true -> SkipUniformRegions
   }
   addPass(createSinkingPass());
   addPass(createAMDGPUAnnotateUniformValues());
