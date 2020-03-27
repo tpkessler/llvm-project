@@ -75,6 +75,8 @@ private:
   // CheckRocmVersionSupportsArch.
   mutable llvm::SmallSet<CudaArch, 4> ArchsWithBadVersion;
 
+  void scanLibDevicePath();
+
 public:
   RocmInstallationDetector(const Driver &D, const llvm::Triple &HostTriple,
                            const llvm::opt::ArgList &Args);
@@ -222,12 +224,16 @@ public:
       const llvm::opt::ArgList &DriverArgs,
       Action::OffloadKind DeviceOffloadKind,
       const llvm::fltSemantics *FPType = nullptr) const override;
+
+  static bool isWave64(const llvm::opt::ArgList &DriverArgs,
+                       llvm::AMDGPU::GPUKind Kind);
+
   /// Needed for translating LTO options.
   const char *getDefaultLinker() const override { return "ld.lld"; }
 };
 
 class LLVM_LIBRARY_VISIBILITY ROCMToolChain : public AMDGPUToolChain {
-private:
+protected:
   RocmInstallationDetector RocmInstallation;
 
 public:
