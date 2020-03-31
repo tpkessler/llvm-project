@@ -4918,9 +4918,13 @@ def note_using_value_decl_missing_typename : Note<
   "add 'typename' to treat this using declaration as a type">;
 
 def err_template_kw_refers_to_non_template : Error<
-  "%0 following the 'template' keyword does not refer to a template">;
+  "%0%select{| following the 'template' keyword}1 "
+  "does not refer to a template">;
 def note_template_kw_refers_to_non_template : Note<
   "declared as a non-template here">;
+def err_template_kw_refers_to_dependent_non_template : Error<
+  "%0%select{| following the 'template' keyword}1 "
+  "cannot refer to a dependent template">;
 def err_template_kw_refers_to_class_template : Error<
   "'%0%1' instantiated to a class template, not a function template">;
 def note_referenced_class_template : Note<
@@ -7984,13 +7988,6 @@ def err_cuda_device_builtin_surftex_ref_decl : Error<
 def note_cuda_device_builtin_surftex_should_be_template_class : Note<
     "%0 needs to be instantiated from a class template with proper "
     "template arguments">;
-def note_cuda_device_builtin_surftex_should_have_n_args : Note<
-    "%0 needs to be instantiated from a class template with exactly "
-    "%1 template arguments">;
-def note_cuda_device_builtin_surftex_should_have_match_arg : Note<
-    "%0 needs to be instantiated from a class template with the "
-    "%select{1st|2nd|3rd}1 template argument as "
-    "%select{a type|an integral value}2">;
 
 def warn_non_pod_vararg_with_format_string : Warning<
   "cannot pass %select{non-POD|non-trivial}0 object of type %1 to variadic "
@@ -9931,8 +9928,6 @@ def err_omp_reduction_in_task : Error<
   "reduction variables may not be accessed in an explicit task">;
 def err_omp_reduction_id_not_compatible : Error<
   "list item of type %0 is not valid for specified reduction operation: unable to provide default initialization value">;
-def err_omp_in_reduction_not_task_reduction : Error<
-  "in_reduction variable must appear in a task_reduction clause">;
 def err_omp_reduction_identifier_mismatch : Error<
   "in_reduction variable must have the same reduction operation as in a task_reduction clause">;
 def note_omp_previous_reduction_identifier : Note<
@@ -10181,6 +10176,19 @@ def err_omp_depobj_single_clause_expected : Error<
   "exactly one of 'depend', 'destroy', or 'update' clauses is expected">;
 def err_omp_scan_single_clause_expected : Error<
   "exactly one of 'inclusive' or 'exclusive' clauses is expected">;
+def err_omp_inclusive_exclusive_not_reduction : Error<
+  "the list item must appear in 'reduction' clause with the 'inscan' modifier "
+  "of the parent directive">;
+def err_omp_reduction_not_inclusive_exclusive : Error<
+  "the inscan reduction list item must appear as a list item in an 'inclusive' or"
+  " 'exclusive' clause on an inner 'omp scan' directive">;
+def err_omp_wrong_inscan_reduction : Error<
+  "'inscan' modifier can be used only in 'omp for', 'omp simd', 'omp for simd',"
+  " 'omp parallel for', or 'omp parallel for simd' directive">;
+def err_omp_inscan_reduction_expected : Error<
+  "expected 'reduction' clause with the 'inscan' modifier">;
+def note_omp_previous_inscan_reduction : Note<
+  "'reduction' clause with 'inscan' modifier is used here">;
 def err_omp_expected_predefined_allocator : Error<
   "expected one of the predefined allocators for the variables with the static "
   "storage: 'omp_default_mem_alloc', 'omp_large_cap_mem_alloc', "
@@ -10266,6 +10274,10 @@ def err_omp_non_lvalue_in_map_or_motion_clauses: Error<
   >;
 def err_omp_event_var_expected : Error<
   "expected variable of the 'omp_event_handle_t' type%select{|, not %1}0">;
+def warn_nested_declare_variant
+    : Warning<"nesting `omp begin/end declare variant` is not supported yet; "
+              "nested context ignored">,
+      InGroup<SourceUsesOpenMP>;
 } // end of OpenMP category
 
 let CategoryName = "Related Result Type Issue" in {
