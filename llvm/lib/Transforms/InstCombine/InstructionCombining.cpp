@@ -895,6 +895,27 @@ Value *InstCombiner::freelyNegateValue(Value *V) {
           I->getName() + ".neg", cast<BinaryOperator>(I)->isExact());
     return nullptr;
 
+  // Negation is equivalent to bitwise-not + 1.
+  case Instruction::Xor: {
+    // Special case for negate of 'not' - replace with increment:
+    // 0 - (~A)  =>  ((A ^ -1) ^ -1) + 1  =>  A + 1
+    Value *A;
+    if (match(I, m_Not(m_Value(A))))
+      return Builder.CreateAdd(A, ConstantInt::get(A->getType(), 1),
+                               I->getName() + ".neg");
+
+    // General case xor (not a 'not') requires creating a new xor, so this has a
+    // one-use limitation:
+    // 0 - (A ^ C)  =>  ((A ^ C) ^ -1) + 1  =>  A ^ ~C + 1
+    Constant *C;
+    if (match(I, m_OneUse(m_Xor(m_Value(A), m_Constant(C))))) {
+      Value *Xor = Builder.CreateXor(A, ConstantExpr::getNot(C));
+      return Builder.CreateAdd(Xor, ConstantInt::get(Xor->getType(), 1),
+                               I->getName() + ".neg");
+    }
+    return nullptr;
+  }
+
   default:
     break;
   }
@@ -909,18 +930,6 @@ Value *InstCombiner::freelyNegateValue(Value *V) {
   case Instruction::Sub:
     return Builder.CreateSub(
         I->getOperand(1), I->getOperand(0), I->getName() + ".neg");
-
-  // Negation is equivalent to bitwise-not + 1:
-  // 0 - (A ^ C)  =>  ((A ^ C) ^ -1) + 1  =>  A ^ ~C + 1
-  case Instruction::Xor: {
-    Constant *C;
-    if (match(I->getOperand(1), m_Constant(C))) {
-      Value *Xor = Builder.CreateXor(I->getOperand(0), ConstantExpr::getNot(C));
-      return Builder.CreateAdd(Xor, ConstantInt::get(Xor->getType(), 1),
-                               I->getName() + ".neg");
-    }
-    return nullptr;
-  }
 
   // 0-(A sdiv C)  =>  A sdiv (0-C)  provided the negation doesn't overflow.
   case Instruction::SDiv: {
@@ -1627,7 +1636,7 @@ Instruction *InstCombiner::foldVectorBinop(BinaryOperator &Inst) {
   if (match(&Inst, m_c_BinOp(m_OneUse(m_ShuffleVector(m_Value(V1), m_Undef(),
                                                       m_Mask(Mask))),
                              m_Constant(C))) &&
-      V1->getType()->getVectorNumElements() <= NumElts) {
+      cast<VectorType>(V1->getType())->getNumElements() <= NumElts) {
     assert(Inst.getType()->getScalarType() == V1->getType()->getScalarType() &&
            "Shuffle should not change scalar type");
 
@@ -1638,7 +1647,7 @@ Instruction *InstCombiner::foldVectorBinop(BinaryOperator &Inst) {
     // ShMask = <1,1,2,2> and C = <5,5,6,6> --> NewC = <undef,5,6,undef>
     bool ConstOp1 = isa<Constant>(RHS);
     ArrayRef<int> ShMask = Mask;
-    unsigned SrcVecNumElts = V1->getType()->getVectorNumElements();
+    unsigned SrcVecNumElts = cast<VectorType>(V1->getType())->getNumElements();
     UndefValue *UndefScalar = UndefValue::get(C->getType()->getScalarType());
     SmallVector<Constant *, 16> NewVecC(SrcVecNumElts, UndefScalar);
     bool MayChange = true;
@@ -1849,8 +1858,8 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     return replaceInstUsesWith(GEP, V);
 
   // For vector geps, use the generic demanded vector support.
-  if (GEP.getType()->isVectorTy()) {
-    auto VWidth = GEP.getType()->getVectorNumElements();
+  if (auto *GEPVTy = dyn_cast<VectorType>(GEP.getType())) {
+    auto VWidth = GEPVTy->getNumElements();
     APInt UndefElts(VWidth, 0);
     APInt AllOnesEltMask(APInt::getAllOnesValue(VWidth));
     if (Value *V = SimplifyDemandedVectorElts(&GEP, AllOnesEltMask,
@@ -1862,7 +1871,7 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
 
     // TODO: 1) Scalarize splat operands, 2) scalarize entire instruction if
     // possible (decide on canonical form for pointer broadcast), 3) exploit
-    // undef elements to decrease demanded bits  
+    // undef elements to decrease demanded bits
   }
 
   Value *PtrOp = GEP.getOperand(0);
@@ -1886,7 +1895,8 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     Type *IndexTy = (*I)->getType();
     Type *NewIndexType =
         IndexTy->isVectorTy()
-            ? VectorType::get(NewScalarIndexTy, IndexTy->getVectorNumElements())
+            ? VectorType::get(NewScalarIndexTy,
+                              cast<VectorType>(IndexTy)->getNumElements())
             : NewScalarIndexTy;
 
     // If the element type has zero size then any index over it is equivalent
@@ -2381,8 +2391,9 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     // gep (bitcast [c x ty]* X to <c x ty>*), Y, Z --> gep X, Y, Z
     auto areMatchingArrayAndVecTypes = [](Type *ArrTy, Type *VecTy,
                                           const DataLayout &DL) {
-      return ArrTy->getArrayElementType() == VecTy->getVectorElementType() &&
-             ArrTy->getArrayNumElements() == VecTy->getVectorNumElements() &&
+      auto *VecVTy = cast<VectorType>(VecTy);
+      return ArrTy->getArrayElementType() == VecVTy->getElementType() &&
+             ArrTy->getArrayNumElements() == VecVTy->getNumElements() &&
              DL.getTypeAllocSize(ArrTy) == DL.getTypeAllocSize(VecTy);
     };
     if (GEP.getNumOperands() == 3 &&

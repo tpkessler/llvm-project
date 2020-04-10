@@ -8403,34 +8403,26 @@ static bool requiresAMDGPUProtectedVisibility(const Decl *D,
                                               llvm::GlobalValue *GV) {
   if (GV->getVisibility() != llvm::GlobalValue::HiddenVisibility)
     return false;
-  if (D->hasAttr<OpenCLKernelAttr>())
-    return true;
   if (isa<FunctionDecl>(D)) {
-    if (D->hasAttr<CUDAGlobalAttr>())
-      return true;
     if (D->hasAttr<AnnotateAttr>() &&
         D->getAttr<AnnotateAttr>()->getAnnotation() == "__HIP_global_function__")
       return true;
   }
+
+  return D->hasAttr<OpenCLKernelAttr>() ||
+         (isa<FunctionDecl>(D) && D->hasAttr<CUDAGlobalAttr>()) ||
+         (isa<VarDecl>(D) &&
+          (D->hasAttr<CUDADeviceAttr>() || D->hasAttr<CUDAConstantAttr>() ||
+           cast<VarDecl>(D)->getType()->isCUDADeviceBuiltinSurfaceType() ||
+           cast<VarDecl>(D)->getType()->isCUDADeviceBuiltinTextureType()));
+
   if (isa<VarDecl>(D)) {
-    if (D->hasAttr<CUDADeviceAttr>() || D->hasAttr<CUDAConstantAttr>())
-      return true;
-    if (D->hasAttr<HIPPinnedShadowAttr>())
-      return true;
     if (D->hasAttr<AnnotateAttr>() &&
         D->getAttr<AnnotateAttr>()->getAnnotation() == "__HIP_constant__")
       return true;
   }
 
   return false;
-}
-
-static bool requiresAMDGPUDefaultVisibility(const Decl *D,
-                                            llvm::GlobalValue *GV) {
-  if (GV->getVisibility() != llvm::GlobalValue::HiddenVisibility)
-    return false;
-
-  return isa<VarDecl>(D) && D->hasAttr<HIPPinnedShadowAttr>();
 }
 
 namespace {
@@ -8447,10 +8439,7 @@ inline llvm::APSInt getConstexprInt(const Expr *E, const ASTContext &Ctx) {
 
 void AMDGPUTargetCodeGenInfo::setTargetAttributes(
     const Decl *D, llvm::GlobalValue *GV, CodeGen::CodeGenModule &M) const {
-  if (requiresAMDGPUDefaultVisibility(D, GV)) {
-    GV->setVisibility(llvm::GlobalValue::DefaultVisibility);
-    GV->setDSOLocal(false);
-  } else if (requiresAMDGPUProtectedVisibility(D, GV)) {
+  if (requiresAMDGPUProtectedVisibility(D, GV)) {
     GV->setVisibility(llvm::GlobalValue::ProtectedVisibility);
     GV->setDSOLocal(true);
   }
