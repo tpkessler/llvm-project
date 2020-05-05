@@ -45,6 +45,7 @@
 #include "ToolChains/TCE.h"
 #include "ToolChains/WebAssembly.h"
 #include "ToolChains/XCore.h"
+#include "clang/Basic/OffloadArch.h"
 #include "clang/Basic/Version.h"
 #include "clang/Config/config.h"
 #include "clang/Driver/Action.h"
@@ -2355,8 +2356,20 @@ class OffloadingActionBuilder final {
     bool EmitLLVM = false;
     bool EmitAsm = false;
 
+    /// Id to identify each device compilation. For CUDA it is simply the
+    /// GPU arch string. For HIP it is either the GPU arch string or GPU
+    /// arch string plus feature strings delimited by a plus sign, e.g.
+    /// gfx906+xnack.
+    struct TargetId {
+      /// Target id string which is persistent throughout the compilation.
+      const char *Id;
+      TargetId(CudaArch Arch) { Id = CudaArchToString(Arch); }
+      TargetId(const char *Id) : Id(Id) {}
+      operator const char *() { return Id; }
+      operator StringRef() { return StringRef(Id); }
+    };
     /// List of GPU architectures to use in this compilation.
-    SmallVector<CudaArch, 4> GpuArchList;
+    SmallVector<TargetId, 4> GpuArchList;
 
     /// The CUDA actions for the current input.
     ActionList CudaDeviceActions;
@@ -2439,7 +2452,7 @@ class OffloadingActionBuilder final {
 
         for (auto Arch : GpuArchList) {
           CudaDeviceActions.push_back(UA);
-          UA->registerDependentActionInfo(ToolChains[0], CudaArchToString(Arch),
+          UA->registerDependentActionInfo(ToolChains[0], Arch,
                                           AssociatedOffloadKind);
         }
         return ABRT_Success;
@@ -2450,10 +2463,9 @@ class OffloadingActionBuilder final {
 
     void appendTopLevelActions(ActionList &AL) override {
       // Utility to append actions to the top level list.
-      auto AddTopLevel = [&](Action *A, CudaArch BoundArch) {
+      auto AddTopLevel = [&](Action *A, TargetId TargetId) {
         OffloadAction::DeviceDependences Dep;
-        Dep.add(*A, *ToolChains.front(), CudaArchToString(BoundArch),
-                AssociatedOffloadKind);
+        Dep.add(*A, *ToolChains.front(), TargetId, AssociatedOffloadKind);
         AL.push_back(C.MakeAction<OffloadAction>(Dep, A->getType()));
       };
 
@@ -2480,6 +2492,8 @@ class OffloadingActionBuilder final {
 
       CudaDeviceActions.clear();
     }
+
+    virtual bool IsValidOffloadArch(StringRef Arch) const = 0;
 
     bool initialize() override {
       assert(AssociatedOffloadKind == Action::OFK_Cuda ||
@@ -2528,7 +2542,7 @@ class OffloadingActionBuilder final {
       EmitAsm = Args.getLastArg(options::OPT_S);
 
       // Collect all cuda_gpu_arch parameters, removing duplicates.
-      std::set<CudaArch> GpuArchs;
+      std::set<StringRef> GpuArchs;
       bool Error = false;
       for (Arg *A : Args) {
         if (!(A->getOption().matches(options::OPT_offload_arch_EQ) ||
@@ -2542,21 +2556,19 @@ class OffloadingActionBuilder final {
           GpuArchs.clear();
           continue;
         }
-        CudaArch Arch = StringToCudaArch(ArchStr);
-        if (Arch == CudaArch::UNKNOWN) {
-          C.getDriver().Diag(clang::diag::err_drv_cuda_bad_gpu_arch) << ArchStr;
+        if (!IsValidOffloadArch(ArchStr)) {
           Error = true;
         } else if (A->getOption().matches(options::OPT_offload_arch_EQ))
-          GpuArchs.insert(Arch);
+          GpuArchs.insert(ArchStr);
         else if (A->getOption().matches(options::OPT_no_offload_arch_EQ))
-          GpuArchs.erase(Arch);
+          GpuArchs.erase(ArchStr);
         else
           llvm_unreachable("Unexpected option.");
       }
 
       // Collect list of GPUs remaining in the set.
-      for (CudaArch Arch : GpuArchs)
-        GpuArchList.push_back(Arch);
+      for (auto Arch : GpuArchs)
+        GpuArchList.push_back(Arch.data());
 
       // Default to sm_20 which is the lowest common denominator for
       // supported GPUs.  sm_20 code should work correctly, if
@@ -2576,6 +2588,15 @@ class OffloadingActionBuilder final {
                       const Driver::InputList &Inputs)
         : CudaActionBuilderBase(C, Args, Inputs, Action::OFK_Cuda) {
       DefaultCudaArch = CudaArch::SM_20;
+    }
+
+    bool IsValidOffloadArch(StringRef ArchStr) const override {
+      CudaArch Arch = StringToCudaArch(ArchStr);
+      if (Arch == CudaArch::UNKNOWN) {
+        C.getDriver().Diag(clang::diag::err_drv_cuda_bad_gpu_arch) << ArchStr;
+        return false;
+      }
+      return true;
     }
 
     ActionBuilderReturnCode
@@ -2637,8 +2658,7 @@ class OffloadingActionBuilder final {
 
           for (auto &A : {AssembleAction, BackendAction}) {
             OffloadAction::DeviceDependences DDep;
-            DDep.add(*A, *ToolChains.front(), CudaArchToString(GpuArchList[I]),
-                     Action::OFK_Cuda);
+            DDep.add(*A, *ToolChains.front(), GpuArchList[I], Action::OFK_Cuda);
             DeviceActions.push_back(
                 C.MakeAction<OffloadAction>(DDep, A->getType()));
           }
@@ -2697,6 +2717,22 @@ class OffloadingActionBuilder final {
 
     bool canUseBundlerUnbundler() const override { return true; }
 
+    bool IsValidOffloadArch(StringRef IdStr) const override {
+      bool IsValid;
+      const StringRef ArchStr =
+          parseOffloadArch(IdStr, /*FeatureMap=*/nullptr, &IsValid);
+      CudaArch Arch = StringToCudaArch(ArchStr);
+      if (Arch == CudaArch::UNKNOWN) {
+        C.getDriver().Diag(clang::diag::err_drv_cuda_bad_gpu_arch) << ArchStr;
+        return false;
+      }
+      if (!IsValid) {
+        C.getDriver().Diag(clang::diag::err_drv_bad_target_id) << IdStr;
+        return false;
+      }
+      return true;
+    };
+
     ActionBuilderReturnCode
     getDeviceDependences(OffloadAction::DeviceDependences &DA,
                          phases::ID CurPhase, phases::ID FinalPhase,
@@ -2736,8 +2772,8 @@ class OffloadingActionBuilder final {
           // device arch of the next action being propagated to the above link
           // action.
           OffloadAction::DeviceDependences DDep;
-          DDep.add(*CudaDeviceActions[I], *ToolChains.front(),
-                   CudaArchToString(GpuArchList[I]), AssociatedOffloadKind);
+          DDep.add(*CudaDeviceActions[I], *ToolChains.front(), GpuArchList[I],
+                   AssociatedOffloadKind);
           CudaDeviceActions[I] = C.MakeAction<OffloadAction>(
               DDep, CudaDeviceActions[I]->getType());
         }
@@ -2795,8 +2831,8 @@ class OffloadingActionBuilder final {
       for (auto &LI : DeviceLinkerInputs) {
         auto *DeviceLinkAction =
             C.MakeAction<LinkJobAction>(LI, types::TY_Image);
-        DA.add(*DeviceLinkAction, *ToolChains[0],
-               CudaArchToString(GpuArchList[I]), AssociatedOffloadKind);
+        DA.add(*DeviceLinkAction, *ToolChains[0], GpuArchList[I],
+               AssociatedOffloadKind);
         ++I;
       }
     }

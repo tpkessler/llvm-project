@@ -1057,6 +1057,9 @@ public:
     return Triple;
   }
 
+  /// Returns the target id if supported.
+  virtual llvm::Optional<std::string> getTargetId() const { return llvm::None; }
+
   const llvm::DataLayout &getDataLayout() const {
     assert(DataLayout && "Uninitialized DataLayout!");
     return *DataLayout;

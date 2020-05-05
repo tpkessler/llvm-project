@@ -80,6 +80,14 @@ public:
 
   static bool isWave64(const llvm::opt::ArgList &DriverArgs,
                        llvm::AMDGPU::GPUKind Kind);
+
+protected:
+  /// Translate -mcpu option containing target id to cc1 options.
+  /// Returns the GPU name.
+  StringRef translateTargetId(const llvm::opt::ArgList &DriverArgs,
+                              llvm::opt::ArgStringList &CC1Args) const;
+
+  StringRef getGPUArch(const llvm::opt::ArgList &DriverArgs) const;
 };
 
 class LLVM_LIBRARY_VISIBILITY ROCMToolChain : public AMDGPUToolChain {

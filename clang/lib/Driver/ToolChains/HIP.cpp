@@ -11,6 +11,7 @@
 #include "CommonArgs.h"
 #include "InputInfo.h"
 #include "clang/Basic/Cuda.h"
+#include "clang/Basic/OffloadArch.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/DriverDiagnostic.h"
@@ -117,6 +118,7 @@ const char *AMDGCN::Linker::constructOptCommand(
     Compilation &C, const JobAction &JA, const InputInfoList &Inputs,
     const llvm::opt::ArgList &Args, llvm::StringRef SubArchName,
     llvm::StringRef OutputFilePrefix, const char *InputFileName) const {
+  SubArchName = parseOffloadArch(SubArchName);
   // Construct opt command.
   ArgStringList OptArgs;
   // The input to opt is the output from llvm-link.
@@ -145,6 +147,7 @@ const char *AMDGCN::Linker::constructLlcCommand(
     const llvm::opt::ArgList &Args, llvm::StringRef SubArchName,
     llvm::StringRef OutputFilePrefix, const char *InputFileName,
     bool OutputIsAsm) const {
+  SubArchName = parseOffloadArch(SubArchName);
   // Construct llc command.
   ArgStringList LlcArgs;
   // The input to llc is the output from opt.
@@ -281,7 +284,8 @@ void HIPToolChain::addClangTargetOptions(
     Action::OffloadKind DeviceOffloadingKind) const {
   HostTC.addClangTargetOptions(DriverArgs, CC1Args, DeviceOffloadingKind);
 
-  StringRef GpuArch = DriverArgs.getLastArgValue(options::OPT_march_EQ);
+  // Allow using target id in --offload-arch.
+  StringRef GpuArch = translateTargetId(DriverArgs, CC1Args);
   assert(!GpuArch.empty() && "Must have an explicit GPU arch.");
   (void) GpuArch;
   assert(DeviceOffloadingKind == Action::OFK_HIP &&
@@ -289,8 +293,6 @@ void HIPToolChain::addClangTargetOptions(
   auto Kind = llvm::AMDGPU::parseArchAMDGCN(GpuArch);
   const StringRef CanonArch = llvm::AMDGPU::getArchNameAMDGCN(Kind);
 
-  CC1Args.push_back("-target-cpu");
-  CC1Args.push_back(DriverArgs.MakeArgStringRef(GpuArch));
   CC1Args.push_back("-fcuda-is-device");
 
   if (DriverArgs.hasFlag(options::OPT_fcuda_approx_transcendentals,
@@ -391,6 +393,7 @@ HIPToolChain::TranslateArgs(const llvm::opt::DerivedArgList &Args,
   }
 
   if (!BoundArch.empty()) {
+    DAL->eraseArg(options::OPT_mcpu_EQ);
     DAL->eraseArg(options::OPT_march_EQ);
     DAL->AddJoinedArg(nullptr, Opts.getOption(options::OPT_march_EQ), BoundArch);
   }

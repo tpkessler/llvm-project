@@ -53,6 +53,7 @@ add_clang_library(clangBasic
   LangStandards.cpp
   Module.cpp
   ObjCRuntime.cpp
+  OffloadArch.cpp
   OpenMPKinds.cpp
   OperatorPrecedence.cpp
   SanitizerBlacklist.cpp

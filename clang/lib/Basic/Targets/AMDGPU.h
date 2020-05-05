@@ -13,6 +13,7 @@
 #ifndef LLVM_CLANG_LIB_BASIC_TARGETS_AMDGPU_H
 #define LLVM_CLANG_LIB_BASIC_TARGETS_AMDGPU_H
 
+#include "clang/Basic/OffloadArch.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
 #include "llvm/ADT/StringSet.h"
@@ -40,6 +41,14 @@ class LLVM_LIBRARY_VISIBILITY AMDGPUTargetInfo final : public TargetInfo {
 
   llvm::AMDGPU::GPUKind GPUKind;
   unsigned GPUFeatures;
+
+  /// Target id is device name followed by optional feature name postfixed
+  /// by plus or minus sign delimitted by colon, e.g. gfx908:xnack+:sramecc-.
+  /// If the target id contains +feature, map it to true.
+  /// If the target id contains -feature, map it to false.
+  /// If the target id does not contain a feature (default), do not map it.
+  llvm::StringMap<bool> OffloadArchFeatures;
+  std::string TargetId;
 
   bool hasFP64() const {
     return getTriple().getArch() == llvm::Triple::amdgcn ||
@@ -363,6 +372,41 @@ public:
   void setAuxTarget(const TargetInfo *Aux) override;
 
   bool hasExtIntType() const override { return true; }
+
+  // Record offload arch features since they are needed for defining the
+  // pre-defined macros.
+  bool handleTargetFeatures(std::vector<std::string> &Features,
+                            DiagnosticsEngine &Diags) override {
+    for (auto &F : Features) {
+      assert(F.front() == '+' || F.front() == '-');
+      bool IsOn = F.front() == '+';
+      StringRef Name = StringRef(F).drop_front();
+      if (Name == "sram-ecc")
+        Name = "sramecc";
+      if (Name != "xnack" && Name != "sramecc")
+        continue;
+      assert(OffloadArchFeatures.find(Name) == OffloadArchFeatures.end());
+      OffloadArchFeatures[Name] = IsOn;
+    }
+    return true;
+  }
+
+  Optional<std::string> getTargetId() const override {
+    if (!isAMDGCN(getTriple()))
+      return llvm::None;
+    // When -target-cpu is not set, we assume generic code that it is valid
+    // for all GPU and use an empty string as target id to represent that.
+    if (GPUKind == llvm::AMDGPU::GK_NONE)
+      return std::string("");
+    StringRef CanonName = getArchNameAMDGCN(GPUKind);
+    std::string TargetId = CanonName.str();
+    for (auto F : getAllPossibleOffloadArchFeatures(CanonName)) {
+      auto Loc = OffloadArchFeatures.find(F);
+      if (Loc != OffloadArchFeatures.end())
+        TargetId = TargetId + ':' + F.str() + (Loc->second ? "+" : "-");
+    }
+    return TargetId;
+  }
 };
 
 } // namespace targets

@@ -9,6 +9,7 @@
 #include "AMDGPU.h"
 #include "CommonArgs.h"
 #include "InputInfo.h"
+#include "clang/Basic/OffloadArch.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "llvm/Option/ArgList.h"
@@ -288,16 +289,22 @@ AMDGPUToolChain::TranslateArgs(const DerivedArgList &Args, StringRef BoundArch,
   DerivedArgList *DAL =
       Generic_ELF::TranslateArgs(Args, BoundArch, DeviceOffloadKind);
 
-  // Do nothing if not OpenCL (-x cl)
-  if (!Args.getLastArgValue(options::OPT_x).equals("cl"))
-    return DAL;
+  const OptTable &Opts = getDriver().getOpts();
 
   if (!DAL)
     DAL = new DerivedArgList(Args.getBaseArgs());
-  for (auto *A : Args)
-    DAL->append(A);
+  for (auto *A : Args) {
+    // Clang always pass -mcpu to clang -cc1 by -target-cpu. For translating
+    // target id, we have to pass it by -march.
+    if (A->getOption().matches(options::OPT_mcpu_EQ))
+      DAL->AddJoinedArg(nullptr, Opts.getOption(options::OPT_march_EQ),
+                        Args.getLastArgValue(options::OPT_mcpu_EQ));
+    else
+      DAL->append(A);
+  }
 
-  const OptTable &Opts = getDriver().getOpts();
+  if (!Args.getLastArgValue(options::OPT_x).equals("cl"))
+    return DAL;
 
   // Phase 1 (.cl -> .bc)
   if (Args.hasArg(options::OPT_c) && Args.hasArg(options::OPT_emit_llvm)) {
@@ -342,7 +349,8 @@ llvm::DenormalMode AMDGPUToolChain::getDefaultDenormalModeForType(
 
   if (JA.getOffloadingDeviceKind() == Action::OFK_HIP ||
       JA.getOffloadingDeviceKind() == Action::OFK_Cuda) {
-    auto Kind = llvm::AMDGPU::parseArchAMDGCN(JA.getOffloadingArch());
+    auto Kind =
+        llvm::AMDGPU::parseArchAMDGCN(parseOffloadArch(JA.getOffloadingArch()));
     if (FPType && FPType == &llvm::APFloat::IEEEsingle() &&
         DriverArgs.hasFlag(options::OPT_fcuda_flush_denormals_to_zero,
                            options::OPT_fno_cuda_flush_denormals_to_zero,
@@ -352,7 +360,7 @@ llvm::DenormalMode AMDGPUToolChain::getDefaultDenormalModeForType(
     return llvm::DenormalMode::getIEEE();
   }
 
-  const StringRef GpuArch = DriverArgs.getLastArgValue(options::OPT_mcpu_EQ);
+  const StringRef GpuArch = getGPUArch(DriverArgs);
   auto Kind = llvm::AMDGPU::parseArchAMDGCN(GpuArch);
 
   // TODO: There are way too many flags that change this. Do we need to check
@@ -386,6 +394,8 @@ void AMDGPUToolChain::addClangTargetOptions(
     const llvm::opt::ArgList &DriverArgs,
     llvm::opt::ArgStringList &CC1Args,
     Action::OffloadKind DeviceOffloadingKind) const {
+  // Allow using target id in -mcpu.
+  translateTargetId(DriverArgs, CC1Args);
   // Default to "hidden" visibility, as object level linking will not be
   // supported for the foreseeable future.
   if (!DriverArgs.hasArg(options::OPT_fvisibility_EQ,
@@ -394,6 +404,56 @@ void AMDGPUToolChain::addClangTargetOptions(
     CC1Args.push_back("hidden");
     CC1Args.push_back("-fapply-global-visibility-to-externs");
   }
+}
+
+StringRef
+AMDGPUToolChain::getGPUArch(const llvm::opt::ArgList &DriverArgs) const {
+  assert(!DriverArgs.hasArg(options::OPT_mcpu_EQ) &&
+         "-mcpu should have been translated to -march");
+  return parseOffloadArch(DriverArgs.getLastArgValue(options::OPT_march_EQ));
+}
+
+StringRef
+AMDGPUToolChain::translateTargetId(const llvm::opt::ArgList &DriverArgs,
+                                   llvm::opt::ArgStringList &CC1Args) const {
+  StringRef GpuArch;
+  llvm::StringMap<bool> FeatureMap;
+  assert(!DriverArgs.hasArg(options::OPT_mcpu_EQ) &&
+         "-mcpu should have been translated to -march");
+  StringRef TargetId = DriverArgs.getLastArgValue(options::OPT_march_EQ);
+  if (TargetId.empty())
+    return GpuArch;
+
+  bool IsValid;
+  GpuArch = parseOffloadArch(TargetId, &FeatureMap, &IsValid);
+  if (!IsValid) {
+    getDriver().Diag(clang::diag::err_drv_bad_target_id) << TargetId;
+    return GpuArch;
+  }
+
+  if (GpuArch.empty())
+    return GpuArch;
+
+  CC1Args.push_back("-target-cpu");
+  CC1Args.push_back(DriverArgs.MakeArgStringRef(GpuArch));
+
+  // Iterate through all possible target id features for the given GPU.
+  // If it is mapped to true, pass -mfeature to clang -cc1.
+  // If it is mapped to false, pass -mno-feature to clang -cc1.
+  // If it is not in the map (default), do not pass it to clang -cc1.
+  for (auto Feature : getAllPossibleOffloadArchFeatures(GpuArch)) {
+    auto Pos = FeatureMap.find(Feature);
+    if (Pos == FeatureMap.end())
+      continue;
+    CC1Args.push_back("-target-feature");
+    auto FeatureName = Feature;
+    if (Feature == "sramecc")
+      FeatureName = "sram-ecc";
+    std::string Opt = (Twine(Pos->second ? "+" : "-") + FeatureName).str();
+    CC1Args.push_back(DriverArgs.MakeArgStringRef(Opt));
+  }
+
+  return GpuArch;
 }
 
 void ROCMToolChain::addClangTargetOptions(
@@ -417,7 +477,7 @@ void ROCMToolChain::addClangTargetOptions(
   }
 
   // Get the device name and canonicalize it
-  const StringRef GpuArch = DriverArgs.getLastArgValue(options::OPT_mcpu_EQ);
+  const StringRef GpuArch = getGPUArch(DriverArgs);
   auto Kind = llvm::AMDGPU::parseArchAMDGCN(GpuArch);
   const StringRef CanonArch = llvm::AMDGPU::getArchNameAMDGCN(Kind);
   std::string LibDeviceFile = RocmInstallation.getLibDeviceFile(CanonArch);

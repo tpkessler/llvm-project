@@ -601,6 +601,18 @@ void CodeGenModule::Release() {
                                   llvm::DenormalMode::IEEE);
   }
 
+  if (auto TargetId = getTarget().getTargetId()) {
+    auto TargetIdStr = TargetId.getValue();
+    // Empty target id is emitted as empty string in module flag.
+    getModule().addModuleFlag(
+        llvm::Module::MergeTargetId, "target-id",
+        llvm::MDString::get(
+            getModule().getContext(),
+            TargetIdStr == ""
+                ? TargetIdStr
+                : (Twine(getTriple().str()) + "-" + TargetIdStr).str()));
+  }
+
   // Emit OpenCL specific module metadata: OpenCL/SPIR version.
   if (LangOpts.OpenCL) {
     EmitOpenCLMetadata();
