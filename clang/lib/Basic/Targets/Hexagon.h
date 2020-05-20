@@ -138,6 +138,17 @@ public:
     // We can write more stricter checks later.
     return CPU.find('t') != std::string::npos;
   }
+
+  bool
+  isFPAtomicFetchAddSubSupported(const llvm::fltSemantics &FS) const override {
+    switch (llvm::APFloat::SemanticsToEnum(FS)) {
+    case llvm::APFloat::S_IEEEsingle:
+    case llvm::APFloat::S_IEEEdouble:
+      return true;
+    default:
+      return false;
+    }
+  }
 };
 } // namespace targets
 } // namespace clang

@@ -354,6 +354,17 @@ public:
   }
 
   void setAuxTarget(const TargetInfo *Aux) override;
+
+  bool
+  isFPAtomicFetchAddSubSupported(const llvm::fltSemantics &FS) const override {
+    switch (llvm::APFloat::SemanticsToEnum(FS)) {
+    case llvm::APFloat::S_IEEEsingle:
+    case llvm::APFloat::S_IEEEdouble:
+      return true;
+    default:
+      return false;
+    }
+  }
 };
 
 } // namespace targets

@@ -181,6 +181,17 @@ public:
   int getEHDataRegisterNumber(unsigned RegNo) const override;
 
   bool hasSjLjLowering() const override;
+
+
+  bool
+  isFPAtomicFetchAddSubSupported(const llvm::fltSemantics &FS) const override {
+    switch (llvm::APFloat::SemanticsToEnum(FS)) {
+    case llvm::APFloat::S_IEEEsingle:
+      return true;
+    default:
+      return false;
+    }
+  }
 };
 
 class LLVM_LIBRARY_VISIBILITY ARMleTargetInfo : public ARMTargetInfo {
