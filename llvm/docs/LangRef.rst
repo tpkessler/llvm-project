@@ -6459,6 +6459,16 @@ The following behaviors are supported:
      - **Max**
            Takes the max of the two values, which are required to be integers.
 
+   * - 8
+     - **MergeTargetId**
+           Merge two string values in target id format. A target id consists of
+           a triple-cpu id string followed by a list of features delimited by
+           ':'. Each feature is a string postfixed by '+' or '-'. The features
+           in the source target id only are added to the destination target id
+           if their triple-cpu id matches. If a feature is in both source and
+           destination target ids but with different sign, an error of conflict
+           module flags will be emitted.
+
 It is an error for a particular unique flag ID to have multiple behaviors,
 except in the case of **Require** (which adds restrictions on another metadata
 value) or **Override**.

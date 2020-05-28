@@ -1195,6 +1195,35 @@ void IRLinker::linkNamedMDNodes() {
 
 /// Merge the linker flags in Src into the Dest module.
 Error IRLinker::linkModuleFlagsMetadata() {
+  // A module with MergeTargetId is not allowed to link with a module
+  // without MergeTargetId.
+  auto HasMergeTargetIdBehavior = [](Module &M) {
+    auto *ModFlags = M.getModuleFlagsMetadata();
+    if (!ModFlags)
+      return false;
+    for (unsigned I = 0, E = ModFlags->getNumOperands(); I != E; ++I) {
+      MDNode *Op = ModFlags->getOperand(I);
+      ConstantInt *Behavior = mdconst::extract<ConstantInt>(Op->getOperand(0));
+      if (Behavior->getZExtValue() == Module::MergeTargetId)
+        return true;
+    }
+    return false;
+  };
+  // llvm-link starts with an empty module and adds modules one by one. We
+  // have to allow the empty module to link with any other module.
+  if (DstM.getModuleFlagsMetadata()) {
+    bool SrcHasTargetId = HasMergeTargetIdBehavior(*SrcM);
+    bool DstHasTargetId = HasMergeTargetIdBehavior(DstM);
+    if (SrcHasTargetId != DstHasTargetId) {
+      auto *HasM = SrcHasTargetId ? &*SrcM : &DstM;
+      auto *NoM = SrcHasTargetId ? &DstM : &*SrcM;
+      return stringErr("cannot link '" + HasM->getModuleIdentifier() +
+                       "' which has target-id with '" +
+                       NoM->getModuleIdentifier() +
+                       "' which does not have target-id.");
+    }
+  }
+
   // If the source module has no module flags, we are done.
   const NamedMDNode *SrcModFlags = SrcM->getModuleFlagsMetadata();
   if (!SrcModFlags)
@@ -1374,6 +1403,92 @@ Error IRLinker::linkModuleFlagsMetadata() {
 
       replaceDstValue(MDNode::get(DstM.getContext(),
                                   makeArrayRef(Elts.begin(), Elts.end())));
+      break;
+    }
+    case Module::MergeTargetId: {
+      auto DstTargetId = cast<MDString>(DstOp->getOperand(2))->getString();
+      auto SrcTargetId = cast<MDString>(SrcOp->getOperand(2))->getString();
+
+      // Extract features from target id. Features are strings ending with '+'
+      // or '-' delimited by ':'. Returns false if the format is invalid.
+      auto GetFeatures = [](StringRef TargetId, StringMap<bool> &Features) {
+        auto Splits = TargetId.split(':');
+        auto FeatureStr = Splits.second;
+        while (!FeatureStr.empty()) {
+          auto Splits = FeatureStr.split(':');
+          auto F = Splits.first;
+          auto Sign = F.back();
+          if (Sign != '+' && Sign != '-')
+            return false;
+          F = F.drop_back();
+          if (F.empty())
+            return false;
+          auto Loc = Features.find(F);
+          if (Loc != Features.end())
+            return false;
+          Features[F] = Sign == '+';
+          FeatureStr = Splits.second;
+        }
+        return true;
+      };
+      StringMap<bool> DstFeatures;
+      StringMap<bool> SrcFeatures;
+      // Diagnose target ids whose formats are invalid.
+      if (!GetFeatures(DstTargetId, DstFeatures)) {
+        return stringErr("invalid module flag '" + ID->getString() +
+                         "': incorrect format ('" + DstTargetId + "' from '" +
+                         DstM.getModuleIdentifier() + "'");
+      }
+      if (!GetFeatures(SrcTargetId, SrcFeatures)) {
+        return stringErr("invalid module flag '" + ID->getString() +
+                         "': incorrect format ('" + SrcTargetId + "' from '" +
+                         SrcM->getModuleIdentifier() + "'");
+      }
+
+      // If destination and source target id's both contain a feature but with
+      // different signs, they cannot be merged.
+      for (const auto &F : DstFeatures) {
+        auto Loc = SrcFeatures.find(F.getKeyData());
+        if (Loc != SrcFeatures.end() && Loc->second != F.second)
+          return stringErr("linking module flags '" + ID->getString() +
+                           "': IDs have conflicting values ('" + DstTargetId +
+                           "' from '" + SrcM->getModuleIdentifier() +
+                           "' with '" + SrcTargetId + "' from '" +
+                           DstM.getModuleIdentifier() + "'");
+      }
+
+      // Merge features from source target id into destination target id.
+      // This can only be done if source and target triple and cpu matches,
+      // otherwise the target ids have conflicts.
+      auto DstTripleCPU = DstTargetId.split(':').first.str();
+      auto SrcTripleCPU = SrcTargetId.split(':').first.str();
+      for (const auto &F : SrcFeatures) {
+        auto Loc = DstFeatures.find(F.getKeyData());
+        if (Loc == DstFeatures.end()) {
+          if (DstTripleCPU != SrcTripleCPU)
+            return stringErr("linking module flags '" + ID->getString() +
+                             "': IDs have conflicting values ('" + DstTargetId +
+                             "' from '" + SrcM->getModuleIdentifier() +
+                             "' with '" + SrcTargetId + "' from '" +
+                             DstM.getModuleIdentifier() + "'");
+          DstFeatures[F.getKeyData()] = F.second;
+        }
+      }
+
+      // Create a target id whose triple and cpu are the same as the original
+      // destination target id but contains new features merged from the source
+      // target id.
+      std::string MergedTargetId = DstTargetId.split(':').first.str();
+      for (const auto &F : DstFeatures)
+        MergedTargetId =
+            MergedTargetId + ":" + F.getKeyData() + (F.second ? "+" : "-");
+
+      // Create the new module flag containing the merged target id.
+      Metadata *FlagOps[] = {DstOp->getOperand(0), ID,
+                             MDString::get(DstM.getContext(), MergedTargetId)};
+      MDNode *Flag = MDNode::get(DstM.getContext(), FlagOps);
+      DstModFlags->setOperand(DstIndex, Flag);
+      Flags[ID].first = Flag;
       break;
     }
     }
