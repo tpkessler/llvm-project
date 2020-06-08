@@ -122,7 +122,7 @@ llvm::DenormalMode AMDGPUToolChain::getDefaultDenormalModeForType(
   if (!FPType || FPType != &llvm::APFloat::IEEEsingle())
     return llvm::DenormalMode::getIEEE();
 
-  if (DeviceOffloadKind == Action::OFK_Cuda) {
+  if (DeviceOffloadKind == Action::OFK_HIP) {
     if (FPType && FPType == &llvm::APFloat::IEEEsingle() &&
         DriverArgs.hasFlag(options::OPT_fcuda_flush_denormals_to_zero,
                            options::OPT_fno_cuda_flush_denormals_to_zero,
