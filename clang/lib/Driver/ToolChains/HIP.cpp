@@ -183,6 +183,7 @@ const char *AMDGCN::Linker::constructLlcCommand(
     if (!A->getOption().matches(options::OPT_glldb) &&
         !A->getOption().matches(options::OPT_gsce)) {
       LlcArgs.push_back("-amdgpu-spill-cfi-saved-regs");
+      LlcArgs.push_back("-disable-dwarf-locations");
     }
   }
 
