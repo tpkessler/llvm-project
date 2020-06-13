@@ -327,6 +327,105 @@ For example:
                             (see :ref:`amdgpu-amdhsa-memory-model`).
      ====================== ==================================================
 
+.. _amdgpu-target-ids:
+
+Target IDs
+----------
+
+Target id is a string in the format of a processor with a list of predefined
+feature strings delimited by colon. Each feature string must be postfixed by a
+plus or minus sign, e.g. ``gfx908:xnack+:sramecc-``.
+
+The canonical form of target id requests the feasture strings follow
+alphabetical order.
+
+The non-canonical form of target id does not request the feature strings to
+follow a specific order.
+
+The compiler should accept canonical and non-canonical form of target ids
+and output canonical form of target ids.
+
+Target id is used to indicate the processor configuration a device binary is
+compiled for. A device binary compiled with a target id implicating the default
+value of a feature can be executed on a processor configured with the featur on
+or off. A device binary compiled with a target id with a feature on or off
+may or may not be excuted on a processor with an opposite configuration.
+
+Target id can be treated as an extension of processor since the validity of a
+device binary depends not only on the processor but also its configuration
+which is represented by a set of features. Target id provides a way to
+represent processor configurations which affect ISA generation. Without target
+id such configurations are usually represented by introducing artificial
+processor names which encodes real processors with ISA affecting configurations.
+Usage of target id avoids combination explosion of processor names due to
+increasing number of features affecting ISA generation.
+
+In HIP language, a program may be compiled for multiple target ids. For each
+target id, device binaries are generated and embeded in the executible. HIP
+runtime detects the GPU processor and ISA affecting configuration, and choose
+the best device binary based on its target id. For example, on gfx908 with
+xnack on, if device binaries with target ids ``gfx908:xnack+`` and ``gfx908:xnack-``
+are available, HIP runtime will choose gfx908:xnack+ since it matches the
+processor configuration best.
+
+To avoid ambiguity of choosing device binary at run time, there are restrictions
+for target ids in a HIP compilation: If a feature F shows up in a target id
+containing processor P, then all other target ids containing processor P must
+also contain feature F. For example, ``gfx908:xnack+`` and ``gfx908:xnack-`` can be
+used in one HIP compilation, but ``gfx908:xnack+`` and ``gfx908`` cannot be used in
+one HIP compilation.
+
+The following table lists feature strings that can be used in target ids.
+
+  .. table:: AMDGPU Target ID Features
+     :name: amdgpu-target-id-feature-table
+
+     =========== ===============================================
+     Target ID   Description
+     Feature
+     =========== ===============================================
+     ``xnack``   Whether XNACK replay is enabled/disabled on the
+                 device. A binary with xnack on can execute
+                 on a device with xnack on or off, but has
+                 performance penalties on a device with xnack
+                 off. A binary with xnack off can only execute
+                 on a device with xnack off. Default implies
+                 on.
+     -----------------------------------------------------------
+     ``sramecc`` Whether SRAM ECC is enabled/disabled on the
+                 device. A binary with sramecc on can execute
+                 on a device with sramecc on or off, but has
+                 performance penalties on a device with sramecc
+                 off. A binary with sramecc off can only
+                 execute on a device with sramecc off. Default
+                 implies on.
+     =========== ===============================================
+
+Use the ``clang --offload-arch <TargetID>`` option to specify the target id. Only
+supported target id features for a specific processor listed in the following
+table can be used. If a processor is not listed in the following table, no
+target id features can be used with it.
+
+  .. table:: AMDGPU Target ID
+     :name: amdgpu-target-id-table
+
+     =========== =================
+     Processor   Target ID
+                 Features
+                 Supported
+     =========== =================
+     ``gfx902``  - xnack
+     ``gfx906``  - sramecc
+     ``gfx908``  - xnack
+                 - sramecc
+     ``gfx909``  - xnack
+                 - sramecc
+     -----------------------------
+     ``gfx1010`` - xnack
+     ``gfx1011`` - xnack
+     ``gfx1012`` - xnack
+     =========== =================
+
 .. _amdgpu-address-spaces:
 
 Address Spaces
