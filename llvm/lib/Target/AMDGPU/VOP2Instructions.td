@@ -459,6 +459,7 @@ def VOP_WRITELANE : VOPProfile<[i32, i32, i32, i32]> {
 //===----------------------------------------------------------------------===//
 
 defm V_CNDMASK_B32 : VOP2eInst <"v_cndmask_b32", VOP2e_I32_I32_I32_I1>;
+let SubtargetPredicate = HasMadMacF32Insts in
 def V_MADMK_F32 : VOP2_Pseudo <"v_madmk_f32", VOP_MADMK_F32, []>;
 
 let isCommutable = 1 in {
@@ -484,12 +485,16 @@ defm V_AND_B32 : VOP2Inst <"v_and_b32", VOP_PAT_GEN<VOP_I32_I32_I32>, and>;
 defm V_OR_B32 : VOP2Inst <"v_or_b32", VOP_PAT_GEN<VOP_I32_I32_I32>, or>;
 defm V_XOR_B32 : VOP2Inst <"v_xor_b32", VOP_PAT_GEN<VOP_I32_I32_I32>, xor>;
 
+let mayRaiseFPException = 0 in {
+let SubtargetPredicate = HasMadMacF32Insts in {
 let Constraints = "$vdst = $src2", DisableEncoding="$src2",
     isConvertibleToThreeAddress = 1 in {
 defm V_MAC_F32 : VOP2Inst <"v_mac_f32", VOP_MAC_F32>;
 }
 
 def V_MADAK_F32 : VOP2_Pseudo <"v_madak_f32", VOP_MADAK_F32, []>;
+} // End SubtargetPredicate = HasMadMacF32Insts
+}
 
 // No patterns so that the scalar instructions are always selected.
 // The scalar versions will be replaced with vector when needed later.
@@ -543,6 +548,7 @@ defm V_MAX_LEGACY_F32 : VOP2Inst <"v_max_legacy_f32", VOP_F32_F32_F32, AMDGPUfma
 
 let isCommutable = 1 in {
 let SubtargetPredicate = isGFX6GFX7GFX10 in {
+let OtherPredicates = [HasMadMacF32Insts] in
 defm V_MAC_LEGACY_F32 : VOP2Inst <"v_mac_legacy_f32", VOP_F32_F32_F32>;
 } // End SubtargetPredicate = isGFX6GFX7GFX10
 let SubtargetPredicate = isGFX6GFX7 in {
@@ -1264,6 +1270,7 @@ let SubtargetPredicate = isGFX6GFX7 in {
 defm V_ADD_F32            : VOP2_Real_gfx6_gfx7_gfx10<0x003>;
 defm V_SUB_F32            : VOP2_Real_gfx6_gfx7_gfx10<0x004>;
 defm V_SUBREV_F32         : VOP2_Real_gfx6_gfx7_gfx10<0x005>;
+let OtherPredicates = [HasMadMacF32Insts] in
 defm V_MAC_LEGACY_F32     : VOP2_Real_gfx6_gfx7_gfx10<0x006>;
 defm V_MUL_LEGACY_F32     : VOP2_Real_gfx6_gfx7_gfx10<0x007>;
 defm V_MUL_F32            : VOP2_Real_gfx6_gfx7_gfx10<0x008>;
@@ -1596,3 +1603,9 @@ let SubtargetPredicate = HasDot3Insts in {
 let SubtargetPredicate = HasPkFmacF16Inst in {
 defm V_PK_FMAC_F16 : VOP2_Real_e32_vi<0x3c>;
 } // End SubtargetPredicate = HasPkFmacF16Inst
+
+let SubtargetPredicate = HasDot3Insts in {
+  // NB: Opcode conflicts with V_DOT2C_F32_F16
+  let DecoderNamespace = "GFX10_B" in
+  defm V_DOT8C_I32_I4 : VOP2_Real_DOT_ACC_gfx10<0x02>;
+}
