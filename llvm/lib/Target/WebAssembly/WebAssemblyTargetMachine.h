@@ -46,6 +46,10 @@ public:
     return TLOF.get();
   }
 
+  MachineFunctionInfo *
+  createMachineFunctionInfo(BumpPtrAllocator &Allocator, const Function &F,
+                            const TargetSubtargetInfo *STI) const override;
+
   TargetTransformInfo getTargetTransformInfo(const Function &F) const override;
 
   bool usesPhysRegsForValues() const override { return false; }
