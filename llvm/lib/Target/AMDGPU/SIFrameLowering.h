@@ -81,6 +81,13 @@ private:
 public:
   bool hasFP(const MachineFunction &MF) const override;
 
+  /// If '-amdgpu-spill-cfi-saved-regs' is enabled, emit RA/EXEC spills to
+  /// a free VGPR (lanes) or memory and corresponding CFI rules.
+  void emitCFISavedRegSpills(MachineFunction &MF, MachineBasicBlock &MBB,
+                             MachineBasicBlock::iterator MBBI,
+                             LivePhysRegs &LiveRegs, Register &ScratchExecCopy,
+                             bool emitSpillsToMem) const;
+
   /// Create a CFI index for CFIInst and build a MachineInstr around it.
   void buildCFI(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
                 const DebugLoc &DL, const MCCFIInstruction &CFIInst) const;
