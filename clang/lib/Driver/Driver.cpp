@@ -102,6 +102,7 @@ static llvm::Triple getHIPOffloadTargetTriple() {
   return T;
 }
 
+// static
 std::string Driver::GetResourcesPath(StringRef BinaryPath,
                                      StringRef CustomResourceDir) {
   // Since the resource directory is embedded in the module hash, it's important
@@ -2569,9 +2570,8 @@ class OffloadingActionBuilder final {
     /// option is invalid.
     virtual StringRef getCanonicalOffloadArch(StringRef Arch) = 0;
 
-    virtual bool isValidOffloadArchCombination(
-        const std::set<StringRef> &GpuArchs,
-        llvm::SmallVectorImpl<llvm::StringRef> &ConflictingTIDs) = 0;
+    virtual llvm::Optional<std::pair<llvm::StringRef, llvm::StringRef>>
+    getConflictOffloadArchCombination(const std::set<StringRef> &GpuArchs) = 0;
 
     bool initialize() override {
       assert(AssociatedOffloadKind == Action::OFK_Cuda ||
@@ -2645,11 +2645,11 @@ class OffloadingActionBuilder final {
           llvm_unreachable("Unexpected option.");
       }
 
-      llvm::SmallVector<llvm::StringRef, 2> ConflictingArchs;
-      if (!isValidOffloadArchCombination(GpuArchs, ConflictingArchs)) {
-        assert(ConflictingArchs.size() == 2);
+      auto &&ConflictingArchs = getConflictOffloadArchCombination(GpuArchs);
+      if (ConflictingArchs) {
         C.getDriver().Diag(clang::diag::err_drv_bad_offload_arch_combo)
-            << ConflictingArchs[0] << ConflictingArchs[1];
+            << ConflictingArchs.getValue().first
+            << ConflictingArchs.getValue().second;
         C.setContainsError();
         return true;
       }
@@ -2687,10 +2687,10 @@ class OffloadingActionBuilder final {
       return CudaArchToString(Arch);
     }
 
-    bool isValidOffloadArchCombination(
-        const std::set<StringRef> &GpuArchs,
-        llvm::SmallVectorImpl<llvm::StringRef> &ConflictingTIDs) override {
-      return true;
+    llvm::Optional<std::pair<llvm::StringRef, llvm::StringRef>>
+    getConflictOffloadArchCombination(
+        const std::set<StringRef> &GpuArchs) override {
+      return llvm::None;
     }
 
     ActionBuilderReturnCode
@@ -2823,10 +2823,10 @@ class OffloadingActionBuilder final {
       return Args.MakeArgStringRef(CanId);
     };
 
-    bool isValidOffloadArchCombination(
-        const std::set<StringRef> &GpuArchs,
-        llvm::SmallVectorImpl<llvm::StringRef> &ConflictingTIDs) override {
-      return isValidTargetIDCombination(GpuArchs, &ConflictingTIDs);
+    llvm::Optional<std::pair<llvm::StringRef, llvm::StringRef>>
+    getConflictOffloadArchCombination(
+        const std::set<StringRef> &GpuArchs) override {
+      return getConflictTargetIDCombination(GpuArchs);
     }
 
     ActionBuilderReturnCode
@@ -4875,10 +4875,20 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
   }
 
   SmallString<128> BasePath(BaseInput);
+  SmallString<128> ExternalPath("");
   StringRef BaseName;
 
   // Dsymutil actions should use the full path.
-  if (isa<DsymutilJobAction>(JA) || isa<VerifyJobAction>(JA))
+  if (isa<DsymutilJobAction>(JA) && C.getArgs().hasArg(options::OPT_dsym_dir)) {
+    ExternalPath += C.getArgs().getLastArg(options::OPT_dsym_dir)->getValue();
+    // We use posix style here because the tests (specifically
+    // darwin-dsymutil.c) demonstrate that posix style paths are acceptable
+    // even on Windows and if we don't then the similar test covering this
+    // fails.
+    llvm::sys::path::append(ExternalPath, llvm::sys::path::Style::posix,
+                            llvm::sys::path::filename(BasePath));
+    BaseName = ExternalPath;
+  } else if (isa<DsymutilJobAction>(JA) || isa<VerifyJobAction>(JA))
     BaseName = BasePath;
   else
     BaseName = llvm::sys::path::filename(BasePath);

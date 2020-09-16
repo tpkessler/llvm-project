@@ -898,6 +898,7 @@ public:
                               MachineRegisterInfo &MRI) const;
 
   void legalizeOperandsSMRD(MachineRegisterInfo &MRI, MachineInstr &MI) const;
+  void legalizeOperandsFLAT(MachineRegisterInfo &MRI, MachineInstr &MI) const;
 
   void legalizeGenericOperand(MachineBasicBlock &InsertMBB,
                               MachineBasicBlock::iterator I,
@@ -1068,6 +1069,8 @@ public:
   unsigned getInstrLatency(const InstrItineraryData *ItinData,
                            const MachineInstr &MI,
                            unsigned *PredCost = nullptr) const override;
+
+  static unsigned getDSShaderTypeValue(const MachineFunction &MF);
 };
 
 /// \brief Returns true if a reg:subreg pair P has a TRC class
