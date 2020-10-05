@@ -8650,9 +8650,6 @@ Sema::ActOnRequiresExpr(SourceLocation RequiresKWLoc,
                         ArrayRef<ParmVarDecl *> LocalParameters,
                         ArrayRef<concepts::Requirement *> Requirements,
                         SourceLocation ClosingBraceLoc) {
-  auto *RE = RequiresExpr::Create(Context, RequiresKWLoc, Body, LocalParameters,
-                                  Requirements, ClosingBraceLoc);
-  if (DiagnoseUnexpandedParameterPackInRequiresExpr(RE))
-    return ExprError();
-  return RE;
+  return RequiresExpr::Create(Context, RequiresKWLoc, Body, LocalParameters,
+                              Requirements, ClosingBraceLoc);
 }

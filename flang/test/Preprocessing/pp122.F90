@@ -1,12 +1,10 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: ch = "KWM"
 ! KWM NOT expanded in "literal"
 #define KWM 666
       character(len=3) :: ch
       ch = "KWM"
       if (ch .eq. 'KWM') then
-        print *, 'pp122.F90 yes'
+        print *, 'pp122.F90 pass'
       else
-        print *, 'pp122.F90 no: ', ch
+        print *, 'pp122.F90 FAIL: ', ch
       end if
       end

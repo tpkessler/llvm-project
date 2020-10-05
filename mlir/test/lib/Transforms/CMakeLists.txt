@@ -5,7 +5,6 @@ add_mlir_library(MLIRTestTransforms
   TestExpandTanh.cpp
   TestCallGraph.cpp
   TestConstantFold.cpp
-  TestConvertCallOp.cpp
   TestConvertGPUKernelToCubin.cpp
   TestConvertGPUKernelToHsaco.cpp
   TestDominance.cpp

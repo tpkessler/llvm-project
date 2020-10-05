@@ -400,18 +400,18 @@ void VirtRegRewriter::handleIdentityCopy(MachineInstr &MI) const {
 /// after processing the last in the bundle. Does not update LiveIntervals
 /// which we shouldn't need for this instruction anymore.
 void VirtRegRewriter::expandCopyBundle(MachineInstr &MI) const {
-  if (!MI.isCopy() && !MI.isKill())
+  if (!MI.isCopy())
     return;
 
   if (MI.isBundledWithPred() && !MI.isBundledWithSucc()) {
     SmallVector<MachineInstr *, 2> MIs({&MI});
 
-    // Only do this when the complete bundle is made out of COPYs and KILLs.
+    // Only do this when the complete bundle is made out of COPYs.
     MachineBasicBlock &MBB = *MI.getParent();
     for (MachineBasicBlock::reverse_instr_iterator I =
          std::next(MI.getReverseIterator()), E = MBB.instr_rend();
          I != E && I->isBundledWithSucc(); ++I) {
-      if (!I->isCopy() && !I->isKill())
+      if (!I->isCopy())
         return;
       MIs.push_back(&*I);
     }

@@ -567,10 +567,8 @@ void GCNScheduleDAGMILive::finalizeSchedule() {
       SavedMutations.swap(Mutations);
 
     for (auto Region : Regions) {
-      if (Stage == UnclusteredReschedule && !RescheduleRegions[RegionIdx]) {
-        ++RegionIdx;
+      if (Stage == UnclusteredReschedule && !RescheduleRegions[RegionIdx])
         continue;
-      }
 
       RegionBegin = Region.first;
       RegionEnd = Region.second;

@@ -35,12 +35,10 @@ using namespace llvm;
 
 #define DEBUG_TYPE "wasm-asm-parser"
 
-static const char *getSubtargetFeatureName(uint64_t Val);
-
 namespace {
 
 /// WebAssemblyOperand - Instances of this class represent the operands in a
-/// parsed Wasm machine instruction.
+/// parsed WASM machine instruction.
 struct WebAssemblyOperand : public MCParsedAsmOperand {
   enum KindTy { Token, Integer, Float, Symbol, BrList } Kind;
 
@@ -838,9 +836,8 @@ public:
                                bool MatchingInlineAsm) override {
     MCInst Inst;
     Inst.setLoc(IDLoc);
-    FeatureBitset MissingFeatures;
-    unsigned MatchResult = MatchInstructionImpl(
-        Operands, Inst, ErrorInfo, MissingFeatures, MatchingInlineAsm);
+    unsigned MatchResult =
+        MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm);
     switch (MatchResult) {
     case Match_Success: {
       ensureLocals(Out);
@@ -869,16 +866,9 @@ public:
       }
       return false;
     }
-    case Match_MissingFeature: {
-      assert(MissingFeatures.count() > 0 && "Expected missing features");
-      SmallString<128> Message;
-      raw_svector_ostream OS(Message);
-      OS << "instruction requires:";
-      for (unsigned i = 0, e = MissingFeatures.size(); i != e; ++i)
-        if (MissingFeatures.test(i))
-          OS << ' ' << getSubtargetFeatureName(i);
-      return Parser.Error(IDLoc, Message);
-    }
+    case Match_MissingFeature:
+      return Parser.Error(
+          IDLoc, "instruction requires a WASM feature not currently enabled");
     case Match_MnemonicFail:
       return Parser.Error(IDLoc, "invalid instruction");
     case Match_NearMisses:
@@ -942,6 +932,5 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeWebAssemblyAsmParser() {
 }
 
 #define GET_REGISTER_MATCHER
-#define GET_SUBTARGET_FEATURE_NAME
 #define GET_MATCHER_IMPLEMENTATION
 #include "WebAssemblyGenAsmMatcher.inc"

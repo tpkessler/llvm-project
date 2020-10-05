@@ -20,7 +20,6 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -157,21 +156,16 @@ getTokenLocation(SourceLocation TokLoc, const SourceManager &SM,
   return Result;
 }
 
-// Checks whether \p ND is a good candidate to be the *canonical* declaration of
-// its symbol (e.g. a go-to-declaration target). This overrides the default of
-// using Clang's canonical declaration, which is the first in the TU.
-//
-// Example: preferring a class declaration over its forward declaration.
+// Checks whether \p ND is a definition of a TagDecl (class/struct/enum/union)
+// in a header file, in which case clangd would prefer to use ND as a canonical
+// declaration.
+// FIXME: handle symbol types that are not TagDecl (e.g. functions), if using
+// the first seen declaration as canonical declaration is not a good enough
+// heuristic.
 bool isPreferredDeclaration(const NamedDecl &ND, index::SymbolRoleSet Roles) {
   const auto &SM = ND.getASTContext().getSourceManager();
-  if (isa<TagDecl>(ND))
-    return (Roles & static_cast<unsigned>(index::SymbolRole::Definition)) &&
-           !isInsideMainFile(ND.getLocation(), SM);
-  if (const auto *ID = dyn_cast<ObjCInterfaceDecl>(&ND))
-    return ID->isThisDeclarationADefinition();
-  if (const auto *PD = dyn_cast<ObjCProtocolDecl>(&ND))
-    return PD->isThisDeclarationADefinition();
-  return false;
+  return (Roles & static_cast<unsigned>(index::SymbolRole::Definition)) &&
+         isa<TagDecl>(&ND) && !isInsideMainFile(ND.getLocation(), SM);
 }
 
 RefKind toRefKind(index::SymbolRoleSet Roles, bool Spelled = false) {
@@ -273,25 +267,6 @@ bool SymbolCollector::handleDeclOccurrence(
   // picked a replacement for D
   if (D->getFriendObjectKind() != Decl::FriendObjectKind::FOK_None)
     D = CanonicalDecls.try_emplace(D, ASTNode.OrigD).first->second;
-  // Flag to mark that D should be considered canonical meaning its declaration
-  // will override any previous declaration for the Symbol.
-  bool DeclIsCanonical = false;
-  // Avoid treating ObjCImplementationDecl as a canonical declaration if it has
-  // a corresponding non-implicit and non-forward declared ObjcInterfaceDecl.
-  if (const auto *IID = dyn_cast<ObjCImplementationDecl>(D)) {
-    DeclIsCanonical = true;
-    if (const auto *CID = IID->getClassInterface())
-      if (const auto *DD = CID->getDefinition())
-        if (!DD->isImplicitInterfaceDecl())
-          D = DD;
-  }
-  // Avoid treating ObjCCategoryImplDecl as a canonical declaration in favor of
-  // its ObjCCategoryDecl if it has one.
-  if (const auto *CID = dyn_cast<ObjCCategoryImplDecl>(D)) {
-    DeclIsCanonical = true;
-    if (const auto *CD = CID->getCategoryDecl())
-      D = CD;
-  }
   const NamedDecl *ND = dyn_cast<NamedDecl>(D);
   if (!ND)
     return true;
@@ -334,13 +309,12 @@ bool SymbolCollector::handleDeclOccurrence(
   if (IsOnlyRef && !CollectRef)
     return true;
 
+  // Do not store references to main-file symbols.
   // Unlike other fields, e.g. Symbols (which use spelling locations), we use
   // file locations for references (as it aligns the behavior of clangd's
   // AST-based xref).
   // FIXME: we should try to use the file locations for other fields.
-  if (CollectRef &&
-      (!IsMainFileOnly || Opts.CollectMainFileRefs ||
-       ND->isExternallyVisible()) &&
+  if (CollectRef && (!IsMainFileOnly || ND->isExternallyVisible()) &&
       !isa<NamespaceDecl>(ND) &&
       (Opts.RefsInHeaders ||
        SM.getFileID(SM.getFileLoc(Loc)) == SM.getMainFileID()))
@@ -357,14 +331,14 @@ bool SymbolCollector::handleDeclOccurrence(
     return true;
 
   const Symbol *BasicSymbol = Symbols.find(*ID);
-  if (isPreferredDeclaration(*OriginalDecl, Roles))
-    // If OriginalDecl is preferred, replace/create the existing canonical
+  if (!BasicSymbol) // Regardless of role, ND is the canonical declaration.
+    BasicSymbol = addDeclaration(*ND, std::move(*ID), IsMainFileOnly);
+  else if (isPreferredDeclaration(*OriginalDecl, Roles))
+    // If OriginalDecl is preferred, replace the existing canonical
     // declaration (e.g. a class forward declaration). There should be at most
     // one duplicate as we expect to see only one preferred declaration per
     // TU, because in practice they are definitions.
     BasicSymbol = addDeclaration(*OriginalDecl, std::move(*ID), IsMainFileOnly);
-  else if (!BasicSymbol || DeclIsCanonical)
-    BasicSymbol = addDeclaration(*ND, std::move(*ID), IsMainFileOnly);
 
   if (Roles & static_cast<unsigned>(index::SymbolRole::Definition))
     addDefinition(*OriginalDecl, *BasicSymbol);

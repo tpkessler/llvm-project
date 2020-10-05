@@ -284,14 +284,13 @@ class RegisterCommandsTestCase(TestBase):
 
         # Launch the process, stop at the entry point.
         error = lldb.SBError()
-        flags = target.GetLaunchInfo().GetLaunchFlags()
         process = target.Launch(
                 lldb.SBListener(),
                 None, None, # argv, envp
                 None, None, None, # stdin/out/err
                 self.get_process_working_directory(),
-                flags, # launch flags
-                True,  # stop at entry
+                0, # launch flags
+                True, # stop at entry
                 error)
         self.assertSuccess(error, "Launch succeeds")
 

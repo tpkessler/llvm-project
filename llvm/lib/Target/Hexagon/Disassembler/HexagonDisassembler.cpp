@@ -175,7 +175,7 @@ DecodeStatus HexagonDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
   while (Result == Success && !Complete) {
     if (Bytes.size() < HEXAGON_INSTR_SIZE)
       return MCDisassembler::Fail;
-    MCInst *Inst = getContext().createMCInst();
+    MCInst *Inst = new (getContext()) MCInst;
     Result = getSingleInstruction(*Inst, MI, Bytes, Address, cs, Complete);
     MI.addOperand(MCOperand::createInst(Inst));
     Size += HEXAGON_INSTR_SIZE;
@@ -384,8 +384,8 @@ DecodeStatus HexagonDisassembler::getSingleInstruction(MCInst &MI, MCInst &MCB,
       break;
     }
     MI.setOpcode(Hexagon::DuplexIClass0 + duplexIClass);
-    MCInst *MILow = getContext().createMCInst();
-    MCInst *MIHigh = getContext().createMCInst();
+    MCInst *MILow = new (getContext()) MCInst;
+    MCInst *MIHigh = new (getContext()) MCInst;
     auto TmpExtender = CurrentExtender;
     CurrentExtender =
         nullptr; // constant extenders in duplex must always be in slot 1

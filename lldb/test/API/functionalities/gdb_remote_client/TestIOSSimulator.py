@@ -3,7 +3,6 @@ from lldbsuite.test.lldbtest import *
 from lldbsuite.test.decorators import *
 from gdbclientutils import *
 
-@skipIfReproducer
 class TestIOSSimulator(GDBRemoteTestBase):
     """
     Test that an ios simulator process is recognized as such.
@@ -26,7 +25,7 @@ class TestIOSSimulator(GDBRemoteTestBase):
             return "pid:a860;parent-pid:d2a0;real-uid:1f5;real-gid:14;effective-uid:1f5;effective-gid:14;cputype:1000007;cpusubtype:8;ptrsize:8;ostype:%s;vendor:apple;endian:little;"%self.process_ostype
         def vCont(self):
             return "vCont;"
-
+    
     def platform_test(self, host, process, expected_triple):
         self.server.responder = self.MyResponder(host, process)
         if self.TraceOn():

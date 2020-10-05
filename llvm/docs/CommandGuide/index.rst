@@ -44,7 +44,6 @@ GNU binutils replacements
    llvm-addr2line
    llvm-ar
    llvm-cxxfilt
-   llvm-install-name-tool
    llvm-nm
    llvm-objcopy
    llvm-objdump

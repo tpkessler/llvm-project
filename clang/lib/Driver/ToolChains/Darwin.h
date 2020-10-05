@@ -436,11 +436,7 @@ public:
   bool isMacosxVersionLT(unsigned V0, unsigned V1 = 0, unsigned V2 = 0) const {
     assert(isTargetMacOS() && getTriple().isMacOSX() &&
            "Unexpected call for non OS X target!");
-    // The effective triple might not be initialized yet, so construct a
-    // pseudo-effective triple to get the minimum supported OS version.
-    VersionTuple MinVers =
-        llvm::Triple(getTriple().getArchName(), "apple", "macos")
-            .getMinimumSupportedOSVersion();
+    VersionTuple MinVers = getTriple().getMinimumSupportedOSVersion();
     return (!MinVers.empty() && MinVers > TargetVersion
                 ? MinVers
                 : TargetVersion) < VersionTuple(V0, V1, V2);

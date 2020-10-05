@@ -109,9 +109,6 @@ def parse_args():
     execution_group.add_argument("--xunit-xml-output",
             type=lit.reports.XunitReport,
             help="Write XUnit-compatible XML test reports to the specified file")
-    execution_group.add_argument("--time-trace-output",
-            type=lit.reports.TimeTraceReport,
-            help="Write Chrome tracing compatible JSON to the specified file")
     execution_group.add_argument("--timeout",
             dest="maxIndividualTestTime",
             help="Maximum time to spend running a single test (in seconds). "
@@ -198,7 +195,7 @@ def parse_args():
     else:
         opts.shard = None
 
-    opts.reports = filter(None, [opts.output, opts.xunit_xml_output, opts.time_trace_output])
+    opts.reports = filter(None, [opts.output, opts.xunit_xml_output])
 
     return opts
 

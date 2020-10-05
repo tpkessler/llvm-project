@@ -3577,10 +3577,8 @@ namespace {
         Base = SubME->getBase();
       }
 
-      if (!isa<CXXThisExpr>(Base->IgnoreParenImpCasts())) {
-        Visit(Base);
+      if (!isa<CXXThisExpr>(Base->IgnoreParenImpCasts()))
         return;
-      }
 
       if (AddressOf && AllPODFields)
         return;
@@ -8024,10 +8022,10 @@ private:
     if (ReturnFalse.isInvalid())
       return StmtError();
 
-    return S.ActOnIfStmt(Loc, false, Loc, nullptr,
+    return S.ActOnIfStmt(Loc, false, nullptr,
                          S.ActOnCondition(nullptr, Loc, NotCond.get(),
                                           Sema::ConditionKind::Boolean),
-                         Loc, ReturnFalse.get(), SourceLocation(), nullptr);
+                         ReturnFalse.get(), SourceLocation(), nullptr);
   }
 
   StmtResult visitSubobjectArray(QualType Type, llvm::APInt Size,
@@ -8179,9 +8177,9 @@ private:
         return StmtError();
 
       // if (...)
-      return S.ActOnIfStmt(Loc, /*IsConstexpr=*/false, Loc, InitStmt, Cond, Loc,
-                           ReturnStmt.get(),
-                           /*ElseLoc=*/SourceLocation(), /*Else=*/nullptr);
+      return S.ActOnIfStmt(Loc, /*IsConstexpr=*/false, InitStmt, Cond,
+                           ReturnStmt.get(), /*ElseLoc=*/SourceLocation(),
+                           /*Else=*/nullptr);
     }
 
     case DefaultedComparisonKind::NotEqual:
@@ -8214,7 +8212,7 @@ static void lookupOperatorsForDefaultedComparison(Sema &Self, Scope *S,
                                                   UnresolvedSetImpl &Operators,
                                                   OverloadedOperatorKind Op) {
   auto Lookup = [&](OverloadedOperatorKind OO) {
-    Self.LookupOverloadedOperatorName(OO, S, Operators);
+    Self.LookupOverloadedOperatorName(OO, S, QualType(), QualType(), Operators);
   };
 
   // Every defaulted operator looks up itself.

@@ -53,7 +53,12 @@ TransformerClangTidyCheck::TransformerClangTidyCheck(RewriteRule R,
 
 void TransformerClangTidyCheck::registerPPCallbacks(
     const SourceManager &SM, Preprocessor *PP, Preprocessor *ModuleExpanderPP) {
-  Inserter.registerPreprocessor(PP);
+  // Only register the IncludeInsert when some `Case` will add
+  // includes.
+  if (Rule && llvm::any_of(Rule->Cases, [](const RewriteRule::Case &C) {
+        return !C.AddedIncludes.empty();
+      }))
+    Inserter.registerPreprocessor(PP);
 }
 
 void TransformerClangTidyCheck::registerMatchers(
@@ -91,19 +96,13 @@ void TransformerClangTidyCheck::check(
   // Associate the diagnostic with the location of the first change.
   DiagnosticBuilder Diag = diag((*Edits)[0].Range.getBegin(), *Explanation);
   for (const auto &T : *Edits)
-    switch (T.Kind) {
-    case transformer::EditKind::Range:
-      Diag << FixItHint::CreateReplacement(T.Range, T.Replacement);
-      break;
-    case transformer::EditKind::AddInclude: {
-      StringRef FileName = T.Replacement;
-      bool IsAngled = FileName.startswith("<") && FileName.endswith(">");
-      Diag << Inserter.createMainFileIncludeInsertion(
-          IsAngled ? FileName.substr(1, FileName.size() - 2) : FileName,
-          IsAngled);
-      break;
-    }
-    }
+    Diag << FixItHint::CreateReplacement(T.Range, T.Replacement);
+
+  for (const auto &I : Case.AddedIncludes) {
+    Diag << Inserter.createMainFileIncludeInsertion(
+        I.first,
+        /*IsAngled=*/I.second == transformer::IncludeFormat::Angled);
+  }
 }
 
 void TransformerClangTidyCheck::storeOptions(

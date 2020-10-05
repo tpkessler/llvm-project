@@ -69,15 +69,14 @@ Symbol *SymbolTable::addUndefined(StringRef name) {
   return s;
 }
 
-Symbol *SymbolTable::addDylib(StringRef name, DylibFile *file, bool isWeakDef,
-                              bool isTlv) {
+Symbol *SymbolTable::addDylib(StringRef name, DylibFile *file, bool isWeakDef) {
   Symbol *s;
   bool wasInserted;
   std::tie(s, wasInserted) = insert(name);
 
   if (wasInserted || isa<Undefined>(s) ||
       (isa<DylibSymbol>(s) && !isWeakDef && s->isWeakDef()))
-    replaceSymbol<DylibSymbol>(s, file, name, isWeakDef, isTlv);
+    replaceSymbol<DylibSymbol>(s, file, name, isWeakDef);
 
   return s;
 }

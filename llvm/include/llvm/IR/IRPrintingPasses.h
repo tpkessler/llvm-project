@@ -76,7 +76,6 @@ public:
                   bool ShouldPreserveUseListOrder = false);
 
   PreservedAnalyses run(Module &M, AnalysisManager<Module> &);
-  static bool isRequired() { return true; }
 };
 
 /// Pass for printing a Function as LLVM's text IR assembly.
@@ -92,7 +91,6 @@ public:
   PrintFunctionPass(raw_ostream &OS, const std::string &Banner = "");
 
   PreservedAnalyses run(Function &F, AnalysisManager<Function> &);
-  static bool isRequired() { return true; }
 };
 
 } // End llvm namespace

@@ -647,7 +647,7 @@ void StmtPrinter::PrintOMPExecutableDirective(OMPExecutableDirective *S,
     }
   OS << NL;
   if (!ForceNoStmt && S->hasAssociatedStmt())
-    PrintStmt(S->getRawStmt());
+    PrintStmt(S->getInnermostCapturedStmt()->getCapturedStmt());
 }
 
 void StmtPrinter::VisitOMPParallelDirective(OMPParallelDirective *Node) {

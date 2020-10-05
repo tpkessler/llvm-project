@@ -258,7 +258,7 @@ public:
 bool AMDGPUPostLegalizerCombinerInfo::combine(GISelChangeObserver &Observer,
                                               MachineInstr &MI,
                                               MachineIRBuilder &B) const {
-  CombinerHelper Helper(Observer, B, KB, MDT, LInfo);
+  CombinerHelper Helper(Observer, B, KB, MDT);
   AMDGPUGenPostLegalizerCombinerHelper Generated(GeneratedRuleCfg);
 
   if (Generated.tryCombineAll(Observer, MI, B, Helper))

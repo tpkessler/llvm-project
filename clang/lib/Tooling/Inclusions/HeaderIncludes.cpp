@@ -100,8 +100,7 @@ unsigned getOffsetAfterHeaderGuardsAndComments(StringRef FileName,
           [](const SourceManager &SM, Lexer &Lex, Token Tok) -> unsigned {
             if (checkAndConsumeDirectiveWithName(Lex, "ifndef", Tok)) {
               skipComments(Lex, Tok);
-              if (checkAndConsumeDirectiveWithName(Lex, "define", Tok) &&
-                  Tok.isAtStartOfLine())
+              if (checkAndConsumeDirectiveWithName(Lex, "define", Tok))
                 return SM.getFileOffset(Tok.getLocation());
             }
             return 0;

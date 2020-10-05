@@ -4773,11 +4773,11 @@ CFGBlock *CFGBuilder::VisitChildrenForTemporaryDtors(Stmt *E,
 CFGBlock *CFGBuilder::VisitBinaryOperatorForTemporaryDtors(
     BinaryOperator *E, bool ExternallyDestructed, TempDtorContext &Context) {
   if (E->isCommaOp()) {
-    // For the comma operator, the LHS expression is evaluated before the RHS
-    // expression, so prepend temporary destructors for the LHS first.
-    CFGBlock *LHSBlock = VisitForTemporaryDtors(E->getLHS(), false, Context);
+    // For comma operator LHS expression is visited
+    // before RHS expression. For destructors visit them in reverse order.
     CFGBlock *RHSBlock = VisitForTemporaryDtors(E->getRHS(), ExternallyDestructed, Context);
-    return RHSBlock ? RHSBlock : LHSBlock;
+    CFGBlock *LHSBlock = VisitForTemporaryDtors(E->getLHS(), false, Context);
+    return LHSBlock ? LHSBlock : RHSBlock;
   }
 
   if (E->isLogicalOp()) {
@@ -4798,15 +4798,19 @@ CFGBlock *CFGBuilder::VisitBinaryOperatorForTemporaryDtors(
   }
 
   if (E->isAssignmentOp()) {
-    // For assignment operators, the RHS expression is evaluated before the LHS
-    // expression, so prepend temporary destructors for the RHS first.
+    // For assignment operator (=) LHS expression is visited
+    // before RHS expression. For destructors visit them in reverse order.
     CFGBlock *RHSBlock = VisitForTemporaryDtors(E->getRHS(), false, Context);
     CFGBlock *LHSBlock = VisitForTemporaryDtors(E->getLHS(), false, Context);
     return LHSBlock ? LHSBlock : RHSBlock;
   }
 
-  // Any other operator is visited normally.
-  return VisitChildrenForTemporaryDtors(E, ExternallyDestructed, Context);
+  // For any other binary operator RHS expression is visited before
+  // LHS expression (order of children). For destructors visit them in reverse
+  // order.
+  CFGBlock *LHSBlock = VisitForTemporaryDtors(E->getLHS(), false, Context);
+  CFGBlock *RHSBlock = VisitForTemporaryDtors(E->getRHS(), false, Context);
+  return RHSBlock ? RHSBlock : LHSBlock;
 }
 
 CFGBlock *CFGBuilder::VisitCXXBindTemporaryExprForTemporaryDtors(
@@ -4913,13 +4917,14 @@ CFGBlock *CFGBuilder::VisitOMPExecutableDirective(OMPExecutableDirective *D,
       B = R;
   }
   // Visit associated structured block if any.
-  if (!D->isStandaloneDirective()) {
-    Stmt *S = D->getRawStmt();
-    if (!isa<CompoundStmt>(S))
-      addLocalScopeAndDtors(S);
-    if (CFGBlock *R = addStmt(S))
-      B = R;
-  }
+  if (!D->isStandaloneDirective())
+    if (CapturedStmt *CS = D->getInnermostCapturedStmt()) {
+      Stmt *S = CS->getCapturedStmt();
+      if (!isa<CompoundStmt>(S))
+        addLocalScopeAndDtors(S);
+      if (CFGBlock *R = addStmt(S))
+        B = R;
+    }
 
   return B;
 }

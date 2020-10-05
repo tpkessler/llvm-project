@@ -292,14 +292,6 @@ public:
 
   ~CommandObjectWatchpointEnable() override = default;
 
-  void
-  HandleArgumentCompletion(CompletionRequest &request,
-                           OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eWatchPointIDCompletion,
-        request, nullptr);
-  }
-
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = &GetSelectedTarget();
@@ -369,14 +361,6 @@ public:
   }
 
   ~CommandObjectWatchpointDisable() override = default;
-
-  void
-  HandleArgumentCompletion(CompletionRequest &request,
-                           OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eWatchPointIDCompletion,
-        request, nullptr);
-  }
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
@@ -454,14 +438,6 @@ public:
   }
 
   ~CommandObjectWatchpointDelete() override = default;
-
-  void
-  HandleArgumentCompletion(CompletionRequest &request,
-                           OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eWatchPointIDCompletion,
-        request, nullptr);
-  }
 
   Options *GetOptions() override { return &m_options; }
 
@@ -580,14 +556,6 @@ public:
   }
 
   ~CommandObjectWatchpointIgnore() override = default;
-
-  void
-  HandleArgumentCompletion(CompletionRequest &request,
-                           OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eWatchPointIDCompletion,
-        request, nullptr);
-  }
 
   Options *GetOptions() override { return &m_options; }
 
@@ -708,14 +676,6 @@ public:
   }
 
   ~CommandObjectWatchpointModify() override = default;
-
-  void
-  HandleArgumentCompletion(CompletionRequest &request,
-                           OptionElementVector &opt_element_vector) override {
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eWatchPointIDCompletion,
-        request, nullptr);
-  }
 
   Options *GetOptions() override { return &m_options; }
 
@@ -862,16 +822,6 @@ corresponding to the byte size of the data type.");
   }
 
   ~CommandObjectWatchpointSetVariable() override = default;
-
-  void
-  HandleArgumentCompletion(CompletionRequest &request,
-                           OptionElementVector &opt_element_vector) override {
-    if (request.GetCursorIndex() != 0)
-      return;
-    CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eVariablePathCompletion,
-        request, nullptr);
-  }
 
   Options *GetOptions() override { return &m_option_group; }
 

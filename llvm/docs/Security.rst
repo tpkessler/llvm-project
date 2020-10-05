@@ -25,7 +25,7 @@ Security Group Members
 The members of the group represent a wide cross-section of the community, and meet the criteria for inclusion below.
 
 * Akila Srinivasan (Apple)
-* Dimitry Andric (individual; FreeBSD)
+* Dimitry Andric (invidual; FreeBSD)
 * Ed Maste (individual; FreeBSD)
 * JF Bastien (Apple)
 * Josh Eads (Sony)

@@ -77,10 +77,6 @@ public:
 
   bool IsValid();
 
-  bool GetStopOthers();
-
-  void SetStopOthers(bool stop_others);
-
   // This section allows an SBThreadPlan to push another of the common types of
   // plans...
   SBThreadPlan QueueThreadPlanForStepOverRange(SBAddress &start_address,

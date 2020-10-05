@@ -279,9 +279,6 @@ void MCFragment::destroy() {
     case FT_Fill:
       delete cast<MCFillFragment>(this);
       return;
-    case FT_Nops:
-      delete cast<MCNopsFragment>(this);
-      return;
     case FT_Relaxable:
       delete cast<MCRelaxableFragment>(this);
       return;
@@ -339,9 +336,6 @@ LLVM_DUMP_METHOD void MCFragment::dump() const {
   case MCFragment::FT_CompactEncodedInst:
     OS << "MCCompactEncodedInstFragment"; break;
   case MCFragment::FT_Fill:  OS << "MCFillFragment"; break;
-  case MCFragment::FT_Nops:
-    OS << "MCFNopsFragment";
-    break;
   case MCFragment::FT_Relaxable:  OS << "MCRelaxableFragment"; break;
   case MCFragment::FT_Org:   OS << "MCOrgFragment"; break;
   case MCFragment::FT_Dwarf: OS << "MCDwarfFragment"; break;
@@ -412,12 +406,6 @@ LLVM_DUMP_METHOD void MCFragment::dump() const {
     OS << " Value:" << static_cast<unsigned>(FF->getValue())
        << " ValueSize:" << static_cast<unsigned>(FF->getValueSize())
        << " NumValues:" << FF->getNumValues();
-    break;
-  }
-  case MCFragment::FT_Nops: {
-    const auto *NF = cast<MCNopsFragment>(this);
-    OS << " NumBytes:" << NF->getNumBytes()
-       << " ControlledNopLength:" << NF->getControlledNopLength();
     break;
   }
   case MCFragment::FT_Relaxable:  {

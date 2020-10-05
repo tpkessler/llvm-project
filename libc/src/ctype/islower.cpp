@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "src/ctype/islower.h"
-#include "src/ctype/ctype_utils.h"
 
 #include "src/__support/common.h"
 
@@ -15,6 +14,9 @@ namespace __llvm_libc {
 
 // TODO: Currently restricted to default locale.
 // These should be extended using locale information.
-int LLVM_LIBC_ENTRYPOINT(islower)(int c) { return internal::islower(c); }
+int LLVM_LIBC_ENTRYPOINT(islower)(int c) {
+  const unsigned ch = c;
+  return (ch - 'a') < 26;
+}
 
 } // namespace __llvm_libc

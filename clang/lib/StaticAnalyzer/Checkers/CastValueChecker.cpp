@@ -119,10 +119,10 @@ static const NoteTag *getNoteTag(CheckerContext &C,
           Out << "Assuming ";
 
         if (const auto *DRE = dyn_cast<DeclRefExpr>(Object)) {
-          Out << '\'' << DRE->getDecl()->getDeclName() << '\'';
+          Out << '\'' << DRE->getDecl()->getNameAsString() << '\'';
         } else if (const auto *ME = dyn_cast<MemberExpr>(Object)) {
           Out << (IsKnownCast ? "Field '" : "field '")
-              << ME->getMemberDecl()->getDeclName() << '\'';
+              << ME->getMemberDecl()->getNameAsString() << '\'';
         } else {
           Out << (IsKnownCast ? "The object" : "the object");
         }

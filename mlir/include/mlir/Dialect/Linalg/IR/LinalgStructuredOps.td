@@ -153,7 +153,6 @@ def CopyOp : LinalgStructured_Op<"copy", [
   let verifier = [{ return ::verify(*this); }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 def FillOp : LinalgStructured_Op<"fill", [NInputs<0>, NOutputs<1>]> {
@@ -179,7 +178,6 @@ def FillOp : LinalgStructured_Op<"fill", [NInputs<0>, NOutputs<1>]> {
   let verifier = [{ return ::verify(*this); }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 /// A base class for pooling operation such as conv. The arguments must contain
@@ -360,7 +358,6 @@ def ConvOp : PoolingBase_Op<"conv", [NInputs<2>, NOutputs<1>]> {
   let verifier = [{ return ::verify(*this); }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 class SingleInputPoolingBase_Op<string mnemonic>
@@ -420,7 +417,6 @@ class SingleInputPoolingBase_Op<string mnemonic>
   let verifier = [{ return ::verify(*this); }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 def PoolingMaxOp: SingleInputPoolingBase_Op<"pooling_max"> {
@@ -447,7 +443,8 @@ def PoolingSumOp: SingleInputPoolingBase_Op<"pooling_sum"> {
 //===----------------------------------------------------------------------===//
 // Generic Linalg ops.
 //===----------------------------------------------------------------------===//
-def LinalgOperand: AnyTypeOf<[AnyRankedTensor, AnyStridedMemRef]>;
+def LinalgOperand: Type<
+  Or<[AnyRankedTensor.predicate, AnyStridedMemRef.predicate]>>;
 
 class LinalgOperandOfRank<int rank>: Type<
   And<[
@@ -662,7 +659,6 @@ def GenericOp : GenericOpBase<"generic"> {
   let verifier = [{ return ::verify(*this); }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 /// GenericOp with Indexing (i.e. multi-for style in which the region is passed
@@ -800,7 +796,6 @@ def IndexedGenericOp : GenericOpBase<"indexed_generic"> {
   let verifier = [{ return ::verify(*this); }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -823,7 +818,6 @@ class LinalgNamedStructured_Op<string mnemonic, list<OpTrait> props>
   let printer = [{ return ::printNamedStructuredOp(p, *this); }];
   let verifier = [{ return ::verifyNamedStructuredOp(*this); }];
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 }
 
 // This file is auto-generated from a tc specification.

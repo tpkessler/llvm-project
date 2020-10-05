@@ -815,14 +815,6 @@ public:
   MachineMemOperand *getMachineMemOperand(const MachineMemOperand *MMO,
                                           int64_t Offset, uint64_t Size);
 
-  /// getMachineMemOperand - Allocate a new MachineMemOperand by copying
-  /// an existing one, replacing only the MachinePointerInfo and size.
-  /// MachineMemOperands are owned by the MachineFunction and need not be
-  /// explicitly deallocated.
-  MachineMemOperand *getMachineMemOperand(const MachineMemOperand *MMO,
-                                          MachinePointerInfo &PtrInfo,
-                                          uint64_t Size);
-
   /// Allocate a new MachineMemOperand by copying an existing one,
   /// replacing only AliasAnalysis information. MachineMemOperands are owned
   /// by the MachineFunction and need not be explicitly deallocated.
@@ -1140,11 +1132,6 @@ template <> struct GraphTraits<Inverse<const MachineFunction*>> :
     return &G.Graph->front();
   }
 };
-
-class MachineFunctionAnalysisManager;
-void verifyMachineFunction(MachineFunctionAnalysisManager *,
-                           const std::string &Banner,
-                           const MachineFunction &MF);
 
 } // end namespace llvm
 

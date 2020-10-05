@@ -69,7 +69,6 @@
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <algorithm>
 #include <cassert>
-#include <string>
 
 #define DEBUG_TYPE "hotcoldsplit"
 
@@ -78,24 +77,13 @@ STATISTIC(NumColdRegionsOutlined, "Number of cold regions outlined.");
 
 using namespace llvm;
 
-static cl::opt<bool> EnableStaticAnalysis("hot-cold-static-analysis",
-                                          cl::init(true), cl::Hidden);
+static cl::opt<bool> EnableStaticAnalyis("hot-cold-static-analysis",
+                              cl::init(true), cl::Hidden);
 
 static cl::opt<int>
     SplittingThreshold("hotcoldsplit-threshold", cl::init(2), cl::Hidden,
                        cl::desc("Base penalty for splitting cold code (as a "
                                 "multiple of TCC_Basic)"));
-
-static cl::opt<bool> EnableColdSection(
-    "enable-cold-section", cl::init(false), cl::Hidden,
-    cl::desc("Enable placement of extracted cold functions"
-             " into a separate section after hot-cold splitting."));
-
-static cl::opt<std::string>
-    ColdSectionName("hotcoldsplit-cold-section-name", cl::init("__llvm_cold"),
-                    cl::Hidden,
-                    cl::desc("Name for the section containing cold functions "
-                             "extracted by hot-cold splitting."));
 
 namespace {
 // Same as blockEndsInUnreachable in CodeGen/BranchFolding.cpp. Do not modify
@@ -351,12 +339,8 @@ Function *HotColdSplitting::extractColdRegion(
     }
     CI->setIsNoInline();
 
-    if (EnableColdSection)
-      OutF->setSection(ColdSectionName);
-    else {
-      if (OrigF->hasSection())
-        OutF->setSection(OrigF->getSection());
-    }
+    if (OrigF->hasSection())
+      OutF->setSection(OrigF->getSection());
 
     markFunctionCold(*OutF, BFI != nullptr);
 
@@ -599,7 +583,7 @@ bool HotColdSplitting::outlineColdRegions(Function &F, bool HasProfileSummary) {
       continue;
 
     bool Cold = (BFI && PSI->isColdBlock(BB, BFI)) ||
-                (EnableStaticAnalysis && unlikelyExecuted(*BB, PSI, BFI));
+                (EnableStaticAnalyis && unlikelyExecuted(*BB, PSI, BFI));
     if (!Cold)
       continue;
 

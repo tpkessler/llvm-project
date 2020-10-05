@@ -100,8 +100,8 @@ struct TransferrableTargetInfo {
   unsigned char MinGlobalAlign;
 
   unsigned short NewAlign;
-  unsigned MaxVectorAlign;
-  unsigned MaxTLSAlign;
+  unsigned short MaxVectorAlign;
+  unsigned short MaxTLSAlign;
 
   const llvm::fltSemantics *HalfFormat, *BFloat16Format, *FloatFormat,
     *DoubleFormat, *LongDoubleFormat, *Float128Format;
@@ -1274,7 +1274,9 @@ public:
   ///
   /// Gets the maximum alignment (in bits) of a TLS variable on this target.
   /// Returns zero if there is no such constraint.
-  unsigned getMaxTLSAlign() const { return MaxTLSAlign; }
+  unsigned short getMaxTLSAlign() const {
+    return MaxTLSAlign;
+  }
 
   /// Whether target supports variable-length arrays.
   bool isVLASupported() const { return VLASupported; }
@@ -1458,12 +1460,6 @@ public:
 
   /// Whether target allows debuginfo types for decl only variables.
   virtual bool allowDebugInfoForExternalVar() const { return false; }
-
-  /// Whether floating point atomic fetch add/sub is supported.
-  virtual bool
-  isFPAtomicFetchAddSubSupported(const llvm::fltSemantics &FS) const {
-    return false;
-  }
 
 protected:
   /// Copy type and layout related info.

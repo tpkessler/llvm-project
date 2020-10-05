@@ -31,8 +31,6 @@ public:
 
   void Deactivate() override;
 
-  void TerminalSizeChanged() override;
-
 protected:
   curses::ApplicationAP m_app_ap;
 };

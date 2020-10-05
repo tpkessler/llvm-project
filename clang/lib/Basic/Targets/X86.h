@@ -144,11 +144,6 @@ public:
     LongDoubleFormat = &llvm::APFloat::x87DoubleExtended();
     AddrSpaceMap = &X86AddrSpaceMap;
     HasStrictFP = true;
-
-    bool IsWinCOFF =
-        getTriple().isOSWindows() && getTriple().isOSBinFormatCOFF();
-    if (IsWinCOFF)
-      MaxVectorAlign = MaxTLSAlign = 8192u * getCharWidth();
   }
 
   const char *getLongDoubleMangling() const override {
@@ -353,18 +348,6 @@ public:
 
   uint64_t getPointerAlignV(unsigned AddrSpace) const override {
     return getPointerWidthV(AddrSpace);
-  }
-
-  bool
-  isFPAtomicFetchAddSubSupported(const llvm::fltSemantics &FS) const override {
-    switch (llvm::APFloat::SemanticsToEnum(FS)) {
-    case llvm::APFloat::S_IEEEsingle:
-      return MaxAtomicInlineWidth >= 32;
-    case llvm::APFloat::S_IEEEdouble:
-      return MaxAtomicInlineWidth >= 64;
-    default:
-      return false;
-    }
   }
 };
 

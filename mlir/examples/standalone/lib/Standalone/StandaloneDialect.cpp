@@ -16,7 +16,8 @@ using namespace mlir::standalone;
 // Standalone dialect.
 //===----------------------------------------------------------------------===//
 
-void StandaloneDialect::initialize() {
+StandaloneDialect::StandaloneDialect(mlir::MLIRContext *context)
+    : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
 #include "Standalone/StandaloneOps.cpp.inc"

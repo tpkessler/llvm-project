@@ -51,12 +51,6 @@ class ELFObjectFileBase : public ObjectFile {
   friend class ELFSectionRef;
   friend class ELFSymbolRef;
 
-  SubtargetFeatures getMIPSFeatures() const;
-  SubtargetFeatures getARMFeatures() const;
-  SubtargetFeatures getRISCVFeatures() const;
-
-  StringRef getAMDGPUCPUName() const;
-
 protected:
   ELFObjectFileBase(unsigned int Type, MemoryBufferRef Source);
 
@@ -86,7 +80,11 @@ public:
 
   SubtargetFeatures getFeatures() const override;
 
-  Optional<StringRef> tryGetCPUName() const override;
+  SubtargetFeatures getMIPSFeatures() const;
+
+  SubtargetFeatures getARMFeatures() const;
+
+  SubtargetFeatures getRISCVFeatures() const;
 
   void setARMSubArch(Triple &TheTriple) const override;
 
@@ -94,8 +92,7 @@ public:
 
   virtual uint16_t getEMachine() const = 0;
 
-  std::vector<std::pair<Optional<DataRefImpl>, uint64_t>>
-  getPltAddresses() const;
+  std::vector<std::pair<DataRefImpl, uint64_t>> getPltAddresses() const;
 };
 
 class ELFSectionRef : public SectionRef {

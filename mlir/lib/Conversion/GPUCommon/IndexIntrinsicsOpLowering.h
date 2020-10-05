@@ -46,17 +46,17 @@ public:
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
-    MLIRContext *context = rewriter.getContext();
+    auto dialect = typeConverter.getDialect();
     Value newOp;
     switch (dimensionToIndex(cast<Op>(op))) {
     case X:
-      newOp = rewriter.create<XOp>(loc, LLVM::LLVMType::getInt32Ty(context));
+      newOp = rewriter.create<XOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
       break;
     case Y:
-      newOp = rewriter.create<YOp>(loc, LLVM::LLVMType::getInt32Ty(context));
+      newOp = rewriter.create<YOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
       break;
     case Z:
-      newOp = rewriter.create<ZOp>(loc, LLVM::LLVMType::getInt32Ty(context));
+      newOp = rewriter.create<ZOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
       break;
     default:
       return failure();
@@ -64,10 +64,10 @@ public:
 
     if (indexBitwidth > 32) {
       newOp = rewriter.create<LLVM::SExtOp>(
-          loc, LLVM::LLVMType::getIntNTy(context, indexBitwidth), newOp);
+          loc, LLVM::LLVMType::getIntNTy(dialect, indexBitwidth), newOp);
     } else if (indexBitwidth < 32) {
       newOp = rewriter.create<LLVM::TruncOp>(
-          loc, LLVM::LLVMType::getIntNTy(context, indexBitwidth), newOp);
+          loc, LLVM::LLVMType::getIntNTy(dialect, indexBitwidth), newOp);
     }
 
     rewriter.replaceOp(op, {newOp});

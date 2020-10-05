@@ -822,21 +822,21 @@ void MCObjectFileInfo::initXCOFFMCObjectFileInfo(const Triple &T) {
   // get placed into this csect. The choice of csect name is not a property of
   // the ABI or object file format. For example, the XL compiler uses an unnamed
   // csect for program code.
-  TextSection =
-      Ctx->getXCOFFSection(".text", XCOFF::StorageMappingClass::XMC_PR,
-                           XCOFF::XTY_SD, SectionKind::getText());
+  TextSection = Ctx->getXCOFFSection(
+      ".text", XCOFF::StorageMappingClass::XMC_PR, XCOFF::XTY_SD,
+      XCOFF::C_HIDEXT, SectionKind::getText());
 
-  DataSection =
-      Ctx->getXCOFFSection(".data", XCOFF::StorageMappingClass::XMC_RW,
-                           XCOFF::XTY_SD, SectionKind::getData());
+  DataSection = Ctx->getXCOFFSection(
+      ".data", XCOFF::StorageMappingClass::XMC_RW, XCOFF::XTY_SD,
+      XCOFF::C_HIDEXT, SectionKind::getData());
 
-  ReadOnlySection =
-      Ctx->getXCOFFSection(".rodata", XCOFF::StorageMappingClass::XMC_RO,
-                           XCOFF::XTY_SD, SectionKind::getReadOnly());
+  ReadOnlySection = Ctx->getXCOFFSection(
+      ".rodata", XCOFF::StorageMappingClass::XMC_RO, XCOFF::XTY_SD,
+      XCOFF::C_HIDEXT, SectionKind::getReadOnly());
 
-  TOCBaseSection =
-      Ctx->getXCOFFSection("TOC", XCOFF::StorageMappingClass::XMC_TC0,
-                           XCOFF::XTY_SD, SectionKind::getData());
+  TOCBaseSection = Ctx->getXCOFFSection(
+      "TOC", XCOFF::StorageMappingClass::XMC_TC0, XCOFF::XTY_SD,
+      XCOFF::C_HIDEXT, SectionKind::getData());
 
   // The TOC-base always has 0 size, but 4 byte alignment.
   TOCBaseSection->setAlignment(Align(4));
@@ -904,9 +904,6 @@ void MCObjectFileInfo::InitMCObjectFileInfo(const Triple &TheTriple, bool PIC,
     Env = IsWasm;
     initWasmMCObjectFileInfo(TT);
     break;
-  case Triple::GOFF:
-    report_fatal_error("Cannot initialize MC for GOFF object file format");
-    break;
   case Triple::XCOFF:
     Env = IsXCOFF;
     initXCOFFMCObjectFileInfo(TT);
@@ -926,7 +923,6 @@ MCSection *MCObjectFileInfo::getDwarfComdatSection(const char *Name,
   case Triple::MachO:
   case Triple::COFF:
   case Triple::Wasm:
-  case Triple::GOFF:
   case Triple::XCOFF:
   case Triple::UnknownObjectFormat:
     report_fatal_error("Cannot get DWARF comdat section for this object file "

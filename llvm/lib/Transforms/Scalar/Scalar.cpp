@@ -110,7 +110,7 @@ void llvm::initializeScalarOpts(PassRegistry &Registry) {
   initializeLoopDistributeLegacyPass(Registry);
   initializeLoopLoadEliminationPass(Registry);
   initializeLoopSimplifyCFGLegacyPassPass(Registry);
-  initializeLoopVersioningLegacyPassPass(Registry);
+  initializeLoopVersioningPassPass(Registry);
   initializeEntryExitInstrumenterPass(Registry);
   initializePostInlineEntryExitInstrumenterPass(Registry);
 }

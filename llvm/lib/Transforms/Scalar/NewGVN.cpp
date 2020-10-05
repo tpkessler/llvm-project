@@ -662,8 +662,7 @@ public:
          const DataLayout &DL)
       : F(F), DT(DT), TLI(TLI), AA(AA), MSSA(MSSA), AC(AC), DL(DL),
         PredInfo(std::make_unique<PredicateInfo>(F, *DT, *AC)),
-        SQ(DL, TLI, DT, AC, /*CtxI=*/nullptr, /*UseInstrInfo=*/false,
-           /*CanUseUndef=*/false) {}
+        SQ(DL, TLI, DT, AC, /*CtxI=*/nullptr, /*UseInstrInfo=*/false) {}
 
   bool runGVN();
 

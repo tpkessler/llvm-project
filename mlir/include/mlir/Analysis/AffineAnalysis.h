@@ -34,14 +34,12 @@ void getReachableAffineApplyOps(ArrayRef<Value> operands,
                                 SmallVectorImpl<Operation *> &affineApplyOps);
 
 /// Builds a system of constraints with dimensional identifiers corresponding to
-/// the loop IVs of the forOps and AffineIfOp's operands appearing in
-/// that order. Bounds of the loop are used to add appropriate inequalities.
-/// Constraints from the index sets of AffineIfOp are also added. Any symbols
-/// founds in the bound operands are added as symbols in the system. Returns
-/// failure for the yet unimplemented cases. `ops` accepts both AffineForOp and
-/// AffineIfOp.
+/// the loop IVs of the forOps appearing in that order. Bounds of the loop are
+/// used to add appropriate inequalities. Any symbols founds in the bound
+/// operands are added as symbols in the system. Returns failure for the yet
+/// unimplemented cases.
 //  TODO: handle non-unit strides.
-LogicalResult getIndexSet(MutableArrayRef<Operation *> ops,
+LogicalResult getIndexSet(MutableArrayRef<AffineForOp> forOps,
                           FlatAffineConstraints *domain);
 
 /// Encapsulates a memref load or store access information.

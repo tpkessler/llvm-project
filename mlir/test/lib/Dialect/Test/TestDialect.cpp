@@ -21,10 +21,6 @@
 
 using namespace mlir;
 
-void mlir::registerTestDialect(DialectRegistry &registry) {
-  registry.insert<TestDialect>();
-}
-
 //===----------------------------------------------------------------------===//
 // TestDialect Interfaces
 //===----------------------------------------------------------------------===//
@@ -56,8 +52,8 @@ struct TestOpAsmInterface : public OpAsmDialectInterface {
   }
 };
 
-struct TestDialectFoldInterface : public DialectFoldInterface {
-  using DialectFoldInterface::DialectFoldInterface;
+struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
 
   /// Registered hook to check if the given region, which is attached to an
   /// operation that is *not* isolated from above, should be used when
@@ -134,12 +130,13 @@ struct TestInlinerInterface : public DialectInlinerInterface {
 // TestDialect
 //===----------------------------------------------------------------------===//
 
-void TestDialect::initialize() {
+TestDialect::TestDialect(MLIRContext *context)
+    : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
-  addInterfaces<TestOpAsmInterface, TestDialectFoldInterface,
+  addInterfaces<TestOpAsmInterface, TestOpFolderDialectInterface,
                 TestInlinerInterface>();
   addTypes<TestType, TestRecursiveType>();
   allowUnknownOperations();
@@ -160,7 +157,7 @@ static Type parseTestType(DialectAsmParser &parser,
   StringRef name;
   if (parser.parseLess() || parser.parseKeyword(&name))
     return Type();
-  auto rec = TestRecursiveType::get(parser.getBuilder().getContext(), name);
+  auto rec = TestRecursiveType::create(parser.getBuilder().getContext(), name);
 
   // If this type already has been parsed above in the stack, expect just the
   // name.

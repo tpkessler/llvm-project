@@ -40,13 +40,6 @@ struct Data;
 }
 }
 
-void dumpDebugAbbrev(llvm::DWARFContext &DCtx, llvm::DWARFYAML::Data &Y);
-llvm::Error dumpDebugARanges(llvm::DWARFContext &DCtx,
-                             llvm::DWARFYAML::Data &Y);
-void dumpDebugPubSections(llvm::DWARFContext &DCtx, llvm::DWARFYAML::Data &Y);
-void dumpDebugInfo(llvm::DWARFContext &DCtx, llvm::DWARFYAML::Data &Y);
-void dumpDebugLines(llvm::DWARFContext &DCtx, llvm::DWARFYAML::Data &Y);
-llvm::Error dumpDebugRanges(llvm::DWARFContext &DCtx, llvm::DWARFYAML::Data &Y);
-void dumpDebugStrings(llvm::DWARFContext &DCtx, llvm::DWARFYAML::Data &Y);
+llvm::Error dwarf2yaml(llvm::DWARFContext &DCtx, llvm::DWARFYAML::Data &Y);
 
 #endif

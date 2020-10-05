@@ -37,8 +37,7 @@ public:
                     const char *LinkingOutput) const override;
 };
 
-void getAMDGPUTargetFeatures(const Driver &D, const llvm::Triple &Triple,
-                             const llvm::opt::ArgList &Args,
+void getAMDGPUTargetFeatures(const Driver &D, const llvm::opt::ArgList &Args,
                              std::vector<StringRef> &Features);
 
 } // end namespace amdgpu

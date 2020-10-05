@@ -51,20 +51,29 @@ void Transformer::run(const MatchFinder::MatchResult &Result) {
                                               T.Range.getBegin(), T.Metadata))
                     .first;
     auto &AC = Iter->second;
-    switch (T.Kind) {
-    case transformer::EditKind::Range:
-      if (auto Err =
-              AC.replace(*Result.SourceManager, T.Range, T.Replacement)) {
-        Consumer(std::move(Err));
-        return;
-      }
-      break;
-    case transformer::EditKind::AddInclude:
-      AC.addHeader(T.Replacement);
-      break;
+    if (auto Err = AC.replace(*Result.SourceManager, T.Range, T.Replacement)) {
+      Consumer(std::move(Err));
+      return;
     }
   }
 
-  for (auto &IDChangePair : ChangesByFileID)
-    Consumer(std::move(IDChangePair.second));
+  for (auto &IDChangePair : ChangesByFileID) {
+    auto &AC = IDChangePair.second;
+    // FIXME: this will add includes to *all* changed files, which may not be
+    // the intent. We should upgrade the representation to allow associating
+    // headers with specific edits.
+    for (const auto &I : Case.AddedIncludes) {
+      auto &Header = I.first;
+      switch (I.second) {
+      case transformer::IncludeFormat::Quoted:
+        AC.addHeader(Header);
+        break;
+      case transformer::IncludeFormat::Angled:
+        AC.addHeader((llvm::Twine("<") + Header + ">").str());
+        break;
+      }
+    }
+
+    Consumer(std::move(AC));
+  }
 }

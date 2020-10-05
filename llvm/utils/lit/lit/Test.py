@@ -150,8 +150,6 @@ class Result(object):
         self.output = output
         # The wall timing to execute the test, if timing.
         self.elapsed = elapsed
-        self.start = None
-        self.pid = None
         # The metrics reported by this test.
         self.metrics = {}
         # The micro-test results reported by this test.

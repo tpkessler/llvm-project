@@ -1,5 +1,3 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: res=((666)+111)
 * FLM call split between name and ( and in argument
       integer function IFLM(x)
         integer :: x
@@ -12,8 +10,8 @@
      +(66
      +6)
       if (res .eq. 777) then
-        print *, 'pp016.F yes'
+        print *, 'pp016.F pass'
       else
-        print *, 'pp016.F no: ', res
+        print *, 'pp016.F FAIL: ', res
       end if
       end

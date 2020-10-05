@@ -23,39 +23,22 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SymExpr.h"
-#include "llvm/ADT/StringRef.h"
 
 using namespace clang;
 using namespace ento;
 
 namespace {
-
-static const BugType *NullDereferenceBugTypePtr;
-
 class SmartPtrChecker : public Checker<check::PreCall> {
-public:
-  void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
   BugType NullDereferenceBugType{this, "Null SmartPtr dereference",
                                  "C++ Smart Pointer"};
 
+public:
+  void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
+
 private:
-  void reportBug(CheckerContext &C, const MemRegion *DerefRegion,
-                 const CallEvent &Call) const;
-  void explainDereference(llvm::raw_ostream &OS, const MemRegion *DerefRegion,
-                          const CallEvent &Call) const;
+  void reportBug(CheckerContext &C, const CallEvent &Call) const;
 };
 } // end of anonymous namespace
-
-// Define the inter-checker API.
-namespace clang {
-namespace ento {
-namespace smartptr {
-
-const BugType *getNullDereferenceBugType() { return NullDereferenceBugTypePtr; }
-
-} // namespace smartptr
-} // namespace ento
-} // namespace clang
 
 void SmartPtrChecker::checkPreCall(const CallEvent &Call,
                                    CheckerContext &C) const {
@@ -72,34 +55,23 @@ void SmartPtrChecker::checkPreCall(const CallEvent &Call,
   OverloadedOperatorKind OOK = OC->getOverloadedOperator();
   if (OOK == OO_Star || OOK == OO_Arrow) {
     if (smartptr::isNullSmartPtr(State, ThisRegion))
-      reportBug(C, ThisRegion, Call);
+      reportBug(C, Call);
   }
 }
 
-void SmartPtrChecker::reportBug(CheckerContext &C, const MemRegion *DerefRegion,
+void SmartPtrChecker::reportBug(CheckerContext &C,
                                 const CallEvent &Call) const {
   ExplodedNode *ErrNode = C.generateErrorNode();
   if (!ErrNode)
     return;
-  llvm::SmallString<128> Str;
-  llvm::raw_svector_ostream OS(Str);
-  explainDereference(OS, DerefRegion, Call);
-  auto R = std::make_unique<PathSensitiveBugReport>(NullDereferenceBugType,
-                                                    OS.str(), ErrNode);
-  R->markInteresting(DerefRegion);
+
+  auto R = std::make_unique<PathSensitiveBugReport>(
+      NullDereferenceBugType, "Dereference of null smart pointer", ErrNode);
   C.emitReport(std::move(R));
 }
 
-void SmartPtrChecker::explainDereference(llvm::raw_ostream &OS,
-                                         const MemRegion *DerefRegion,
-                                         const CallEvent &Call) const {
-  OS << "Dereference of null smart pointer ";
-  DerefRegion->printPretty(OS);
-}
-
 void ento::registerSmartPtrChecker(CheckerManager &Mgr) {
-  SmartPtrChecker *Checker = Mgr.registerChecker<SmartPtrChecker>();
-  NullDereferenceBugTypePtr = &Checker->NullDereferenceBugType;
+  Mgr.registerChecker<SmartPtrChecker>();
 }
 
 bool ento::shouldRegisterSmartPtrChecker(const CheckerManager &mgr) {

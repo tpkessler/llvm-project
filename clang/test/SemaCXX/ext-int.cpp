@@ -91,11 +91,10 @@ typedef _ExtInt(32) __attribute__((vector_size(16))) VecTy;
 _Complex _ExtInt(3) Cmplx;
 
 // Reject cases of _Atomic:
-// expected-error@+1{{_Atomic cannot be applied to integer type '_ExtInt(4)'}}
+// expected-error@+1{{_Atomic cannot be applied to integer type '_ExtInt(4)' with less than 1 byte of precision}}
 _Atomic _ExtInt(4) TooSmallAtomic;
-// expected-error@+1{{_Atomic cannot be applied to integer type '_ExtInt(9)'}}
+// expected-error@+1{{_Atomic cannot be applied to integer type '_ExtInt(9)' with a non power of 2 precision}}
 _Atomic _ExtInt(9) NotPow2Atomic;
-// expected-error@+1{{_Atomic cannot be applied to integer type '_ExtInt(128)'}}
 _Atomic _ExtInt(128) JustRightAtomic;
 
 // Test result types of Unary/Bitwise/Binary Operations:

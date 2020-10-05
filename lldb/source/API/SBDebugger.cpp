@@ -879,6 +879,8 @@ bool SBDebugger::DeleteTarget(lldb::SBTarget &target) {
       result = m_opaque_sp->GetTargetList().DeleteTarget(target_sp);
       target_sp->Destroy();
       target.Clear();
+      const bool mandatory = true;
+      ModuleList::RemoveOrphanSharedModules(mandatory);
     }
   }
 

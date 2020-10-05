@@ -41,6 +41,12 @@ static void printNVVMIntrinsicOp(OpAsmPrinter &p, Operation *op) {
     p << " : " << op->getResultTypes();
 }
 
+static LLVM::LLVMDialect *getLlvmDialect(OpAsmParser &parser) {
+  return parser.getBuilder()
+      .getContext()
+      ->getRegisteredDialect<LLVM::LLVMDialect>();
+}
+
 // <operation> ::=
 //     `llvm.nvvm.shfl.sync.bfly %dst, %val, %offset, %clamp_and_mask`
 //      ({return_value_and_is_valid})? : result_type
@@ -63,7 +69,7 @@ static ParseResult parseNVVMShflSyncBflyOp(OpAsmParser &parser,
     break;
   }
 
-  auto int32Ty = LLVM::LLVMType::getInt32Ty(parser.getBuilder().getContext());
+  auto int32Ty = LLVM::LLVMType::getInt32Ty(getLlvmDialect(parser));
   return parser.resolveOperands(ops, {int32Ty, type, int32Ty, int32Ty},
                                 parser.getNameLoc(), result.operands);
 }
@@ -71,9 +77,9 @@ static ParseResult parseNVVMShflSyncBflyOp(OpAsmParser &parser,
 // <operation> ::= `llvm.nvvm.vote.ballot.sync %mask, %pred` : result_type
 static ParseResult parseNVVMVoteBallotOp(OpAsmParser &parser,
                                          OperationState &result) {
-  MLIRContext *context = parser.getBuilder().getContext();
-  auto int32Ty = LLVM::LLVMType::getInt32Ty(context);
-  auto int1Ty = LLVM::LLVMType::getInt1Ty(context);
+  auto llvmDialect = getLlvmDialect(parser);
+  auto int32Ty = LLVM::LLVMType::getInt32Ty(llvmDialect);
+  auto int1Ty = LLVM::LLVMType::getInt1Ty(llvmDialect);
 
   SmallVector<OpAsmParser::OperandType, 8> ops;
   Type type;
@@ -86,14 +92,14 @@ static ParseResult parseNVVMVoteBallotOp(OpAsmParser &parser,
 }
 
 static LogicalResult verify(MmaOp op) {
-  MLIRContext *context = op.getContext();
-  auto f16Ty = LLVM::LLVMType::getHalfTy(context);
+  auto dialect = op.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
+  auto f16Ty = LLVM::LLVMType::getHalfTy(dialect);
   auto f16x2Ty = LLVM::LLVMType::getVectorTy(f16Ty, 2);
-  auto f32Ty = LLVM::LLVMType::getFloatTy(context);
+  auto f32Ty = LLVM::LLVMType::getFloatTy(dialect);
   auto f16x2x4StructTy = LLVM::LLVMType::getStructTy(
-      context, {f16x2Ty, f16x2Ty, f16x2Ty, f16x2Ty});
+      dialect, {f16x2Ty, f16x2Ty, f16x2Ty, f16x2Ty});
   auto f32x8StructTy = LLVM::LLVMType::getStructTy(
-      context, {f32Ty, f32Ty, f32Ty, f32Ty, f32Ty, f32Ty, f32Ty, f32Ty});
+      dialect, {f32Ty, f32Ty, f32Ty, f32Ty, f32Ty, f32Ty, f32Ty, f32Ty});
 
   SmallVector<Type, 12> operand_types(op.getOperandTypes().begin(),
                                       op.getOperandTypes().end());
@@ -136,7 +142,7 @@ static LogicalResult verify(MmaOp op) {
 //===----------------------------------------------------------------------===//
 
 // TODO: This should be the llvm.nvvm dialect once this is supported.
-void NVVMDialect::initialize() {
+NVVMDialect::NVVMDialect(MLIRContext *context) : Dialect("nvvm", context) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/LLVMIR/NVVMOps.cpp.inc"

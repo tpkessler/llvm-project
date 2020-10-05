@@ -2250,7 +2250,8 @@ llvm::Value *
 CodeGenFunction::EmitARCRetainAutoreleasedReturnValue(llvm::Value *value) {
   emitAutoreleasedReturnValueMarker(*this);
   llvm::CallInst::TailCallKind tailKind =
-      CGM.getTargetCodeGenInfo().markARCOptimizedReturnCallsAsNoTail()
+      CGM.getTargetCodeGenInfo()
+              .shouldSuppressTailCallsOfRetainAutoreleasedReturnValue()
           ? llvm::CallInst::TCK_NoTail
           : llvm::CallInst::TCK_None;
   return emitARCValueOperation(
@@ -2269,14 +2270,9 @@ CodeGenFunction::EmitARCRetainAutoreleasedReturnValue(llvm::Value *value) {
 llvm::Value *
 CodeGenFunction::EmitARCUnsafeClaimAutoreleasedReturnValue(llvm::Value *value) {
   emitAutoreleasedReturnValueMarker(*this);
-  llvm::CallInst::TailCallKind tailKind =
-      CGM.getTargetCodeGenInfo().markARCOptimizedReturnCallsAsNoTail()
-          ? llvm::CallInst::TCK_NoTail
-          : llvm::CallInst::TCK_None;
-  return emitARCValueOperation(
-      *this, value, nullptr,
-      CGM.getObjCEntrypoints().objc_unsafeClaimAutoreleasedReturnValue,
-      llvm::Intrinsic::objc_unsafeClaimAutoreleasedReturnValue, tailKind);
+  return emitARCValueOperation(*this, value, nullptr,
+              CGM.getObjCEntrypoints().objc_unsafeClaimAutoreleasedReturnValue,
+                     llvm::Intrinsic::objc_unsafeClaimAutoreleasedReturnValue);
 }
 
 /// Release the given object.

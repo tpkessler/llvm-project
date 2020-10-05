@@ -106,9 +106,6 @@ public:
   // Set legacy PAL metadata format.
   void setLegacy();
 
-  // Erase all PAL metadata.
-  void reset();
-
 private:
   // Return whether the blob type is legacy PAL metadata.
   bool isLegacy() const;

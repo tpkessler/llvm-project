@@ -30,6 +30,6 @@ executable("dsymutil") {
     "dsymutil.cpp",
   ]
   if (host_os == "mac") {
-    frameworks = [ "CoreFoundation.framework" ]
+    libs = [ "CoreFoundation.framework" ]
   }
 }

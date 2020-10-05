@@ -15,6 +15,5 @@ unittest("ObjectTests") {
     "ObjectFileTest.cpp",
     "SymbolSizeTest.cpp",
     "SymbolicFileTest.cpp",
-    "XCOFFObjectFileTest.cpp",
   ]
 }

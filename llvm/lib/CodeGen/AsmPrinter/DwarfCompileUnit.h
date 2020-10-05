@@ -57,7 +57,7 @@ class DwarfCompileUnit final : public DwarfUnit {
   DwarfCompileUnit *Skeleton = nullptr;
 
   /// The start of the unit within its section.
-  MCSymbol *LabelBegin = nullptr;
+  MCSymbol *LabelBegin;
 
   /// The start of the unit macro info within macro section.
   MCSymbol *MacroLabelBegin;
@@ -299,7 +299,7 @@ public:
   void addAddrTableBase();
 
   MCSymbol *getLabelBegin() const {
-    assert(LabelBegin && "LabelBegin is not initialized");
+    assert(getSection());
     return LabelBegin;
   }
 

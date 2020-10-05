@@ -56,11 +56,12 @@ private:
 
 class OptNoneInstrumentation {
 public:
-  OptNoneInstrumentation() {}
+  OptNoneInstrumentation(bool DebugLogging) : DebugLogging(DebugLogging) {}
   void registerCallbacks(PassInstrumentationCallbacks &PIC);
 
 private:
   bool skip(StringRef PassID, Any IR);
+  bool DebugLogging;
 };
 
 // Debug logging for transformation and analysis passes.
@@ -82,7 +83,8 @@ class StandardInstrumentations {
   OptNoneInstrumentation OptNone;
 
 public:
-  StandardInstrumentations(bool DebugLogging) : PrintPass(DebugLogging) {}
+  StandardInstrumentations(bool DebugLogging)
+      : PrintPass(DebugLogging), OptNone(DebugLogging) {}
 
   void registerCallbacks(PassInstrumentationCallbacks &PIC);
 

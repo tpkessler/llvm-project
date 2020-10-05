@@ -1451,12 +1451,6 @@ public:
     setAttributes(PAL);
   }
 
-  void removeAttributes(unsigned i, const AttrBuilder &Attrs) {
-    AttributeList PAL = getAttributes();
-    PAL = PAL.removeAttributes(getContext(), i, Attrs);
-    setAttributes(PAL);
-  }
-
   /// Removes the attribute from the given argument
   void removeParamAttr(unsigned ArgNo, Attribute::AttrKind Kind) {
     assert(ArgNo < getNumArgOperands() && "Out of bounds");

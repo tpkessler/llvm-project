@@ -65,11 +65,9 @@ protected:
 };
 } // namespace
 
-std::unique_ptr<llvm::Module>
-mlir::translateModuleToNVVMIR(Operation *m, llvm::LLVMContext &llvmContext,
-                              StringRef name) {
-  auto llvmModule = LLVM::ModuleTranslation::translateModule<ModuleTranslation>(
-      m, llvmContext, name);
+std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Operation *m) {
+  auto llvmModule =
+      LLVM::ModuleTranslation::translateModule<ModuleTranslation>(m);
   if (!llvmModule)
     return llvmModule;
 
@@ -100,8 +98,7 @@ namespace mlir {
 void registerToNVVMIRTranslation() {
   TranslateFromMLIRRegistration registration(
       "mlir-to-nvvmir", [](ModuleOp module, raw_ostream &output) {
-        llvm::LLVMContext llvmContext;
-        auto llvmModule = mlir::translateModuleToNVVMIR(module, llvmContext);
+        auto llvmModule = mlir::translateModuleToNVVMIR(module);
         if (!llvmModule)
           return failure();
 

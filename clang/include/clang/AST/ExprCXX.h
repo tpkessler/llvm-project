@@ -4519,38 +4519,31 @@ class CXXFoldExpr : public Expr {
   friend class ASTStmtReader;
   friend class ASTStmtWriter;
 
-  enum SubExpr { Callee, LHS, RHS, Count };
-
   SourceLocation LParenLoc;
   SourceLocation EllipsisLoc;
   SourceLocation RParenLoc;
   // When 0, the number of expansions is not known. Otherwise, this is one more
   // than the number of expansions.
   unsigned NumExpansions;
-  Stmt *SubExprs[SubExpr::Count];
+  Stmt *SubExprs[2];
   BinaryOperatorKind Opcode;
 
 public:
-  CXXFoldExpr(QualType T, UnresolvedLookupExpr *Callee,
-              SourceLocation LParenLoc, Expr *LHS, BinaryOperatorKind Opcode,
-              SourceLocation EllipsisLoc, Expr *RHS, SourceLocation RParenLoc,
-              Optional<unsigned> NumExpansions)
+  CXXFoldExpr(QualType T, SourceLocation LParenLoc, Expr *LHS,
+              BinaryOperatorKind Opcode, SourceLocation EllipsisLoc, Expr *RHS,
+              SourceLocation RParenLoc, Optional<unsigned> NumExpansions)
       : Expr(CXXFoldExprClass, T, VK_RValue, OK_Ordinary), LParenLoc(LParenLoc),
         EllipsisLoc(EllipsisLoc), RParenLoc(RParenLoc),
         NumExpansions(NumExpansions ? *NumExpansions + 1 : 0), Opcode(Opcode) {
-    SubExprs[SubExpr::Callee] = Callee;
-    SubExprs[SubExpr::LHS] = LHS;
-    SubExprs[SubExpr::RHS] = RHS;
+    SubExprs[0] = LHS;
+    SubExprs[1] = RHS;
     setDependence(computeDependence(this));
   }
 
   CXXFoldExpr(EmptyShell Empty) : Expr(CXXFoldExprClass, Empty) {}
 
-  UnresolvedLookupExpr *getCallee() const {
-    return static_cast<UnresolvedLookupExpr *>(SubExprs[SubExpr::Callee]);
-  }
-  Expr *getLHS() const { return static_cast<Expr*>(SubExprs[SubExpr::LHS]); }
-  Expr *getRHS() const { return static_cast<Expr*>(SubExprs[SubExpr::RHS]); }
+  Expr *getLHS() const { return static_cast<Expr*>(SubExprs[0]); }
+  Expr *getRHS() const { return static_cast<Expr*>(SubExprs[1]); }
 
   /// Does this produce a right-associated sequence of operators?
   bool isRightFold() const {
@@ -4575,33 +4568,19 @@ public:
     return None;
   }
 
-  SourceLocation getBeginLoc() const LLVM_READONLY {
-    if (LParenLoc.isValid())
-      return LParenLoc;
-    if (isLeftFold())
-      return getEllipsisLoc();
-    return getLHS()->getBeginLoc();
-  }
+  SourceLocation getBeginLoc() const LLVM_READONLY { return LParenLoc; }
 
-  SourceLocation getEndLoc() const LLVM_READONLY {
-    if (RParenLoc.isValid())
-      return RParenLoc;
-    if (isRightFold())
-      return getEllipsisLoc();
-    return getRHS()->getEndLoc();
-  }
+  SourceLocation getEndLoc() const LLVM_READONLY { return RParenLoc; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CXXFoldExprClass;
   }
 
   // Iterators
-  child_range children() {
-    return child_range(SubExprs, SubExprs + SubExpr::Count);
-  }
+  child_range children() { return child_range(SubExprs, SubExprs + 2); }
 
   const_child_range children() const {
-    return const_child_range(SubExprs, SubExprs + SubExpr::Count);
+    return const_child_range(SubExprs, SubExprs + 2);
   }
 };
 

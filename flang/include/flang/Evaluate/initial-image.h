@@ -42,10 +42,8 @@ public:
     if (offset < 0 || offset + bytes > data_.size()) {
       return OutOfRange;
     } else {
-      auto elementBytes{ToInt64(x.GetType().MeasureSizeInBytes())};
-      if (!elementBytes ||
-          bytes !=
-              x.values().size() * static_cast<std::size_t>(*elementBytes)) {
+      auto elementBytes{x.GetType().MeasureSizeInBytes()};
+      if (!elementBytes || bytes != x.values().size() * *elementBytes) {
         return SizeMismatch;
       } else {
         std::memcpy(&data_.at(offset), &x.values().at(0), bytes);
@@ -88,8 +86,6 @@ public:
   }
 
   void AddPointer(ConstantSubscript, const Expr<SomeType> &);
-
-  void Incorporate(ConstantSubscript, const InitialImage &);
 
   // Conversions to constant initializers
   std::optional<Expr<SomeType>> AsConstant(FoldingContext &,

@@ -13,7 +13,6 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
-#include "mlir/Interfaces/FoldInterfaces.h"
 #include <numeric>
 
 using namespace mlir;
@@ -214,7 +213,7 @@ Dialect *Operation::getDialect() {
 
   // If this operation hasn't been registered or doesn't have abstract
   // operation, try looking up the dialect name in the context.
-  return getContext()->getLoadedDialect(getName().getDialect());
+  return getContext()->getRegisteredDialect(getName().getDialect());
 }
 
 Region *Operation::getParentRegion() {
@@ -571,11 +570,11 @@ LogicalResult Operation::fold(ArrayRef<Attribute> operands,
   if (!dialect)
     return failure();
 
-  auto *interface = dialect->getRegisteredInterface<DialectFoldInterface>();
-  if (!interface)
+  SmallVector<Attribute, 8> constants;
+  if (failed(dialect->constantFoldHook(this, operands, constants)))
     return failure();
-
-  return interface->fold(this, operands, results);
+  results.assign(constants.begin(), constants.end());
+  return success();
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is

@@ -612,7 +612,7 @@ struct MatchableInfo {
   /// operator< - Compare two matchables.
   bool operator<(const MatchableInfo &RHS) const {
     // The primary comparator is the instruction mnemonic.
-    if (int Cmp = Mnemonic.compare_lower(RHS.Mnemonic))
+    if (int Cmp = Mnemonic.compare(RHS.Mnemonic))
       return Cmp == -1;
 
     if (AsmOperands.size() != RHS.AsmOperands.size())
@@ -2880,7 +2880,7 @@ static void emitCustomOperandParsing(raw_ostream &OS, CodeGenTarget &Target,
     OS << "  { ";
 
     // Store a pascal-style length byte in the mnemonic.
-    std::string LenMnemonic = char(II.Mnemonic.size()) + II.Mnemonic.lower();
+    std::string LenMnemonic = char(II.Mnemonic.size()) + II.Mnemonic.str();
     OS << StringTable.GetOrAddStringOffset(LenMnemonic, false)
        << " /* " << II.Mnemonic << " */, ";
 
@@ -3324,7 +3324,7 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
     HasDeprecation |= MI->HasDeprecation;
 
     // Store a pascal-style length byte in the mnemonic.
-    std::string LenMnemonic = char(MI->Mnemonic.size()) + MI->Mnemonic.lower();
+    std::string LenMnemonic = char(MI->Mnemonic.size()) + MI->Mnemonic.str();
     MaxMnemonicIndex = std::max(MaxMnemonicIndex,
                         StringTable.GetOrAddStringOffset(LenMnemonic, false));
   }
@@ -3438,8 +3438,7 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
         continue;
 
       // Store a pascal-style length byte in the mnemonic.
-      std::string LenMnemonic =
-          char(MI->Mnemonic.size()) + MI->Mnemonic.lower();
+      std::string LenMnemonic = char(MI->Mnemonic.size()) + MI->Mnemonic.str();
       OS << "  { " << StringTable.GetOrAddStringOffset(LenMnemonic, false)
          << " /* " << MI->Mnemonic << " */, "
          << Target.getInstNamespace() << "::"

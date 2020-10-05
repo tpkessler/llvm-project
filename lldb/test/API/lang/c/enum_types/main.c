@@ -25,7 +25,7 @@ int main (int argc, char const *argv[])
         Beta = 4
     };
 
-    enum enum_test_days {
+    enum days {
         Monday = -3,
         Tuesday,
         Wednesday,
@@ -40,7 +40,7 @@ int main (int argc, char const *argv[])
     int nonsense = a + b + c + ab + ac + all;
     enum non_bitfield omega = Alpha | Beta;
 
-    enum enum_test_days day;
+    enum days day;
     struct foo f;
     f.op = NULL; // Breakpoint for bitfield
     for (day = Monday - 1; day <= kNumDays + 1; day++)

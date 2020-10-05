@@ -77,8 +77,7 @@ static cl::opt<bool> EnableCheckBankConflict("hexagon-check-bank-conflict",
 
 HexagonSubtarget::HexagonSubtarget(const Triple &TT, StringRef CPU,
                                    StringRef FS, const TargetMachine &TM)
-    : HexagonGenSubtargetInfo(TT, CPU, /*TuneCPU*/ CPU, FS),
-      OptLevel(TM.getOptLevel()),
+    : HexagonGenSubtargetInfo(TT, CPU, FS), OptLevel(TM.getOptLevel()),
       CPUString(std::string(Hexagon_MC::selectHexagonCPU(CPU))),
       TargetTriple(TT), InstrInfo(initializeSubtargetDependencies(CPU, FS)),
       RegInfo(getHwMode()), TLInfo(TM, *this),
@@ -105,7 +104,7 @@ HexagonSubtarget::initializeSubtargetDependencies(StringRef CPU, StringRef FS) {
 
   UseBSBScheduling = hasV60Ops() && EnableBSBSched;
 
-  ParseSubtargetFeatures(CPUString, /*TuneCPU*/ CPUString, FS);
+  ParseSubtargetFeatures(CPUString, FS);
 
   if (OverrideLongCalls.getPosition())
     UseLongCalls = OverrideLongCalls;

@@ -227,13 +227,9 @@ bool X86Subtarget::isLegalToCallImmediateAddr() const {
   return isTargetELF() || TM.getRelocationModel() == Reloc::Static;
 }
 
-void X86Subtarget::initSubtargetFeatures(StringRef CPU, StringRef TuneCPU,
-                                         StringRef FS) {
+void X86Subtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   if (CPU.empty())
     CPU = "generic";
-
-  if (TuneCPU.empty())
-    TuneCPU = "generic";
 
   std::string FullFS = X86_MC::ParseX86Triple(TargetTriple);
   assert(!FullFS.empty() && "Failed to parse X86 triple");
@@ -242,7 +238,7 @@ void X86Subtarget::initSubtargetFeatures(StringRef CPU, StringRef TuneCPU,
     FullFS = (Twine(FullFS) + "," + FS).str();
 
   // Parse features string and set the CPU.
-  ParseSubtargetFeatures(CPU, TuneCPU, FullFS);
+  ParseSubtargetFeatures(CPU, FullFS);
 
   // All CPUs that implement SSE4.2 or SSE4A support unaligned accesses of
   // 16-bytes and under that are reasonably fast. These features were
@@ -276,24 +272,22 @@ void X86Subtarget::initSubtargetFeatures(StringRef CPU, StringRef TuneCPU,
 }
 
 X86Subtarget &X86Subtarget::initializeSubtargetDependencies(StringRef CPU,
-                                                            StringRef TuneCPU,
                                                             StringRef FS) {
-  initSubtargetFeatures(CPU, TuneCPU, FS);
+  initSubtargetFeatures(CPU, FS);
   return *this;
 }
 
-X86Subtarget::X86Subtarget(const Triple &TT, StringRef CPU, StringRef TuneCPU,
-                           StringRef FS, const X86TargetMachine &TM,
+X86Subtarget::X86Subtarget(const Triple &TT, StringRef CPU, StringRef FS,
+                           const X86TargetMachine &TM,
                            MaybeAlign StackAlignOverride,
                            unsigned PreferVectorWidthOverride,
                            unsigned RequiredVectorWidth)
-    : X86GenSubtargetInfo(TT, CPU, TuneCPU, FS),
-      PICStyle(PICStyles::Style::None), TM(TM), TargetTriple(TT),
-      StackAlignOverride(StackAlignOverride),
+    : X86GenSubtargetInfo(TT, CPU, FS), PICStyle(PICStyles::Style::None),
+      TM(TM), TargetTriple(TT), StackAlignOverride(StackAlignOverride),
       PreferVectorWidthOverride(PreferVectorWidthOverride),
       RequiredVectorWidth(RequiredVectorWidth),
-      InstrInfo(initializeSubtargetDependencies(CPU, TuneCPU, FS)),
-      TLInfo(TM, *this), FrameLowering(*this, getStackAlignment()) {
+      InstrInfo(initializeSubtargetDependencies(CPU, FS)), TLInfo(TM, *this),
+      FrameLowering(*this, getStackAlignment()) {
   // Determine the PICStyle based on the target selected.
   if (!isPositionIndependent())
     setPICStyle(PICStyles::Style::None);

@@ -182,8 +182,7 @@ struct DeviceTy {
                          bool HasPresentModifier);
   void *getTgtPtrBegin(void *HstPtrBegin, int64_t Size);
   void *getTgtPtrBegin(void *HstPtrBegin, int64_t Size, bool &IsLast,
-                       bool UpdateRefCount, bool &IsHostPtr,
-                       bool MustContain = false);
+      bool UpdateRefCount, bool &IsHostPtr);
   int deallocTgtPtr(void *TgtPtrBegin, int64_t Size, bool ForceDelete,
                     bool HasCloseModifier = false);
   int associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size);

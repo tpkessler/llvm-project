@@ -3,8 +3,8 @@
 // REQUIRES: c99-complex
 
 //
-// Bug 42493
-// XFAIL: sparc-target-arch
+// 32-bit: Bug 42493, 64-bit: Bug 42496
+// XFAIL: sparc
 //
 #include <stdio.h>
 

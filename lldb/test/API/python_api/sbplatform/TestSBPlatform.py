@@ -9,7 +9,6 @@ class SBPlatformAPICase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
     @add_test_categories(['pyapi'])
-    @skipIfRemote # Remote environment not supported.
     def test_run(self):
         self.build()
         plat = lldb.SBPlatform.GetHostPlatform()

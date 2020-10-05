@@ -30,7 +30,6 @@ subdirectories =
  FuzzMutate
  LineEditor
  Linker
- InterfaceStub
  IR
  IRReader
  LTO

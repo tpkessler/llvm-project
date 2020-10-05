@@ -13,7 +13,6 @@
 #include "ExportTrie.h"
 #include "InputSection.h"
 #include "OutputSection.h"
-#include "OutputSegment.h"
 #include "Target.h"
 
 #include "llvm/ADT/SetVector.h"
@@ -32,7 +31,6 @@ constexpr const char export_[] = "__export";
 constexpr const char symbolTable[] = "__symbol_table";
 constexpr const char stringTable[] = "__string_table";
 constexpr const char got[] = "__got";
-constexpr const char threadPtrs[] = "__thread_ptrs";
 
 } // namespace section_names
 
@@ -97,13 +95,11 @@ public:
   void writeTo(uint8_t *buf) const override {}
 };
 
-// This is the base class for the GOT and TLVPointer sections, which are nearly
-// functionally identical -- they will both be populated by dyld with addresses
-// to non-lazily-loaded dylib symbols. The main difference is that the
-// TLVPointerSection stores references to thread-local variables.
-class NonLazyPointerSectionBase : public SyntheticSection {
+// This section will be populated by dyld with addresses to non-lazily-loaded
+// dylib symbols.
+class GotSection : public SyntheticSection {
 public:
-  NonLazyPointerSectionBase(const char *segname, const char *name);
+  GotSection();
 
   const llvm::SetVector<const Symbol *> &getEntries() const { return entries; }
 
@@ -117,23 +113,6 @@ public:
 
 private:
   llvm::SetVector<const Symbol *> entries;
-};
-
-class GotSection : public NonLazyPointerSectionBase {
-public:
-  GotSection()
-      : NonLazyPointerSectionBase(segment_names::dataConst,
-                                  section_names::got) {
-    // TODO: section_64::reserved1 should be an index into the indirect symbol
-    // table, which we do not currently emit
-  }
-};
-
-class TlvPointerSection : public NonLazyPointerSectionBase {
-public:
-  TlvPointerSection()
-      : NonLazyPointerSectionBase(segment_names::data,
-                                  section_names::threadPtrs) {}
 };
 
 struct BindingEntry {
@@ -318,7 +297,6 @@ struct InStruct {
   MachHeaderSection *header = nullptr;
   BindingSection *binding = nullptr;
   GotSection *got = nullptr;
-  TlvPointerSection *tlvPointers = nullptr;
   LazyPointerSection *lazyPointers = nullptr;
   StubsSection *stubs = nullptr;
   StubHelperSection *stubHelper = nullptr;

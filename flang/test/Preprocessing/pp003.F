@@ -1,5 +1,3 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: res=((666)+111)
 * function-like macros
       integer function IFLM(x)
         integer :: x
@@ -10,8 +8,8 @@
       integer :: res
       res = IFLM(666)
       if (res .eq. 777) then
-        print *, 'pp003.F yes'
+        print *, 'pp003.F pass'
       else
-        print *, 'pp003.F no: ', res
+        print *, 'pp003.F FAIL: ', res
       end if
       end

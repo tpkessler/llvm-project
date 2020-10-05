@@ -16,43 +16,10 @@
 using namespace clang;
 using namespace llvm::omp;
 
-size_t OMPChildren::size(unsigned NumClauses, bool HasAssociatedStmt,
-                         unsigned NumChildren) {
-  return llvm::alignTo(
-      totalSizeToAlloc<OMPClause *, Stmt *>(
-          NumClauses, NumChildren + (HasAssociatedStmt ? 1 : 0)),
-      alignof(OMPChildren));
-}
-
-void OMPChildren::setClauses(ArrayRef<OMPClause *> Clauses) {
-  assert(Clauses.size() == NumClauses &&
+void OMPExecutableDirective::setClauses(ArrayRef<OMPClause *> Clauses) {
+  assert(Clauses.size() == getNumClauses() &&
          "Number of clauses is not the same as the preallocated buffer");
-  llvm::copy(Clauses, getTrailingObjects<OMPClause *>());
-}
-
-MutableArrayRef<Stmt *> OMPChildren::getChildren() {
-  return llvm::makeMutableArrayRef(getTrailingObjects<Stmt *>(), NumChildren);
-}
-
-OMPChildren *OMPChildren::Create(void *Mem, ArrayRef<OMPClause *> Clauses) {
-  auto *Data = CreateEmpty(Mem, Clauses.size());
-  Data->setClauses(Clauses);
-  return Data;
-}
-
-OMPChildren *OMPChildren::Create(void *Mem, ArrayRef<OMPClause *> Clauses,
-                                 Stmt *S, unsigned NumChildren) {
-  auto *Data = CreateEmpty(Mem, Clauses.size(), S, NumChildren);
-  Data->setClauses(Clauses);
-  if (S)
-    Data->setAssociatedStmt(S);
-  return Data;
-}
-
-OMPChildren *OMPChildren::CreateEmpty(void *Mem, unsigned NumClauses,
-                                      bool HasAssociatedStmt,
-                                      unsigned NumChildren) {
-  return new (Mem) OMPChildren(NumClauses, NumChildren, HasAssociatedStmt);
+  std::copy(Clauses.begin(), Clauses.end(), getClauses().begin());
 }
 
 bool OMPExecutableDirective::isStandaloneDirective() const {
@@ -63,15 +30,15 @@ bool OMPExecutableDirective::isStandaloneDirective() const {
       isa<OMPTargetExitDataDirective>(this) ||
       isa<OMPTargetUpdateDirective>(this))
     return true;
-  return !hasAssociatedStmt();
+  return !hasAssociatedStmt() || !getAssociatedStmt();
 }
 
-Stmt *OMPExecutableDirective::getStructuredBlock() {
+const Stmt *OMPExecutableDirective::getStructuredBlock() const {
   assert(!isStandaloneDirective() &&
          "Standalone Executable Directives don't have Structured Blocks.");
   if (auto *LD = dyn_cast<OMPLoopDirective>(this))
     return LD->getBody();
-  return getRawStmt();
+  return getInnermostCapturedStmt()->getCapturedStmt();
 }
 
 Stmt *OMPLoopDirective::tryToFindNextInnerLoop(Stmt *CurStmt,
@@ -120,7 +87,8 @@ Stmt *OMPLoopDirective::tryToFindNextInnerLoop(Stmt *CurStmt,
 
 Stmt *OMPLoopDirective::getBody() {
   // This relies on the loop form is already checked by Sema.
-  Stmt *Body = Data->getRawStmt()->IgnoreContainers();
+  Stmt *Body =
+      getInnermostCapturedStmt()->getCapturedStmt()->IgnoreContainers();
   if (auto *For = dyn_cast<ForStmt>(Body)) {
     Body = For->getBody();
   } else {
@@ -144,32 +112,32 @@ Stmt *OMPLoopDirective::getBody() {
 void OMPLoopDirective::setCounters(ArrayRef<Expr *> A) {
   assert(A.size() == getCollapsedNumber() &&
          "Number of loop counters is not the same as the collapsed number");
-  llvm::copy(A, getCounters().begin());
+  std::copy(A.begin(), A.end(), getCounters().begin());
 }
 
 void OMPLoopDirective::setPrivateCounters(ArrayRef<Expr *> A) {
   assert(A.size() == getCollapsedNumber() && "Number of loop private counters "
                                              "is not the same as the collapsed "
                                              "number");
-  llvm::copy(A, getPrivateCounters().begin());
+  std::copy(A.begin(), A.end(), getPrivateCounters().begin());
 }
 
 void OMPLoopDirective::setInits(ArrayRef<Expr *> A) {
   assert(A.size() == getCollapsedNumber() &&
          "Number of counter inits is not the same as the collapsed number");
-  llvm::copy(A, getInits().begin());
+  std::copy(A.begin(), A.end(), getInits().begin());
 }
 
 void OMPLoopDirective::setUpdates(ArrayRef<Expr *> A) {
   assert(A.size() == getCollapsedNumber() &&
          "Number of counter updates is not the same as the collapsed number");
-  llvm::copy(A, getUpdates().begin());
+  std::copy(A.begin(), A.end(), getUpdates().begin());
 }
 
 void OMPLoopDirective::setFinals(ArrayRef<Expr *> A) {
   assert(A.size() == getCollapsedNumber() &&
          "Number of counter finals is not the same as the collapsed number");
-  llvm::copy(A, getFinals().begin());
+  std::copy(A.begin(), A.end(), getFinals().begin());
 }
 
 void OMPLoopDirective::setDependentCounters(ArrayRef<Expr *> A) {
@@ -195,8 +163,14 @@ OMPParallelDirective *OMPParallelDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt, Expr *TaskRedRef,
     bool HasCancel) {
-  auto *Dir = createDirective<OMPParallelDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/1, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPParallelDirective *Dir =
+      new (Mem) OMPParallelDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setTaskReductionRefExpr(TaskRedRef);
   Dir->setHasCancel(HasCancel);
   return Dir;
@@ -205,9 +179,11 @@ OMPParallelDirective *OMPParallelDirective::Create(
 OMPParallelDirective *OMPParallelDirective::CreateEmpty(const ASTContext &C,
                                                         unsigned NumClauses,
                                                         EmptyShell) {
-  return createEmptyDirective<OMPParallelDirective>(C, NumClauses,
-                                                    /*HasAssociatedStmt=*/true,
-                                                    /*NumChildren=*/1);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPParallelDirective(NumClauses);
 }
 
 OMPSimdDirective *
@@ -215,9 +191,14 @@ OMPSimdDirective::Create(const ASTContext &C, SourceLocation StartLoc,
                          SourceLocation EndLoc, unsigned CollapsedNum,
                          ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
                          const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPSimdDirective>(
-      C, Clauses, AssociatedStmt, numLoopChildren(CollapsedNum, OMPD_simd),
-      StartLoc, EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPSimdDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                 sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_simd));
+  OMPSimdDirective *Dir = new (Mem)
+      OMPSimdDirective(StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -241,18 +222,25 @@ OMPSimdDirective *OMPSimdDirective::CreateEmpty(const ASTContext &C,
                                                 unsigned NumClauses,
                                                 unsigned CollapsedNum,
                                                 EmptyShell) {
-  return createEmptyDirective<OMPSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_simd), CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPSimdDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                 sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_simd));
+  return new (Mem) OMPSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPForDirective *OMPForDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, Expr *TaskRedRef, bool HasCancel) {
-  auto *Dir = createDirective<OMPForDirective>(
-      C, Clauses, AssociatedStmt, numLoopChildren(CollapsedNum, OMPD_for) + 1,
-      StartLoc, EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPForDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                 sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_for));
+  OMPForDirective *Dir =
+      new (Mem) OMPForDirective(StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -286,9 +274,11 @@ OMPForDirective *OMPForDirective::CreateEmpty(const ASTContext &C,
                                               unsigned NumClauses,
                                               unsigned CollapsedNum,
                                               EmptyShell) {
-  return createEmptyDirective<OMPForDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_for) + 1, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPForDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                 sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_for));
+  return new (Mem) OMPForDirective(CollapsedNum, NumClauses);
 }
 
 OMPForSimdDirective *
@@ -296,9 +286,15 @@ OMPForSimdDirective::Create(const ASTContext &C, SourceLocation StartLoc,
                             SourceLocation EndLoc, unsigned CollapsedNum,
                             ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
                             const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPForSimdDirective>(
-      C, Clauses, AssociatedStmt, numLoopChildren(CollapsedNum, OMPD_for_simd),
-      StartLoc, EndLoc, CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPForSimdDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                 sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_for_simd));
+  OMPForSimdDirective *Dir = new (Mem)
+      OMPForSimdDirective(StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -330,18 +326,26 @@ OMPForSimdDirective *OMPForSimdDirective::CreateEmpty(const ASTContext &C,
                                                       unsigned NumClauses,
                                                       unsigned CollapsedNum,
                                                       EmptyShell) {
-  return createEmptyDirective<OMPForSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_for_simd), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPForSimdDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                 sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_for_simd));
+  return new (Mem) OMPForSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPSectionsDirective *OMPSectionsDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt, Expr *TaskRedRef,
     bool HasCancel) {
-  auto *Dir = createDirective<OMPSectionsDirective>(C, Clauses, AssociatedStmt,
-                                                    /*NumChildren=*/1, StartLoc,
-                                                    EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPSectionsDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPSectionsDirective *Dir =
+      new (Mem) OMPSectionsDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setTaskReductionRefExpr(TaskRedRef);
   Dir->setHasCancel(HasCancel);
   return Dir;
@@ -350,9 +354,11 @@ OMPSectionsDirective *OMPSectionsDirective::Create(
 OMPSectionsDirective *OMPSectionsDirective::CreateEmpty(const ASTContext &C,
                                                         unsigned NumClauses,
                                                         EmptyShell) {
-  return createEmptyDirective<OMPSectionsDirective>(C, NumClauses,
-                                                    /*HasAssociatedStmt=*/true,
-                                                    /*NumChildren=*/1);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPSectionsDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPSectionsDirective(NumClauses);
 }
 
 OMPSectionDirective *OMPSectionDirective::Create(const ASTContext &C,
@@ -360,17 +366,19 @@ OMPSectionDirective *OMPSectionDirective::Create(const ASTContext &C,
                                                  SourceLocation EndLoc,
                                                  Stmt *AssociatedStmt,
                                                  bool HasCancel) {
-  auto *Dir =
-      createDirective<OMPSectionDirective>(C, llvm::None, AssociatedStmt,
-                                           /*NumChildre=*/0, StartLoc, EndLoc);
+  unsigned Size = llvm::alignTo(sizeof(OMPSectionDirective), alignof(Stmt *));
+  void *Mem = C.Allocate(Size + sizeof(Stmt *));
+  OMPSectionDirective *Dir = new (Mem) OMPSectionDirective(StartLoc, EndLoc);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setHasCancel(HasCancel);
   return Dir;
 }
 
 OMPSectionDirective *OMPSectionDirective::CreateEmpty(const ASTContext &C,
                                                       EmptyShell) {
-  return createEmptyDirective<OMPSectionDirective>(C, /*NumClauses=*/0,
-                                                   /*HasAssociatedStmt=*/true);
+  unsigned Size = llvm::alignTo(sizeof(OMPSectionDirective), alignof(Stmt *));
+  void *Mem = C.Allocate(Size + sizeof(Stmt *));
+  return new (Mem) OMPSectionDirective();
 }
 
 OMPSingleDirective *OMPSingleDirective::Create(const ASTContext &C,
@@ -378,57 +386,83 @@ OMPSingleDirective *OMPSingleDirective::Create(const ASTContext &C,
                                                SourceLocation EndLoc,
                                                ArrayRef<OMPClause *> Clauses,
                                                Stmt *AssociatedStmt) {
-  return createDirective<OMPSingleDirective>(C, Clauses, AssociatedStmt,
-                                             /*NumChildren=*/0, StartLoc,
-                                             EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPSingleDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPSingleDirective *Dir =
+      new (Mem) OMPSingleDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPSingleDirective *OMPSingleDirective::CreateEmpty(const ASTContext &C,
                                                     unsigned NumClauses,
                                                     EmptyShell) {
-  return createEmptyDirective<OMPSingleDirective>(C, NumClauses,
-                                                  /*HasAssociatedStmt=*/true);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPSingleDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPSingleDirective(NumClauses);
 }
 
 OMPMasterDirective *OMPMasterDirective::Create(const ASTContext &C,
                                                SourceLocation StartLoc,
                                                SourceLocation EndLoc,
                                                Stmt *AssociatedStmt) {
-  return createDirective<OMPMasterDirective>(C, llvm::None, AssociatedStmt,
-                                             /*NumChildren=*/0, StartLoc,
-                                             EndLoc);
+  unsigned Size = llvm::alignTo(sizeof(OMPMasterDirective), alignof(Stmt *));
+  void *Mem = C.Allocate(Size + sizeof(Stmt *));
+  OMPMasterDirective *Dir = new (Mem) OMPMasterDirective(StartLoc, EndLoc);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPMasterDirective *OMPMasterDirective::CreateEmpty(const ASTContext &C,
                                                     EmptyShell) {
-  return createEmptyDirective<OMPMasterDirective>(C, /*NumClauses=*/0,
-                                                  /*HasAssociatedStmt=*/true);
+  unsigned Size = llvm::alignTo(sizeof(OMPMasterDirective), alignof(Stmt *));
+  void *Mem = C.Allocate(Size + sizeof(Stmt *));
+  return new (Mem) OMPMasterDirective();
 }
 
 OMPCriticalDirective *OMPCriticalDirective::Create(
     const ASTContext &C, const DeclarationNameInfo &Name,
     SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt) {
-  return createDirective<OMPCriticalDirective>(C, Clauses, AssociatedStmt,
-                                               /*NumChildren=*/0, Name,
-                                               StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPCriticalDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPCriticalDirective *Dir =
+      new (Mem) OMPCriticalDirective(Name, StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPCriticalDirective *OMPCriticalDirective::CreateEmpty(const ASTContext &C,
                                                         unsigned NumClauses,
                                                         EmptyShell) {
-  return createEmptyDirective<OMPCriticalDirective>(C, NumClauses,
-                                                    /*HasAssociatedStmt=*/true);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPCriticalDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPCriticalDirective(NumClauses);
 }
 
 OMPParallelForDirective *OMPParallelForDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, Expr *TaskRedRef, bool HasCancel) {
-  auto *Dir = createDirective<OMPParallelForDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_parallel_for) + 1, StartLoc, EndLoc,
-      CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelForDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                         sizeof(Stmt *) *
+                             numLoopChildren(CollapsedNum, OMPD_parallel_for));
+  OMPParallelForDirective *Dir = new (Mem)
+      OMPParallelForDirective(StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -461,19 +495,27 @@ OMPParallelForDirective *OMPParallelForDirective::Create(
 OMPParallelForDirective *
 OMPParallelForDirective::CreateEmpty(const ASTContext &C, unsigned NumClauses,
                                      unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPParallelForDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_parallel_for) + 1, CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelForDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                         sizeof(Stmt *) *
+                             numLoopChildren(CollapsedNum, OMPD_parallel_for));
+  return new (Mem) OMPParallelForDirective(CollapsedNum, NumClauses);
 }
 
 OMPParallelForSimdDirective *OMPParallelForSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPParallelForSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_parallel_for_simd), StartLoc, EndLoc,
-      CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelForSimdDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_parallel_for_simd));
+  OMPParallelForSimdDirective *Dir = new (Mem) OMPParallelForSimdDirective(
+      StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -505,33 +547,51 @@ OMPParallelForSimdDirective *
 OMPParallelForSimdDirective::CreateEmpty(const ASTContext &C,
                                          unsigned NumClauses,
                                          unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPParallelForSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_parallel_for_simd), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelForSimdDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_parallel_for_simd));
+  return new (Mem) OMPParallelForSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPParallelMasterDirective *OMPParallelMasterDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt, Expr *TaskRedRef) {
-  auto *Dir = createDirective<OMPParallelMasterDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/1, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelMasterDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  auto *Dir =
+      new (Mem) OMPParallelMasterDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setTaskReductionRefExpr(TaskRedRef);
   return Dir;
 }
 
-OMPParallelMasterDirective *
-OMPParallelMasterDirective::CreateEmpty(const ASTContext &C,
-                                        unsigned NumClauses, EmptyShell) {
-  return createEmptyDirective<OMPParallelMasterDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true, /*NumChildren=*/1);
+OMPParallelMasterDirective *OMPParallelMasterDirective::CreateEmpty(const ASTContext &C,
+                                                        unsigned NumClauses,
+                                                        EmptyShell) {
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelMasterDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPParallelMasterDirective(NumClauses);
 }
 
 OMPParallelSectionsDirective *OMPParallelSectionsDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt, Expr *TaskRedRef,
     bool HasCancel) {
-  auto *Dir = createDirective<OMPParallelSectionsDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/1, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelSectionsDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPParallelSectionsDirective *Dir =
+      new (Mem) OMPParallelSectionsDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setTaskReductionRefExpr(TaskRedRef);
   Dir->setHasCancel(HasCancel);
   return Dir;
@@ -540,16 +600,24 @@ OMPParallelSectionsDirective *OMPParallelSectionsDirective::Create(
 OMPParallelSectionsDirective *
 OMPParallelSectionsDirective::CreateEmpty(const ASTContext &C,
                                           unsigned NumClauses, EmptyShell) {
-  return createEmptyDirective<OMPParallelSectionsDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true, /*NumChildren=*/1);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPParallelSectionsDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPParallelSectionsDirective(NumClauses);
 }
 
 OMPTaskDirective *
 OMPTaskDirective::Create(const ASTContext &C, SourceLocation StartLoc,
                          SourceLocation EndLoc, ArrayRef<OMPClause *> Clauses,
                          Stmt *AssociatedStmt, bool HasCancel) {
-  auto *Dir = createDirective<OMPTaskDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/0, StartLoc, EndLoc);
+  unsigned Size = llvm::alignTo(sizeof(OMPTaskDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTaskDirective *Dir =
+      new (Mem) OMPTaskDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setHasCancel(HasCancel);
   return Dir;
 }
@@ -557,79 +625,111 @@ OMPTaskDirective::Create(const ASTContext &C, SourceLocation StartLoc,
 OMPTaskDirective *OMPTaskDirective::CreateEmpty(const ASTContext &C,
                                                 unsigned NumClauses,
                                                 EmptyShell) {
-  return createEmptyDirective<OMPTaskDirective>(C, NumClauses,
-                                                /*HasAssociatedStmt=*/true);
+  unsigned Size = llvm::alignTo(sizeof(OMPTaskDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPTaskDirective(NumClauses);
 }
 
 OMPTaskyieldDirective *OMPTaskyieldDirective::Create(const ASTContext &C,
                                                      SourceLocation StartLoc,
                                                      SourceLocation EndLoc) {
-  return new (C) OMPTaskyieldDirective(StartLoc, EndLoc);
+  void *Mem = C.Allocate(sizeof(OMPTaskyieldDirective));
+  OMPTaskyieldDirective *Dir =
+      new (Mem) OMPTaskyieldDirective(StartLoc, EndLoc);
+  return Dir;
 }
 
 OMPTaskyieldDirective *OMPTaskyieldDirective::CreateEmpty(const ASTContext &C,
                                                           EmptyShell) {
-  return new (C) OMPTaskyieldDirective();
+  void *Mem = C.Allocate(sizeof(OMPTaskyieldDirective));
+  return new (Mem) OMPTaskyieldDirective();
 }
 
 OMPBarrierDirective *OMPBarrierDirective::Create(const ASTContext &C,
                                                  SourceLocation StartLoc,
                                                  SourceLocation EndLoc) {
-  return new (C) OMPBarrierDirective(StartLoc, EndLoc);
+  void *Mem = C.Allocate(sizeof(OMPBarrierDirective));
+  OMPBarrierDirective *Dir = new (Mem) OMPBarrierDirective(StartLoc, EndLoc);
+  return Dir;
 }
 
 OMPBarrierDirective *OMPBarrierDirective::CreateEmpty(const ASTContext &C,
                                                       EmptyShell) {
-  return new (C) OMPBarrierDirective();
+  void *Mem = C.Allocate(sizeof(OMPBarrierDirective));
+  return new (Mem) OMPBarrierDirective();
 }
 
 OMPTaskwaitDirective *OMPTaskwaitDirective::Create(const ASTContext &C,
                                                    SourceLocation StartLoc,
                                                    SourceLocation EndLoc) {
-  return new (C) OMPTaskwaitDirective(StartLoc, EndLoc);
+  void *Mem = C.Allocate(sizeof(OMPTaskwaitDirective));
+  OMPTaskwaitDirective *Dir = new (Mem) OMPTaskwaitDirective(StartLoc, EndLoc);
+  return Dir;
 }
 
 OMPTaskwaitDirective *OMPTaskwaitDirective::CreateEmpty(const ASTContext &C,
                                                         EmptyShell) {
-  return new (C) OMPTaskwaitDirective();
+  void *Mem = C.Allocate(sizeof(OMPTaskwaitDirective));
+  return new (Mem) OMPTaskwaitDirective();
 }
 
 OMPTaskgroupDirective *OMPTaskgroupDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt, Expr *ReductionRef) {
-  auto *Dir = createDirective<OMPTaskgroupDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/1, StartLoc, EndLoc);
+  unsigned Size = llvm::alignTo(sizeof(OMPTaskgroupDirective) +
+                                    sizeof(OMPClause *) * Clauses.size(),
+                                alignof(Stmt *));
+  void *Mem = C.Allocate(Size + sizeof(Stmt *) + sizeof(Expr *));
+  OMPTaskgroupDirective *Dir =
+      new (Mem) OMPTaskgroupDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setReductionRef(ReductionRef);
+  Dir->setClauses(Clauses);
   return Dir;
 }
 
 OMPTaskgroupDirective *OMPTaskgroupDirective::CreateEmpty(const ASTContext &C,
                                                           unsigned NumClauses,
                                                           EmptyShell) {
-  return createEmptyDirective<OMPTaskgroupDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true, /*NumChildren=*/1);
+  unsigned Size = llvm::alignTo(sizeof(OMPTaskgroupDirective) +
+                                    sizeof(OMPClause *) * NumClauses,
+                                alignof(Stmt *));
+  void *Mem = C.Allocate(Size + sizeof(Stmt *) + sizeof(Expr *));
+  return new (Mem) OMPTaskgroupDirective(NumClauses);
 }
 
 OMPCancellationPointDirective *OMPCancellationPointDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     OpenMPDirectiveKind CancelRegion) {
-  auto *Dir = new (C) OMPCancellationPointDirective(StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPCancellationPointDirective), alignof(Stmt *));
+  void *Mem = C.Allocate(Size);
+  OMPCancellationPointDirective *Dir =
+      new (Mem) OMPCancellationPointDirective(StartLoc, EndLoc);
   Dir->setCancelRegion(CancelRegion);
   return Dir;
 }
 
 OMPCancellationPointDirective *
 OMPCancellationPointDirective::CreateEmpty(const ASTContext &C, EmptyShell) {
-  return new (C) OMPCancellationPointDirective();
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPCancellationPointDirective), alignof(Stmt *));
+  void *Mem = C.Allocate(Size);
+  return new (Mem) OMPCancellationPointDirective();
 }
 
 OMPCancelDirective *
 OMPCancelDirective::Create(const ASTContext &C, SourceLocation StartLoc,
                            SourceLocation EndLoc, ArrayRef<OMPClause *> Clauses,
                            OpenMPDirectiveKind CancelRegion) {
-  auto *Dir = createDirective<OMPCancelDirective>(
-      C, Clauses, /*AssociatedStmt=*/nullptr, /*NumChildren=*/0, StartLoc,
-      EndLoc);
+  unsigned Size = llvm::alignTo(sizeof(OMPCancelDirective) +
+                                    sizeof(OMPClause *) * Clauses.size(),
+                                alignof(Stmt *));
+  void *Mem = C.Allocate(Size);
+  OMPCancelDirective *Dir =
+      new (Mem) OMPCancelDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
   Dir->setCancelRegion(CancelRegion);
   return Dir;
 }
@@ -637,52 +737,77 @@ OMPCancelDirective::Create(const ASTContext &C, SourceLocation StartLoc,
 OMPCancelDirective *OMPCancelDirective::CreateEmpty(const ASTContext &C,
                                                     unsigned NumClauses,
                                                     EmptyShell) {
-  return createEmptyDirective<OMPCancelDirective>(C, NumClauses);
+  unsigned Size = llvm::alignTo(sizeof(OMPCancelDirective) +
+                                    sizeof(OMPClause *) * NumClauses,
+                                alignof(Stmt *));
+  void *Mem = C.Allocate(Size);
+  return new (Mem) OMPCancelDirective(NumClauses);
 }
 
 OMPFlushDirective *OMPFlushDirective::Create(const ASTContext &C,
                                              SourceLocation StartLoc,
                                              SourceLocation EndLoc,
                                              ArrayRef<OMPClause *> Clauses) {
-  return createDirective<OMPFlushDirective>(
-      C, Clauses, /*AssociatedStmt=*/nullptr, /*NumChildren=*/0, StartLoc,
-      EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPFlushDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * Clauses.size());
+  OMPFlushDirective *Dir =
+      new (Mem) OMPFlushDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  return Dir;
 }
 
 OMPFlushDirective *OMPFlushDirective::CreateEmpty(const ASTContext &C,
                                                   unsigned NumClauses,
                                                   EmptyShell) {
-  return createEmptyDirective<OMPFlushDirective>(C, NumClauses);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPFlushDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * NumClauses);
+  return new (Mem) OMPFlushDirective(NumClauses);
 }
 
 OMPDepobjDirective *OMPDepobjDirective::Create(const ASTContext &C,
                                                SourceLocation StartLoc,
                                                SourceLocation EndLoc,
                                                ArrayRef<OMPClause *> Clauses) {
-  return createDirective<OMPDepobjDirective>(
-      C, Clauses, /*AssociatedStmt=*/nullptr,
-      /*NumChildren=*/0, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPDepobjDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * Clauses.size(),
+                         alignof(OMPDepobjDirective));
+  auto *Dir = new (Mem) OMPDepobjDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  return Dir;
 }
 
 OMPDepobjDirective *OMPDepobjDirective::CreateEmpty(const ASTContext &C,
                                                     unsigned NumClauses,
                                                     EmptyShell) {
-  return createEmptyDirective<OMPDepobjDirective>(C, NumClauses);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPDepobjDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * NumClauses,
+                         alignof(OMPDepobjDirective));
+  return new (Mem) OMPDepobjDirective(NumClauses);
 }
 
 OMPScanDirective *OMPScanDirective::Create(const ASTContext &C,
                                            SourceLocation StartLoc,
                                            SourceLocation EndLoc,
                                            ArrayRef<OMPClause *> Clauses) {
-  return createDirective<OMPScanDirective>(C, Clauses,
-                                           /*AssociatedStmt=*/nullptr,
-                                           /*NumChildren=*/0, StartLoc, EndLoc);
+  unsigned Size = llvm::alignTo(sizeof(OMPScanDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * Clauses.size(),
+                         alignof(OMPScanDirective));
+  auto *Dir = new (Mem) OMPScanDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  return Dir;
 }
 
 OMPScanDirective *OMPScanDirective::CreateEmpty(const ASTContext &C,
                                                 unsigned NumClauses,
                                                 EmptyShell) {
-  return createEmptyDirective<OMPScanDirective>(C, NumClauses);
+  unsigned Size = llvm::alignTo(sizeof(OMPScanDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * NumClauses,
+                         alignof(OMPScanDirective));
+  return new (Mem) OMPScanDirective(NumClauses);
 }
 
 OMPOrderedDirective *OMPOrderedDirective::Create(const ASTContext &C,
@@ -690,25 +815,39 @@ OMPOrderedDirective *OMPOrderedDirective::Create(const ASTContext &C,
                                                  SourceLocation EndLoc,
                                                  ArrayRef<OMPClause *> Clauses,
                                                  Stmt *AssociatedStmt) {
-  return createDirective<OMPOrderedDirective>(
-      C, Clauses, cast_or_null<CapturedStmt>(AssociatedStmt),
-      /*NumChildren=*/0, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPOrderedDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(Stmt *) + sizeof(OMPClause *) * Clauses.size());
+  OMPOrderedDirective *Dir =
+      new (Mem) OMPOrderedDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPOrderedDirective *OMPOrderedDirective::CreateEmpty(const ASTContext &C,
                                                       unsigned NumClauses,
-                                                      bool IsStandalone,
                                                       EmptyShell) {
-  return createEmptyDirective<OMPOrderedDirective>(C, NumClauses,
-                                                   !IsStandalone);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPOrderedDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(Stmt *) + sizeof(OMPClause *) * NumClauses);
+  return new (Mem) OMPOrderedDirective(NumClauses);
 }
 
 OMPAtomicDirective *OMPAtomicDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt, Expr *X, Expr *V,
     Expr *E, Expr *UE, bool IsXLHSInRHSPart, bool IsPostfixUpdate) {
-  auto *Dir = createDirective<OMPAtomicDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/4, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPAtomicDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                         5 * sizeof(Stmt *));
+  OMPAtomicDirective *Dir =
+      new (Mem) OMPAtomicDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setX(X);
   Dir->setV(V);
   Dir->setExpr(E);
@@ -721,8 +860,11 @@ OMPAtomicDirective *OMPAtomicDirective::Create(
 OMPAtomicDirective *OMPAtomicDirective::CreateEmpty(const ASTContext &C,
                                                     unsigned NumClauses,
                                                     EmptyShell) {
-  return createEmptyDirective<OMPAtomicDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true, /*NumChildren=*/4);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPAtomicDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + 5 * sizeof(Stmt *));
+  return new (Mem) OMPAtomicDirective(NumClauses);
 }
 
 OMPTargetDirective *OMPTargetDirective::Create(const ASTContext &C,
@@ -730,23 +872,39 @@ OMPTargetDirective *OMPTargetDirective::Create(const ASTContext &C,
                                                SourceLocation EndLoc,
                                                ArrayRef<OMPClause *> Clauses,
                                                Stmt *AssociatedStmt) {
-  return createDirective<OMPTargetDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/0, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTargetDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTargetDirective *Dir =
+      new (Mem) OMPTargetDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPTargetDirective *OMPTargetDirective::CreateEmpty(const ASTContext &C,
                                                     unsigned NumClauses,
                                                     EmptyShell) {
-  return createEmptyDirective<OMPTargetDirective>(C, NumClauses,
-                                                  /*HasAssociatedStmt=*/true);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTargetDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPTargetDirective(NumClauses);
 }
 
 OMPTargetParallelDirective *OMPTargetParallelDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt, Expr *TaskRedRef,
     bool HasCancel) {
-  auto *Dir = createDirective<OMPTargetParallelDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/1, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTargetParallelDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTargetParallelDirective *Dir =
+      new (Mem) OMPTargetParallelDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setTaskReductionRefExpr(TaskRedRef);
   Dir->setHasCancel(HasCancel);
   return Dir;
@@ -755,18 +913,26 @@ OMPTargetParallelDirective *OMPTargetParallelDirective::Create(
 OMPTargetParallelDirective *
 OMPTargetParallelDirective::CreateEmpty(const ASTContext &C,
                                         unsigned NumClauses, EmptyShell) {
-  return createEmptyDirective<OMPTargetParallelDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true, /*NumChildren=*/1);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTargetParallelDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPTargetParallelDirective(NumClauses);
 }
 
 OMPTargetParallelForDirective *OMPTargetParallelForDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, Expr *TaskRedRef, bool HasCancel) {
-  auto *Dir = createDirective<OMPTargetParallelForDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_target_parallel_for) + 1, StartLoc,
-      EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPTargetParallelForDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_target_parallel_for));
+  OMPTargetParallelForDirective *Dir = new (Mem) OMPTargetParallelForDirective(
+      StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -800,52 +966,78 @@ OMPTargetParallelForDirective *
 OMPTargetParallelForDirective::CreateEmpty(const ASTContext &C,
                                            unsigned NumClauses,
                                            unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPTargetParallelForDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_target_parallel_for) + 1,
-      CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPTargetParallelForDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_target_parallel_for));
+  return new (Mem) OMPTargetParallelForDirective(CollapsedNum, NumClauses);
 }
 
 OMPTargetDataDirective *OMPTargetDataDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt) {
-  return createDirective<OMPTargetDataDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/0, StartLoc, EndLoc);
+  void *Mem = C.Allocate(
+      llvm::alignTo(sizeof(OMPTargetDataDirective), alignof(OMPClause *)) +
+      sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTargetDataDirective *Dir =
+      new (Mem) OMPTargetDataDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPTargetDataDirective *OMPTargetDataDirective::CreateEmpty(const ASTContext &C,
                                                             unsigned N,
                                                             EmptyShell) {
-  return createEmptyDirective<OMPTargetDataDirective>(
-      C, N, /*HasAssociatedStmt=*/true);
+  void *Mem = C.Allocate(
+      llvm::alignTo(sizeof(OMPTargetDataDirective), alignof(OMPClause *)) +
+      sizeof(OMPClause *) * N + sizeof(Stmt *));
+  return new (Mem) OMPTargetDataDirective(N);
 }
 
 OMPTargetEnterDataDirective *OMPTargetEnterDataDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt) {
-  return createDirective<OMPTargetEnterDataDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/0, StartLoc, EndLoc);
+  void *Mem = C.Allocate(
+      llvm::alignTo(sizeof(OMPTargetEnterDataDirective), alignof(OMPClause *)) +
+      sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTargetEnterDataDirective *Dir =
+      new (Mem) OMPTargetEnterDataDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPTargetEnterDataDirective *
 OMPTargetEnterDataDirective::CreateEmpty(const ASTContext &C, unsigned N,
                                          EmptyShell) {
-  return createEmptyDirective<OMPTargetEnterDataDirective>(
-      C, N, /*HasAssociatedStmt=*/true);
+  void *Mem = C.Allocate(
+      llvm::alignTo(sizeof(OMPTargetEnterDataDirective), alignof(OMPClause *)) +
+      sizeof(OMPClause *) * N + sizeof(Stmt *));
+  return new (Mem) OMPTargetEnterDataDirective(N);
 }
 
 OMPTargetExitDataDirective *OMPTargetExitDataDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt) {
-  return createDirective<OMPTargetExitDataDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/0, StartLoc, EndLoc);
+  void *Mem = C.Allocate(
+      llvm::alignTo(sizeof(OMPTargetExitDataDirective), alignof(OMPClause *)) +
+      sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTargetExitDataDirective *Dir =
+      new (Mem) OMPTargetExitDataDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPTargetExitDataDirective *
 OMPTargetExitDataDirective::CreateEmpty(const ASTContext &C, unsigned N,
                                         EmptyShell) {
-  return createEmptyDirective<OMPTargetExitDataDirective>(
-      C, N, /*HasAssociatedStmt=*/true);
+  void *Mem = C.Allocate(
+      llvm::alignTo(sizeof(OMPTargetExitDataDirective), alignof(OMPClause *)) +
+      sizeof(OMPClause *) * N + sizeof(Stmt *));
+  return new (Mem) OMPTargetExitDataDirective(N);
 }
 
 OMPTeamsDirective *OMPTeamsDirective::Create(const ASTContext &C,
@@ -853,24 +1045,40 @@ OMPTeamsDirective *OMPTeamsDirective::Create(const ASTContext &C,
                                              SourceLocation EndLoc,
                                              ArrayRef<OMPClause *> Clauses,
                                              Stmt *AssociatedStmt) {
-  return createDirective<OMPTeamsDirective>(
-      C, Clauses, AssociatedStmt, /*NumChildren=*/0, StartLoc, EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTeamsDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTeamsDirective *Dir =
+      new (Mem) OMPTeamsDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPTeamsDirective *OMPTeamsDirective::CreateEmpty(const ASTContext &C,
                                                   unsigned NumClauses,
                                                   EmptyShell) {
-  return createEmptyDirective<OMPTeamsDirective>(C, NumClauses,
-                                                 /*HasAssociatedStmt=*/true);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTeamsDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPTeamsDirective(NumClauses);
 }
 
 OMPTaskLoopDirective *OMPTaskLoopDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, bool HasCancel) {
-  auto *Dir = createDirective<OMPTaskLoopDirective>(
-      C, Clauses, AssociatedStmt, numLoopChildren(CollapsedNum, OMPD_taskloop),
-      StartLoc, EndLoc, CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTaskLoopDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                 sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_taskloop));
+  OMPTaskLoopDirective *Dir = new (Mem)
+      OMPTaskLoopDirective(StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -903,19 +1111,27 @@ OMPTaskLoopDirective *OMPTaskLoopDirective::CreateEmpty(const ASTContext &C,
                                                         unsigned NumClauses,
                                                         unsigned CollapsedNum,
                                                         EmptyShell) {
-  return createEmptyDirective<OMPTaskLoopDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_taskloop), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTaskLoopDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                 sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_taskloop));
+  return new (Mem) OMPTaskLoopDirective(CollapsedNum, NumClauses);
 }
 
 OMPTaskLoopSimdDirective *OMPTaskLoopSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTaskLoopSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_taskloop_simd), StartLoc, EndLoc,
-      CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTaskLoopSimdDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                         sizeof(Stmt *) *
+                             numLoopChildren(CollapsedNum, OMPD_taskloop_simd));
+  OMPTaskLoopSimdDirective *Dir = new (Mem)
+      OMPTaskLoopSimdDirective(StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -946,19 +1162,27 @@ OMPTaskLoopSimdDirective *OMPTaskLoopSimdDirective::Create(
 OMPTaskLoopSimdDirective *
 OMPTaskLoopSimdDirective::CreateEmpty(const ASTContext &C, unsigned NumClauses,
                                       unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPTaskLoopSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_taskloop_simd), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTaskLoopSimdDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                         sizeof(Stmt *) *
+                             numLoopChildren(CollapsedNum, OMPD_taskloop_simd));
+  return new (Mem) OMPTaskLoopSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPMasterTaskLoopDirective *OMPMasterTaskLoopDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, bool HasCancel) {
-  auto *Dir = createDirective<OMPMasterTaskLoopDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_master_taskloop), StartLoc, EndLoc,
-      CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPMasterTaskLoopDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_master_taskloop));
+  OMPMasterTaskLoopDirective *Dir = new (Mem) OMPMasterTaskLoopDirective(
+      StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -991,19 +1215,28 @@ OMPMasterTaskLoopDirective *
 OMPMasterTaskLoopDirective::CreateEmpty(const ASTContext &C,
                                         unsigned NumClauses,
                                         unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPMasterTaskLoopDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_master_taskloop), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPMasterTaskLoopDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_master_taskloop));
+  return new (Mem) OMPMasterTaskLoopDirective(CollapsedNum, NumClauses);
 }
 
 OMPMasterTaskLoopSimdDirective *OMPMasterTaskLoopSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPMasterTaskLoopSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_master_taskloop_simd), StartLoc,
-      EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPMasterTaskLoopSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                 sizeof(Stmt *) *
+                     numLoopChildren(CollapsedNum, OMPD_master_taskloop_simd));
+  auto *Dir = new (Mem) OMPMasterTaskLoopSimdDirective(
+      StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1035,19 +1268,29 @@ OMPMasterTaskLoopSimdDirective *
 OMPMasterTaskLoopSimdDirective::CreateEmpty(const ASTContext &C,
                                             unsigned NumClauses,
                                             unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPMasterTaskLoopSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_master_taskloop_simd), CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPMasterTaskLoopSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                 sizeof(Stmt *) *
+                     numLoopChildren(CollapsedNum, OMPD_master_taskloop_simd));
+  return new (Mem) OMPMasterTaskLoopSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPParallelMasterTaskLoopDirective *OMPParallelMasterTaskLoopDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, bool HasCancel) {
-  auto *Dir = createDirective<OMPParallelMasterTaskLoopDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_parallel_master_taskloop), StartLoc,
-      EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPParallelMasterTaskLoopDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_parallel_master_taskloop));
+  auto *Dir = new (Mem) OMPParallelMasterTaskLoopDirective(
+      StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1081,10 +1324,13 @@ OMPParallelMasterTaskLoopDirective::CreateEmpty(const ASTContext &C,
                                                 unsigned NumClauses,
                                                 unsigned CollapsedNum,
                                                 EmptyShell) {
-  return createEmptyDirective<OMPParallelMasterTaskLoopDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_parallel_master_taskloop),
-      CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPParallelMasterTaskLoopDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_parallel_master_taskloop));
+  return new (Mem) OMPParallelMasterTaskLoopDirective(CollapsedNum, NumClauses);
 }
 
 OMPParallelMasterTaskLoopSimdDirective *
@@ -1092,10 +1338,16 @@ OMPParallelMasterTaskLoopSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPParallelMasterTaskLoopSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_parallel_master_taskloop_simd),
-      StartLoc, EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPParallelMasterTaskLoopSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_parallel_master_taskloop_simd));
+  auto *Dir = new (Mem) OMPParallelMasterTaskLoopSimdDirective(
+      StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1128,20 +1380,29 @@ OMPParallelMasterTaskLoopSimdDirective::CreateEmpty(const ASTContext &C,
                                                     unsigned NumClauses,
                                                     unsigned CollapsedNum,
                                                     EmptyShell) {
-  return createEmptyDirective<OMPParallelMasterTaskLoopSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_parallel_master_taskloop_simd),
-      CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPParallelMasterTaskLoopSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_parallel_master_taskloop_simd));
+  return new (Mem)
+      OMPParallelMasterTaskLoopSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPDistributeDirective *OMPDistributeDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPDistributeDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_distribute), StartLoc, EndLoc,
-      CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPDistributeDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                         sizeof(Stmt *) *
+                             numLoopChildren(CollapsedNum, OMPD_distribute));
+  OMPDistributeDirective *Dir = new (Mem)
+      OMPDistributeDirective(StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1172,34 +1433,53 @@ OMPDistributeDirective *OMPDistributeDirective::Create(
 OMPDistributeDirective *
 OMPDistributeDirective::CreateEmpty(const ASTContext &C, unsigned NumClauses,
                                     unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPDistributeDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_distribute), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPDistributeDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                         sizeof(Stmt *) *
+                             numLoopChildren(CollapsedNum, OMPD_distribute));
+  return new (Mem) OMPDistributeDirective(CollapsedNum, NumClauses);
 }
 
 OMPTargetUpdateDirective *OMPTargetUpdateDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt) {
-  return createDirective<OMPTargetUpdateDirective>(C, Clauses, AssociatedStmt,
-                                                   /*NumChildren=*/0, StartLoc,
-                                                   EndLoc);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTargetUpdateDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTargetUpdateDirective *Dir =
+      new (Mem) OMPTargetUpdateDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPTargetUpdateDirective *
 OMPTargetUpdateDirective::CreateEmpty(const ASTContext &C, unsigned NumClauses,
                                       EmptyShell) {
-  return createEmptyDirective<OMPTargetUpdateDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTargetUpdateDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPTargetUpdateDirective(NumClauses);
 }
 
 OMPDistributeParallelForDirective *OMPDistributeParallelForDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, Expr *TaskRedRef, bool HasCancel) {
-  auto *Dir = createDirective<OMPDistributeParallelForDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_distribute_parallel_for) + 1, StartLoc,
-      EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPDistributeParallelForDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_distribute_parallel_for));
+  OMPDistributeParallelForDirective *Dir =
+      new (Mem) OMPDistributeParallelForDirective(StartLoc, EndLoc,
+                                                  CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1247,10 +1527,13 @@ OMPDistributeParallelForDirective::CreateEmpty(const ASTContext &C,
                                                unsigned NumClauses,
                                                unsigned CollapsedNum,
                                                EmptyShell) {
-  return createEmptyDirective<OMPDistributeParallelForDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_distribute_parallel_for) + 1,
-      CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPDistributeParallelForDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_distribute_parallel_for));
+  return new (Mem) OMPDistributeParallelForDirective(CollapsedNum, NumClauses);
 }
 
 OMPDistributeParallelForSimdDirective *
@@ -1258,10 +1541,17 @@ OMPDistributeParallelForSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPDistributeParallelForSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_distribute_parallel_for_simd),
-      StartLoc, EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPDistributeParallelForSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_distribute_parallel_for_simd));
+  OMPDistributeParallelForSimdDirective *Dir = new (Mem)
+      OMPDistributeParallelForSimdDirective(StartLoc, EndLoc, CollapsedNum,
+                                            Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1307,20 +1597,30 @@ OMPDistributeParallelForSimdDirective::CreateEmpty(const ASTContext &C,
                                                    unsigned NumClauses,
                                                    unsigned CollapsedNum,
                                                    EmptyShell) {
-  return createEmptyDirective<OMPDistributeParallelForSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_distribute_parallel_for_simd),
-      CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPDistributeParallelForSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_distribute_parallel_for_simd));
+  return new (Mem)
+      OMPDistributeParallelForSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPDistributeSimdDirective *OMPDistributeSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPDistributeSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_distribute_simd), StartLoc, EndLoc,
-      CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPDistributeSimdDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_distribute_simd));
+  OMPDistributeSimdDirective *Dir = new (Mem) OMPDistributeSimdDirective(
+      StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1352,19 +1652,30 @@ OMPDistributeSimdDirective *
 OMPDistributeSimdDirective::CreateEmpty(const ASTContext &C,
                                         unsigned NumClauses,
                                         unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPDistributeSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_distribute_simd), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPDistributeSimdDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_distribute_simd));
+  return new (Mem) OMPDistributeSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPTargetParallelForSimdDirective *OMPTargetParallelForSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTargetParallelForSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_target_parallel_for_simd), StartLoc,
-      EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPTargetParallelForSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_target_parallel_for_simd));
+  OMPTargetParallelForSimdDirective *Dir =
+      new (Mem) OMPTargetParallelForSimdDirective(StartLoc, EndLoc,
+                                                  CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1397,10 +1708,13 @@ OMPTargetParallelForSimdDirective::CreateEmpty(const ASTContext &C,
                                                unsigned NumClauses,
                                                unsigned CollapsedNum,
                                                EmptyShell) {
-  return createEmptyDirective<OMPTargetParallelForSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_target_parallel_for_simd),
-      CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPTargetParallelForSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_target_parallel_for_simd));
+  return new (Mem) OMPTargetParallelForSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPTargetSimdDirective *
@@ -1408,10 +1722,15 @@ OMPTargetSimdDirective::Create(const ASTContext &C, SourceLocation StartLoc,
                                SourceLocation EndLoc, unsigned CollapsedNum,
                                ArrayRef<OMPClause *> Clauses,
                                Stmt *AssociatedStmt, const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTargetSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_target_simd), StartLoc, EndLoc,
-      CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTargetSimdDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                         sizeof(Stmt *) *
+                             numLoopChildren(CollapsedNum, OMPD_target_simd));
+  OMPTargetSimdDirective *Dir = new (Mem)
+      OMPTargetSimdDirective(StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1434,19 +1753,27 @@ OMPTargetSimdDirective::Create(const ASTContext &C, SourceLocation StartLoc,
 OMPTargetSimdDirective *
 OMPTargetSimdDirective::CreateEmpty(const ASTContext &C, unsigned NumClauses,
                                     unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPTargetSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_target_simd), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTargetSimdDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                         sizeof(Stmt *) *
+                             numLoopChildren(CollapsedNum, OMPD_target_simd));
+  return new (Mem) OMPTargetSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPTeamsDistributeDirective *OMPTeamsDistributeDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTeamsDistributeDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_teams_distribute), StartLoc, EndLoc,
-      CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTeamsDistributeDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_teams_distribute));
+  OMPTeamsDistributeDirective *Dir = new (Mem) OMPTeamsDistributeDirective(
+      StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1478,19 +1805,29 @@ OMPTeamsDistributeDirective *
 OMPTeamsDistributeDirective::CreateEmpty(const ASTContext &C,
                                          unsigned NumClauses,
                                          unsigned CollapsedNum, EmptyShell) {
-  return createEmptyDirective<OMPTeamsDistributeDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_teams_distribute), CollapsedNum);
+  unsigned Size =
+      llvm::alignTo(sizeof(OMPTeamsDistributeDirective), alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) * numLoopChildren(CollapsedNum, OMPD_teams_distribute));
+  return new (Mem) OMPTeamsDistributeDirective(CollapsedNum, NumClauses);
 }
 
 OMPTeamsDistributeSimdDirective *OMPTeamsDistributeSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTeamsDistributeSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_teams_distribute_simd), StartLoc,
-      EndLoc, CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPTeamsDistributeSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                 sizeof(Stmt *) *
+                     numLoopChildren(CollapsedNum, OMPD_teams_distribute_simd));
+  OMPTeamsDistributeSimdDirective *Dir =
+      new (Mem) OMPTeamsDistributeSimdDirective(StartLoc, EndLoc, CollapsedNum,
+                                                Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1521,9 +1858,13 @@ OMPTeamsDistributeSimdDirective *OMPTeamsDistributeSimdDirective::Create(
 OMPTeamsDistributeSimdDirective *OMPTeamsDistributeSimdDirective::CreateEmpty(
     const ASTContext &C, unsigned NumClauses, unsigned CollapsedNum,
     EmptyShell) {
-  return createEmptyDirective<OMPTeamsDistributeSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_teams_distribute_simd), CollapsedNum);
+  unsigned Size = llvm::alignTo(sizeof(OMPTeamsDistributeSimdDirective),
+                                alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                 sizeof(Stmt *) *
+                     numLoopChildren(CollapsedNum, OMPD_teams_distribute_simd));
+  return new (Mem) OMPTeamsDistributeSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPTeamsDistributeParallelForSimdDirective *
@@ -1531,10 +1872,18 @@ OMPTeamsDistributeParallelForSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTeamsDistributeParallelForSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_teams_distribute_parallel_for_simd),
-      StartLoc, EndLoc, CollapsedNum);
+  auto Size = llvm::alignTo(sizeof(OMPTeamsDistributeParallelForSimdDirective),
+                            alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() +
+                 sizeof(Stmt *) *
+                     numLoopChildren(CollapsedNum,
+                                     OMPD_teams_distribute_parallel_for_simd));
+  OMPTeamsDistributeParallelForSimdDirective *Dir = new (Mem)
+      OMPTeamsDistributeParallelForSimdDirective(StartLoc, EndLoc, CollapsedNum,
+                                                 Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1580,10 +1929,15 @@ OMPTeamsDistributeParallelForSimdDirective::CreateEmpty(const ASTContext &C,
                                                         unsigned NumClauses,
                                                         unsigned CollapsedNum,
                                                         EmptyShell) {
-  return createEmptyDirective<OMPTeamsDistributeParallelForSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_teams_distribute_parallel_for_simd),
-      CollapsedNum);
+  auto Size = llvm::alignTo(sizeof(OMPTeamsDistributeParallelForSimdDirective),
+                            alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses +
+                 sizeof(Stmt *) *
+                     numLoopChildren(CollapsedNum,
+                                     OMPD_teams_distribute_parallel_for_simd));
+  return new (Mem)
+      OMPTeamsDistributeParallelForSimdDirective(CollapsedNum, NumClauses);
 }
 
 OMPTeamsDistributeParallelForDirective *
@@ -1591,10 +1945,17 @@ OMPTeamsDistributeParallelForDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, Expr *TaskRedRef, bool HasCancel) {
-  auto *Dir = createDirective<OMPTeamsDistributeParallelForDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_teams_distribute_parallel_for) + 1,
-      StartLoc, EndLoc, CollapsedNum);
+  auto Size = llvm::alignTo(sizeof(OMPTeamsDistributeParallelForDirective),
+                            alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_teams_distribute_parallel_for));
+  OMPTeamsDistributeParallelForDirective *Dir = new (Mem)
+      OMPTeamsDistributeParallelForDirective(StartLoc, EndLoc, CollapsedNum,
+                                             Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1642,35 +2003,55 @@ OMPTeamsDistributeParallelForDirective::CreateEmpty(const ASTContext &C,
                                                     unsigned NumClauses,
                                                     unsigned CollapsedNum,
                                                     EmptyShell) {
-  return createEmptyDirective<OMPTeamsDistributeParallelForDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_teams_distribute_parallel_for) + 1,
-      CollapsedNum);
+  auto Size = llvm::alignTo(sizeof(OMPTeamsDistributeParallelForDirective),
+                            alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_teams_distribute_parallel_for));
+  return new (Mem)
+      OMPTeamsDistributeParallelForDirective(CollapsedNum, NumClauses);
 }
 
 OMPTargetTeamsDirective *OMPTargetTeamsDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt) {
-  return createDirective<OMPTargetTeamsDirective>(C, Clauses, AssociatedStmt,
-                                                  /*NumChildren=*/0, StartLoc,
-                                                  EndLoc);
+  auto Size =
+      llvm::alignTo(sizeof(OMPTargetTeamsDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * Clauses.size() + sizeof(Stmt *));
+  OMPTargetTeamsDirective *Dir =
+      new (Mem) OMPTargetTeamsDirective(StartLoc, EndLoc, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
+  return Dir;
 }
 
 OMPTargetTeamsDirective *
 OMPTargetTeamsDirective::CreateEmpty(const ASTContext &C, unsigned NumClauses,
                                      EmptyShell) {
-  return createEmptyDirective<OMPTargetTeamsDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true);
+  auto Size =
+      llvm::alignTo(sizeof(OMPTargetTeamsDirective), alignof(OMPClause *));
+  void *Mem =
+      C.Allocate(Size + sizeof(OMPClause *) * NumClauses + sizeof(Stmt *));
+  return new (Mem) OMPTargetTeamsDirective(NumClauses);
 }
 
 OMPTargetTeamsDistributeDirective *OMPTargetTeamsDistributeDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTargetTeamsDistributeDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_target_teams_distribute), StartLoc,
-      EndLoc, CollapsedNum);
+  auto Size = llvm::alignTo(sizeof(OMPTargetTeamsDistributeDirective),
+                            alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_target_teams_distribute));
+  OMPTargetTeamsDistributeDirective *Dir =
+      new (Mem) OMPTargetTeamsDistributeDirective(StartLoc, EndLoc, CollapsedNum,
+                                                  Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1703,10 +2084,13 @@ OMPTargetTeamsDistributeDirective::CreateEmpty(const ASTContext &C,
                                                unsigned NumClauses,
                                                unsigned CollapsedNum,
                                                EmptyShell) {
-  return createEmptyDirective<OMPTargetTeamsDistributeDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_target_teams_distribute),
-      CollapsedNum);
+  auto Size = llvm::alignTo(sizeof(OMPTargetTeamsDistributeDirective),
+                            alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+           numLoopChildren(CollapsedNum, OMPD_target_teams_distribute));
+  return new (Mem) OMPTargetTeamsDistributeDirective(CollapsedNum, NumClauses);
 }
 
 OMPTargetTeamsDistributeParallelForDirective *
@@ -1714,11 +2098,19 @@ OMPTargetTeamsDistributeParallelForDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs, Expr *TaskRedRef, bool HasCancel) {
-  auto *Dir = createDirective<OMPTargetTeamsDistributeParallelForDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_target_teams_distribute_parallel_for) +
-          1,
-      StartLoc, EndLoc, CollapsedNum);
+  auto Size =
+      llvm::alignTo(sizeof(OMPTargetTeamsDistributeParallelForDirective),
+                    alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum,
+                          OMPD_target_teams_distribute_parallel_for));
+  OMPTargetTeamsDistributeParallelForDirective *Dir =
+      new (Mem) OMPTargetTeamsDistributeParallelForDirective(
+           StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1766,11 +2158,16 @@ OMPTargetTeamsDistributeParallelForDirective::CreateEmpty(const ASTContext &C,
                                                           unsigned NumClauses,
                                                           unsigned CollapsedNum,
                                                           EmptyShell) {
-  return createEmptyDirective<OMPTargetTeamsDistributeParallelForDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_target_teams_distribute_parallel_for) +
-          1,
-      CollapsedNum);
+  auto Size =
+      llvm::alignTo(sizeof(OMPTargetTeamsDistributeParallelForDirective),
+                    alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+           numLoopChildren(CollapsedNum,
+                           OMPD_target_teams_distribute_parallel_for));
+  return new (Mem)
+      OMPTargetTeamsDistributeParallelForDirective(CollapsedNum, NumClauses);
 }
 
 OMPTargetTeamsDistributeParallelForSimdDirective *
@@ -1778,11 +2175,19 @@ OMPTargetTeamsDistributeParallelForSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTargetTeamsDistributeParallelForSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum,
-                      OMPD_target_teams_distribute_parallel_for_simd),
-      StartLoc, EndLoc, CollapsedNum);
+  auto Size =
+      llvm::alignTo(sizeof(OMPTargetTeamsDistributeParallelForSimdDirective),
+                    alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum,
+                          OMPD_target_teams_distribute_parallel_for_simd));
+  OMPTargetTeamsDistributeParallelForSimdDirective *Dir =
+      new (Mem) OMPTargetTeamsDistributeParallelForSimdDirective(
+           StartLoc, EndLoc, CollapsedNum, Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1827,11 +2232,16 @@ OMPTargetTeamsDistributeParallelForSimdDirective *
 OMPTargetTeamsDistributeParallelForSimdDirective::CreateEmpty(
     const ASTContext &C, unsigned NumClauses, unsigned CollapsedNum,
     EmptyShell) {
-  return createEmptyDirective<OMPTargetTeamsDistributeParallelForSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum,
-                      OMPD_target_teams_distribute_parallel_for_simd),
-      CollapsedNum);
+  auto Size =
+      llvm::alignTo(sizeof(OMPTargetTeamsDistributeParallelForSimdDirective),
+                    alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum,
+                          OMPD_target_teams_distribute_parallel_for_simd));
+  return new (Mem) OMPTargetTeamsDistributeParallelForSimdDirective(
+      CollapsedNum, NumClauses);
 }
 
 OMPTargetTeamsDistributeSimdDirective *
@@ -1839,10 +2249,17 @@ OMPTargetTeamsDistributeSimdDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
     const HelperExprs &Exprs) {
-  auto *Dir = createDirective<OMPTargetTeamsDistributeSimdDirective>(
-      C, Clauses, AssociatedStmt,
-      numLoopChildren(CollapsedNum, OMPD_target_teams_distribute_simd),
-      StartLoc, EndLoc, CollapsedNum);
+  auto Size = llvm::alignTo(sizeof(OMPTargetTeamsDistributeSimdDirective),
+                            alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * Clauses.size() +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_target_teams_distribute_simd));
+  OMPTargetTeamsDistributeSimdDirective *Dir = new (Mem)
+      OMPTargetTeamsDistributeSimdDirective(StartLoc, EndLoc, CollapsedNum,
+                                            Clauses.size());
+  Dir->setClauses(Clauses);
+  Dir->setAssociatedStmt(AssociatedStmt);
   Dir->setIterationVariable(Exprs.IterationVarRef);
   Dir->setLastIteration(Exprs.LastIteration);
   Dir->setCalcLastIteration(Exprs.CalcLastIteration);
@@ -1875,8 +2292,12 @@ OMPTargetTeamsDistributeSimdDirective::CreateEmpty(const ASTContext &C,
                                                    unsigned NumClauses,
                                                    unsigned CollapsedNum,
                                                    EmptyShell) {
-  return createEmptyDirective<OMPTargetTeamsDistributeSimdDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true,
-      numLoopChildren(CollapsedNum, OMPD_target_teams_distribute_simd),
-      CollapsedNum);
+  auto Size = llvm::alignTo(sizeof(OMPTargetTeamsDistributeSimdDirective),
+                            alignof(OMPClause *));
+  void *Mem = C.Allocate(
+      Size + sizeof(OMPClause *) * NumClauses +
+      sizeof(Stmt *) *
+          numLoopChildren(CollapsedNum, OMPD_target_teams_distribute_simd));
+  return new (Mem)
+      OMPTargetTeamsDistributeSimdDirective(CollapsedNum, NumClauses);
 }

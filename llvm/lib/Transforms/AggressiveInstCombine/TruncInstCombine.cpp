@@ -291,8 +291,7 @@ static Type *getReducedType(Value *V, Type *Ty) {
   assert(Ty && !Ty->isVectorTy() && "Expect Scalar Type");
   if (auto *VTy = dyn_cast<VectorType>(V->getType())) {
     // FIXME: should this handle scalable vectors?
-    return FixedVectorType::get(Ty,
-                                cast<FixedVectorType>(VTy)->getNumElements());
+    return FixedVectorType::get(Ty, VTy->getNumElements());
   }
   return Ty;
 }

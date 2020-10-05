@@ -68,12 +68,12 @@ public:
   /// Return a unique identifier for the concrete type.
   static TypeID getTypeID() { return TypeID::get<ConcreteT>(); }
 
-  /// Provide an implementation of 'classof' that compares the type id of the
-  /// provided value with that of the concerete type.
+  /// Provide a default implementation of 'classof' that invokes a 'kindof'
+  /// method on the concrete type.
   template <typename T> static bool classof(T val) {
     static_assert(std::is_convertible<ConcreteT, T>::value,
                   "casting from a non-convertible type");
-    return val.getTypeID() == getTypeID();
+    return ConcreteT::kindof(val.getKind());
   }
 
   /// Returns an interface map for the interfaces registered to this storage
@@ -82,34 +82,35 @@ public:
     return detail::InterfaceMap::template get<Traits<ConcreteT>...>();
   }
 
+protected:
   /// Get or create a new ConcreteT instance within the ctx. This
   /// function is guaranteed to return a non null object and will assert if
   /// the arguments provided are invalid.
   template <typename... Args>
-  static ConcreteT get(MLIRContext *ctx, Args... args) {
+  static ConcreteT get(MLIRContext *ctx, unsigned kind, Args... args) {
     // Ensure that the invariants are correct for construction.
     assert(succeeded(ConcreteT::verifyConstructionInvariants(
         generateUnknownStorageLocation(ctx), args...)));
-    return UniquerT::template get<ConcreteT>(ctx, args...);
+    return UniquerT::template get<ConcreteT>(ctx, kind, args...);
   }
 
   /// Get or create a new ConcreteT instance within the ctx, defined at
   /// the given, potentially unknown, location. If the arguments provided are
   /// invalid then emit errors and return a null object.
   template <typename LocationT, typename... Args>
-  static ConcreteT getChecked(LocationT loc, Args... args) {
+  static ConcreteT getChecked(LocationT loc, unsigned kind, Args... args) {
     // If the construction invariants fail then we return a null attribute.
     if (failed(ConcreteT::verifyConstructionInvariants(loc, args...)))
       return ConcreteT();
-    return UniquerT::template get<ConcreteT>(loc.getContext(), args...);
+    return UniquerT::template get<ConcreteT>(loc.getContext(), kind, args...);
   }
 
-protected:
   /// Mutate the current storage instance. This will not change the unique key.
   /// The arguments are forwarded to 'ConcreteT::mutate'.
-  template <typename... Args> LogicalResult mutate(Args &&...args) {
-    return UniquerT::template mutate<ConcreteT>(this->getContext(), getImpl(),
-                                                std::forward<Args>(args)...);
+  template <typename... Args>
+  LogicalResult mutate(Args &&...args) {
+    return UniquerT::mutate(this->getContext(), getImpl(),
+                            std::forward<Args>(args)...);
   }
 
   /// Default implementation that just returns success.

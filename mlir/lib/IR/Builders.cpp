@@ -67,11 +67,12 @@ IntegerType Builder::getIntegerType(unsigned width, bool isSigned) {
       width, isSigned ? IntegerType::Signed : IntegerType::Unsigned, context);
 }
 
-FunctionType Builder::getFunctionType(TypeRange inputs, TypeRange results) {
+FunctionType Builder::getFunctionType(ArrayRef<Type> inputs,
+                                      ArrayRef<Type> results) {
   return FunctionType::get(inputs, results, context);
 }
 
-TupleType Builder::getTupleType(TypeRange elementTypes) {
+TupleType Builder::getTupleType(ArrayRef<Type> elementTypes) {
   return TupleType::get(elementTypes, context);
 }
 
@@ -268,18 +269,24 @@ ArrayAttr Builder::getAffineMapArrayAttr(ArrayRef<AffineMap> values) {
 }
 
 Attribute Builder::getZeroAttr(Type type) {
-  if (type.isa<FloatType>())
+  switch (type.getKind()) {
+  case StandardTypes::BF16:
+  case StandardTypes::F16:
+  case StandardTypes::F32:
+  case StandardTypes::F64:
     return getFloatAttr(type, 0.0);
-  if (type.isa<IndexType>())
-    return getIndexAttr(0);
-  if (auto integerType = type.dyn_cast<IntegerType>())
+  case StandardTypes::Integer:
     return getIntegerAttr(type, APInt(type.cast<IntegerType>().getWidth(), 0));
-  if (type.isa<RankedTensorType, VectorType>()) {
+  case StandardTypes::Vector:
+  case StandardTypes::RankedTensor: {
     auto vtType = type.cast<ShapedType>();
     auto element = getZeroAttr(vtType.getElementType());
     if (!element)
       return {};
     return DenseElementsAttr::get(vtType, element);
+  }
+  default:
+    break;
   }
   return {};
 }

@@ -50,11 +50,10 @@ private:
                                    const SourceManager &SM,
                                    const LangOptions &LangOpts);
   SourceRange findReturnTypeAndCVSourceRange(const FunctionDecl &F,
-                                             const TypeLoc &ReturnLoc,
                                              const ASTContext &Ctx,
                                              const SourceManager &SM,
                                              const LangOptions &LangOpts);
-  void keepSpecifiers(std::string &ReturnType, std::string &Auto,
+  bool keepSpecifiers(std::string &ReturnType, std::string &Auto,
                       SourceRange ReturnTypeCVRange, const FunctionDecl &F,
                       const FriendDecl *Fr, const ASTContext &Ctx,
                       const SourceManager &SM, const LangOptions &LangOpts);

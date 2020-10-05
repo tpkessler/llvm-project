@@ -439,6 +439,7 @@ DWARF:
             - Value:           0x0000000000000003
             - Value:           0x0000000000000067
         - AbbrCode:        0x00000000
+          Values:          
         - AbbrCode:        0x00000004
           Values:          
             - Value:           0x0000000000000085
@@ -456,6 +457,7 @@ DWARF:
             - Value:           0x0000000000000006
             - Value:           0x0000000000000001
         - AbbrCode:        0x00000000
+          Values:          
   debug_line:      
     - Length:          65
       Version:         2
@@ -555,6 +557,7 @@ DWARF:
 # DWARF32-NEXT:             - Value:           0x0000000000000003
 # DWARF32-NEXT:             - Value:           0x0000000000000067
 # DWARF32-NEXT:         - AbbrCode:        0x00000000
+# DWARF32-NEXT:           Values:          
 # DWARF32-NEXT:         - AbbrCode:        0x00000004
 # DWARF32-NEXT:           Values:          
 # DWARF32-NEXT:             - Value:           0x0000000000000085
@@ -572,6 +575,7 @@ DWARF:
 # DWARF32-NEXT:             - Value:           0x0000000000000006
 # DWARF32-NEXT:             - Value:           0x0000000000000001
 # DWARF32-NEXT:         - AbbrCode:        0x00000000
+# DWARF32-NEXT:           Values:          
 
 ## b) Test that yaml2obj emits a correct unit header and obj2yaml is able to convert it back.
 

@@ -145,7 +145,8 @@ static LogicalResult verifyCastOp(T op) {
   return success();
 }
 
-void StandardOpsDialect::initialize() {
+StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
+    : Dialect(getDialectNamespace(), context) {
   addOperations<DmaStartOp, DmaWaitOp,
 #define GET_OP_LIST
 #include "mlir/Dialect/StandardOps/IR/Ops.cpp.inc"
@@ -564,8 +565,7 @@ static ParseResult parseGenericAtomicRMWOp(OpAsmParser &parser,
     return failure();
 
   Region *body = result.addRegion();
-  if (parser.parseRegion(*body, llvm::None, llvm::None) ||
-      parser.parseOptionalAttrDict(result.attributes))
+  if (parser.parseRegion(*body, llvm::None, llvm::None))
     return failure();
   result.types.push_back(memrefType.cast<MemRefType>().getElementType());
   return success();
@@ -749,7 +749,8 @@ static LogicalResult verify(CallOp op) {
 }
 
 FunctionType CallOp::getCalleeType() {
-  return FunctionType::get(getOperandTypes(), getResultTypes(), getContext());
+  SmallVector<Type, 8> argTypes(getOperandTypes());
+  return FunctionType::get(argTypes, getResultTypes(), getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1326,7 +1327,7 @@ static LogicalResult verify(DimOp op) {
   } else if (auto memrefType = type.dyn_cast<MemRefType>()) {
     if (index.getValue() >= memrefType.getRank())
       return op.emitOpError("index is out of range");
-  } else if (type.isa<UnrankedTensorType>() || type.isa<UnrankedMemRefType>()) {
+  } else if (type.isa<UnrankedTensorType>()) {
     // Assume index to be in range.
   } else {
     llvm_unreachable("expected operand with tensor or memref type");
@@ -1342,13 +1343,9 @@ OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
   if (!index)
     return {};
 
-  auto argTy = memrefOrTensor().getType();
   // Fold if the shape extent along the given index is known.
+  auto argTy = memrefOrTensor().getType();
   if (auto shapedTy = argTy.dyn_cast<ShapedType>()) {
-    // Folding for unranked types (UnrankedMemRefType, UnrankedTensorType) is
-    // not supported.
-    if (!shapedTy.hasRank())
-      return {};
     if (!shapedTy.isDynamicDim(index.getInt())) {
       Builder builder(getContext());
       return builder.getIndexAttr(shapedTy.getShape()[index.getInt()]);
@@ -1361,7 +1358,7 @@ OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
     return {};
 
   // The size at the given index is now known to be a dynamic size of a memref.
-  auto *memref = memrefOrTensor().getDefiningOp();
+  auto memref = memrefOrTensor().getDefiningOp();
   unsigned unsignedIndex = index.getValue().getZExtValue();
   if (auto alloc = dyn_cast_or_null<AllocOp>(memref))
     return *(alloc.getDynamicSizes().begin() +
@@ -2985,8 +2982,6 @@ OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
 static Type getTensorTypeFromMemRefType(Type type) {
   if (auto memref = type.dyn_cast<MemRefType>())
     return RankedTensorType::get(memref.getShape(), memref.getElementType());
-  if (auto memref = type.dyn_cast<UnrankedMemRefType>())
-    return UnrankedTensorType::get(memref.getElementType());
   return NoneType::get(type.getContext());
 }
 

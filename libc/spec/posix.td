@@ -1,22 +1,18 @@
 def SigSetType : NamedType<"sigset_t">;
 def SigSetPtrType : PtrType<SigSetType>;
 def ConstSigSetPtrType : ConstType<SigSetPtrType>;
-def RestrictedSigSetType : RestrictedPtrType<SigSetType>;
-def ConstRestrictedSigSetType : ConstType<RestrictedSigSetType>;
+def RestrictSigSetType : RestrictedPtrType<SigSetType>;
+def ConstRestrictSigSetType : ConstType<RestrictSigSetType>;
 
 def StructSigaction : NamedType<"struct sigaction">;
 def StructSigactionPtr : PtrType<StructSigaction>;
 def ConstStructSigactionPtr : ConstType<StructSigactionPtr>;
-def RestrictedStructSigactionPtr : RestrictedPtrType<StructSigaction>;
-def ConstRestrictedStructSigactionPtr : ConstType<RestrictedStructSigactionPtr>;
+def RestrictStructSigactionPtr : RestrictedPtrType<StructSigaction>;
+def ConstRestrictStructSigactionPtr : ConstType<RestrictStructSigactionPtr>;
 
 def POSIX : StandardSpec<"POSIX"> {
   PtrType CharPtr = PtrType<CharType>;
-  RestrictedPtrType RestrictedCharPtr = RestrictedPtrType<CharType>;
-  RestrictedPtrType CharRestrictedDoublePtr = RestrictedPtrType<CharPtr>;
   ConstType ConstCharPtr = ConstType<CharPtr>;
-  ConstType ConstRestrictedCharPtr = ConstType<RestrictedCharPtr>;
-
   NamedType OffTType = NamedType<"off_t">;
   NamedType SSizeTType = NamedType<"ssize_t">;
 
@@ -160,8 +156,8 @@ def POSIX : StandardSpec<"POSIX"> {
           "sigaction",
           RetValSpec<IntType>,
           [ArgSpec<IntType>,
-           ArgSpec<ConstRestrictedStructSigactionPtr>,
-           ArgSpec<RestrictedStructSigactionPtr>]
+           ArgSpec<ConstRestrictStructSigactionPtr>,
+           ArgSpec<RestrictStructSigactionPtr>]
         >,
         FunctionSpec<
           "sigdelset",
@@ -172,7 +168,7 @@ def POSIX : StandardSpec<"POSIX"> {
         FunctionSpec<
           "sigprocmask",
           RetValSpec<IntType>,
-          [ArgSpec<IntType>, ArgSpec<ConstRestrictedSigSetType>, ArgSpec<RestrictedSigSetType>]
+          [ArgSpec<IntType>, ArgSpec<ConstRestrictSigSetType>, ArgSpec<RestrictSigSetType>]
         >,
         FunctionSpec<
           "sigemptyset",
@@ -224,11 +220,6 @@ def POSIX : StandardSpec<"POSIX"> {
             "strnlen",
              RetValSpec<SizeTType>,
              [ArgSpec<ConstCharPtr>, ArgSpec<SizeTType>]
-        >,
-        FunctionSpec<
-            "strtok_r",
-            RetValSpec<CharPtr>,
-            [ArgSpec<ConstRestrictedCharPtr>, ArgSpec<CharRestrictedDoublePtr>]
         >,
     ]
   >;

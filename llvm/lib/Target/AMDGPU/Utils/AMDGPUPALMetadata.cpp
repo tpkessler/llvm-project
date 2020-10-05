@@ -773,9 +773,3 @@ void AMDGPUPALMetadata::setLegacy() {
   BlobType = ELF::NT_AMD_AMDGPU_PAL_METADATA;
 }
 
-// Erase all PAL metadata.
-void AMDGPUPALMetadata::reset() {
-  MsgPackDoc.clear();
-  Registers = MsgPackDoc.getEmptyNode();
-  HwStages = MsgPackDoc.getEmptyNode();
-}

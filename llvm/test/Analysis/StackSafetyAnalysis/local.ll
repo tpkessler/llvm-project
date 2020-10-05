@@ -11,7 +11,6 @@ target triple = "x86_64-unknown-linux-gnu"
 declare void @llvm.memset.p0i8.i32(i8* %dest, i8 %val, i32 %len, i1 %isvolatile)
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* %dest, i8* %src, i32 %len, i1 %isvolatile)
 declare void @llvm.memmove.p0i8.p0i8.i32(i8* %dest, i8* %src, i32 %len, i1 %isvolatile)
-declare void @llvm.memset.p0i8.i64(i8* %dest, i8 %val, i64 %len, i1 %isvolatile)
 
 ; Address leaked.
 define void @LeakAddress() {
@@ -19,7 +18,7 @@ define void @LeakAddress() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: full-set{{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -32,7 +31,7 @@ define void @StoreInBounds() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: [0,1){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -45,7 +44,7 @@ define void @StoreInBounds2() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: [0,4){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   store i32 0, i32* %x, align 4
@@ -57,7 +56,7 @@ define void @StoreInBounds3() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: [2,3){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -72,7 +71,7 @@ define void @StoreInBounds4() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: [-9223372036854775808,9223372036854775807){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = ptrtoint i32* %x to i64
@@ -82,39 +81,12 @@ entry:
   ret void
 }
 
-define dso_local void @WriteMinMax(i8* %p) {
-; CHECK-LABEL: @WriteMinMax{{$}}
-; CHECK-NEXT: args uses:
-; CHECK-NEXT: p[]: full-set
-; CHECK-NEXT: allocas uses:
-; CHECK-EMPTY:
-entry:
-  %p1 = getelementptr i8, i8* %p, i64 9223372036854775805
-  store i8 0, i8* %p1, align 1
-  %p2 = getelementptr i8, i8* %p, i64 -9223372036854775805
-  store i8 0, i8* %p2, align 1
-  ret void
-}
-
-define dso_local void @WriteMax(i8* %p) {
-; CHECK-LABEL: @WriteMax{{$}}
-; CHECK-NEXT: args uses:
-; CHECK-NEXT: p[]: [-9223372036854775807,9223372036854775806)
-; CHECK-NEXT: allocas uses:
-; CHECK-EMPTY:
-entry:
-  call void @llvm.memset.p0i8.i64(i8* %p, i8 1, i64 9223372036854775806, i1 0)
-  %p2 = getelementptr i8, i8* %p, i64 -9223372036854775807
-  call void @llvm.memset.p0i8.i64(i8* %p2, i8 1, i64 9223372036854775806, i1 0)
-  ret void
-}
-
 define void @StoreOutOfBounds() {
 ; CHECK-LABEL: @StoreOutOfBounds dso_preemptable{{$}}
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: [2,6){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -130,7 +102,7 @@ define void @LoadInBounds() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: [0,1){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -143,7 +115,7 @@ define void @LoadOutOfBounds() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: [2,6){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -159,7 +131,7 @@ define i8* @Ret() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: full-set{{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -175,7 +147,7 @@ define void @DirectCall() {
 ; CHECK-NEXT: allocas uses:
 ; LOCAL-NEXT: x[8]: empty-set, @Foo(arg0, [2,3)){{$}}
 ; GLOBAL-NEXT: x[8]: full-set, @Foo(arg0, [2,3)){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i64, align 4
   %x1 = bitcast i64* %x to i16*
@@ -192,7 +164,7 @@ define void @IndirectCall(void (i8*)* %p) {
 ; CHECK-NEXT: p[]: full-set{{$}}
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: full-set{{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -206,7 +178,7 @@ define void @NonConstantOffset(i1 zeroext %z) {
 ; CHECK-NEXT: allocas uses:
 ; FIXME: SCEV can't look through selects.
 ; CHECK-NEXT: x[4]: [-4,4){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -221,7 +193,7 @@ define void @NegativeOffset() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[40]: [-1600000000000,-1599999999996){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, i32 10, align 4
   %x2 = getelementptr i32, i32* %x, i64 -400000000000
@@ -234,7 +206,7 @@ define void @PossiblyNegativeOffset(i16 %z) {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[40]: [-131072,131072){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, i32 10, align 4
   %x2 = getelementptr i32, i32* %x, i16 %z
@@ -247,7 +219,7 @@ define void @NonConstantOffsetOOB(i1 zeroext %z) {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[4]: [-8,8){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, align 4
   %x1 = bitcast i32* %x to i8*
@@ -262,7 +234,7 @@ define void @ArrayAlloca() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[40]: [36,40){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, i32 10, align 4
   %x1 = bitcast i32* %x to i8*
@@ -277,7 +249,7 @@ define void @ArrayAllocaOOB() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[40]: [37,41){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, i32 10, align 4
   %x1 = bitcast i32* %x to i8*
@@ -292,7 +264,7 @@ define void @DynamicAllocaUnused(i64 %size) {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[0]: empty-set{{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, i64 %size, align 16
   ret void
@@ -304,7 +276,7 @@ define void @DynamicAlloca(i64 %size) {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[0]: [0,4){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i32, i64 %size, align 16
   store i32 0, i32* %x, align 1
@@ -318,7 +290,7 @@ define void @DynamicAllocaFiniteSizeRange(i1 zeroext %z) {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[0]: [0,4){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %size = select i1 %z, i64 3, i64 5
   %x = alloca i32, i64 %size, align 16
@@ -331,7 +303,7 @@ define signext i8 @SimpleLoop() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[10]: [0,10){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca [10 x i8], align 1
   %0 = getelementptr inbounds [10 x i8], [10 x i8]* %x, i64 0, i64 0
@@ -357,7 +329,7 @@ define signext i8 @SimpleLoopOOB() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[10]: [0,11){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca [10 x i8], align 1
   %0 = getelementptr inbounds [10 x i8], [10 x i8]* %x, i64 0, i64 0
@@ -383,7 +355,7 @@ define dso_local void @SizeCheck(i32 %sz) {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x1[128]: [0,4294967295){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x1 = alloca [128 x i8], align 16
   %x1.sub = getelementptr inbounds [128 x i8], [128 x i8]* %x1, i64 0, i64 0
@@ -407,7 +379,7 @@ define void @Scalable(<vscale x 4 x i32>* %p, <vscale x 4 x i32>* %unused, <vsca
 ; CHECK-NEXT:   unused[]: empty-set
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT:   x[0]: [0,1){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca <vscale x 4 x i32>, align 4
   %x1 = bitcast <vscale x 4 x i32>* %x to i8*
@@ -424,7 +396,7 @@ define void @ZeroSize(%zerosize_type *%p)  {
 ; CHECK-NEXT:   p[]: empty-set
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT:   x[0]: empty-set
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca %zerosize_type, align 4
   store %zerosize_type undef, %zerosize_type* %x, align 4
@@ -438,7 +410,7 @@ define void @OperandBundle() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT:   a[4]: full-set
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %a = alloca i32, align 4
   call void @LeakAddress() ["unknown"(i32* %a)]
@@ -449,7 +421,7 @@ define void @ByVal(i16* byval %p) {
   ; CHECK-LABEL: @ByVal dso_preemptable{{$}}
   ; CHECK-NEXT: args uses:
   ; CHECK-NEXT: allocas uses:
-  ; CHECK-EMPTY:
+  ; CHECK-NOT: ]:
 entry:
   ret void
 }
@@ -460,7 +432,7 @@ define void @TestByVal() {
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[2]: [0,2)
 ; CHECK-NEXT: y[8]: [0,2)
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i16, align 4
   call void @ByVal(i16* byval %x)
@@ -479,7 +451,7 @@ define void @TestByValArray() {
 ; CHECK-NEXT: args uses:
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: z[800000]: [500000,1300000)
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %z = alloca [100000 x i64], align 4
   %z1 = bitcast [100000 x i64]* %z to i8*
@@ -494,7 +466,7 @@ define dso_local i8 @LoadMinInt64(i8* %p) {
   ; CHECK-NEXT: args uses:
   ; CHECK-NEXT: p[]: [-9223372036854775808,-9223372036854775807){{$}}
   ; CHECK-NEXT: allocas uses:
-  ; CHECK-EMPTY:
+  ; CHECK-NOT: ]:
   %p2 = getelementptr i8, i8* %p, i64 -9223372036854775808
   %v = load i8, i8* %p2, align 1
   ret i8 %v
@@ -506,7 +478,7 @@ define void @Overflow() {
 ; CHECK-NEXT: allocas uses:
 ; LOCAL-NEXT: x[1]: empty-set, @LoadMinInt64(arg0, [-9223372036854775808,-9223372036854775807)){{$}}
 ; GLOBAL-NEXT: x[1]: full-set, @LoadMinInt64(arg0, [-9223372036854775808,-9223372036854775807)){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i8, align 4
   %x2 = getelementptr i8, i8* %x, i64 -9223372036854775808
@@ -520,7 +492,7 @@ define void @DeadBlock(i64* %p) {
 ; CHECK-NEXT: p[]: empty-set{{$}}
 ; CHECK-NEXT: allocas uses:
 ; CHECK-NEXT: x[1]: empty-set{{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i8, align 4
   br label %end
@@ -541,7 +513,7 @@ define void @LifeNotStarted() {
 ; CHECK: x[1]: full-set{{$}}
 ; CHECK: y[1]: full-set{{$}}
 ; CHECK: z[1]: full-set{{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i8, align 4
   %y = alloca i8, align 4
@@ -565,7 +537,7 @@ define void @LifeOK() {
 ; CHECK: x[1]: [0,1){{$}}
 ; CHECK: y[1]: [0,1){{$}}
 ; CHECK: z[1]: [0,1){{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i8, align 4
   %y = alloca i8, align 4
@@ -589,7 +561,7 @@ define void @LifeEnded() {
 ; CHECK: x[1]: full-set{{$}}
 ; CHECK: y[1]: full-set{{$}}
 ; CHECK: z[1]: full-set{{$}}
-; CHECK-EMPTY:
+; CHECK-NOT: ]:
 entry:
   %x = alloca i8, align 4
   %y = alloca i8, align 4

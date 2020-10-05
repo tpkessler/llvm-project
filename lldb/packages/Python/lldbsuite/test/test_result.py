@@ -9,7 +9,6 @@ and results of a single test run.
 
 # System modules
 import os
-import traceback
 
 # Third-party modules
 import unittest2
@@ -229,8 +228,8 @@ class LLDBTestResult(unittest2.TextTestResult):
         if method:
             method()
         self.stream.write(
-            "CLEANUP ERROR: LLDB (%s) :: %s\n%s\n" %
-            (self._config_string(test), str(test), traceback.format_exc()))
+            "CLEANUP ERROR: LLDB (%s) :: %s\n" %
+            (self._config_string(test), str(test)))
 
     def addFailure(self, test, err):
         if (self.checkExclusion(

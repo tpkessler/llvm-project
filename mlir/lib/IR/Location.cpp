@@ -14,21 +14,12 @@ using namespace mlir;
 using namespace mlir::detail;
 
 //===----------------------------------------------------------------------===//
-// LocationAttr
-//===----------------------------------------------------------------------===//
-
-/// Methods for support type inquiry through isa, cast, and dyn_cast.
-bool LocationAttr::classof(Attribute attr) {
-  return attr.isa<CallSiteLoc, FileLineColLoc, FusedLoc, NameLoc, OpaqueLoc,
-                  UnknownLoc>();
-}
-
-//===----------------------------------------------------------------------===//
 // CallSiteLoc
 //===----------------------------------------------------------------------===//
 
 Location CallSiteLoc::get(Location callee, Location caller) {
-  return Base::get(callee->getContext(), callee, caller);
+  return Base::get(callee->getContext(), StandardAttributes::CallSiteLocation,
+                   callee, caller);
 }
 
 Location CallSiteLoc::get(Location name, ArrayRef<Location> frames) {
@@ -49,7 +40,8 @@ Location CallSiteLoc::getCaller() const { return getImpl()->caller; }
 
 Location FileLineColLoc::get(Identifier filename, unsigned line,
                              unsigned column, MLIRContext *context) {
-  return Base::get(context, filename, line, column);
+  return Base::get(context, StandardAttributes::FileLineColLocation, filename,
+                   line, column);
 }
 
 Location FileLineColLoc::get(StringRef filename, unsigned line, unsigned column,
@@ -93,7 +85,7 @@ Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
     return UnknownLoc::get(context);
   if (locs.size() == 1)
     return locs.front();
-  return Base::get(context, locs, metadata);
+  return Base::get(context, StandardAttributes::FusedLocation, locs, metadata);
 }
 
 ArrayRef<Location> FusedLoc::getLocations() const {
@@ -109,7 +101,8 @@ Attribute FusedLoc::getMetadata() const { return getImpl()->metadata; }
 Location NameLoc::get(Identifier name, Location child) {
   assert(!child.isa<NameLoc>() &&
          "a NameLoc cannot be used as a child of another NameLoc");
-  return Base::get(child->getContext(), name, child);
+  return Base::get(child->getContext(), StandardAttributes::NameLocation, name,
+                   child);
 }
 
 Location NameLoc::get(Identifier name, MLIRContext *context) {
@@ -128,8 +121,9 @@ Location NameLoc::getChildLoc() const { return getImpl()->child; }
 
 Location OpaqueLoc::get(uintptr_t underlyingLocation, TypeID typeID,
                         Location fallbackLocation) {
-  return Base::get(fallbackLocation->getContext(), underlyingLocation, typeID,
-                   fallbackLocation);
+  return Base::get(fallbackLocation->getContext(),
+                   StandardAttributes::OpaqueLocation, underlyingLocation,
+                   typeID, fallbackLocation);
 }
 
 uintptr_t OpaqueLoc::getUnderlyingLocation() const {

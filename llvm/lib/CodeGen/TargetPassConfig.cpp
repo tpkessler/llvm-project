@@ -1015,7 +1015,7 @@ void TargetPassConfig::addMachinePasses() {
   }
 
   if (TM->getBBSectionsType() != llvm::BasicBlockSection::None)
-    addPass(llvm::createBasicBlockSectionsPass(TM->getBBSectionsFuncListBuf()));
+    addPass(llvm::createBBSectionsPreparePass(TM->getBBSectionsFuncListBuf()));
 
   // Add passes that directly emit MI after all other MI passes.
   addPreEmitPass2();

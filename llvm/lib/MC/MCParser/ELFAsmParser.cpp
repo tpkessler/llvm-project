@@ -450,14 +450,8 @@ bool ELFAsmParser::parseLinkedToSym(MCSymbolELF *&LinkedToSym) {
   Lex();
   StringRef Name;
   SMLoc StartLoc = L.getLoc();
-  if (getParser().parseIdentifier(Name)) {
-    if (getParser().getTok().getString() == "0") {
-      getParser().Lex();
-      LinkedToSym = nullptr;
-      return false;
-    }
+  if (getParser().parseIdentifier(Name))
     return TokError("invalid linked-to symbol");
-  }
   LinkedToSym = dyn_cast_or_null<MCSymbolELF>(getContext().lookupSymbol(Name));
   if (!LinkedToSym || !LinkedToSym->isInSection())
     return Error(StartLoc, "linked-to symbol is not in a section: " + Name);

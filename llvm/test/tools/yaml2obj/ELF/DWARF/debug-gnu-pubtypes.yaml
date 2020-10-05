@@ -44,7 +44,8 @@ FileHeader:
   Machine: EM_X86_64
 DWARF:
   debug_gnu_pubtypes:
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321
@@ -139,7 +140,8 @@ Sections:
     Size: 0x10
 DWARF:
   debug_gnu_pubtypes:
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321
@@ -162,7 +164,8 @@ Sections:
     Content: "00"
 DWARF:
   debug_gnu_pubtypes:
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321
@@ -224,7 +227,8 @@ Sections:
     Type:         SHT_STRTAB
 DWARF:
   debug_gnu_pubtypes:
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321
@@ -234,7 +238,7 @@ DWARF:
 
 # RUN: not yaml2obj --docnum=8 %s -o %t8.o 2>&1 | FileCheck %s --check-prefix=MISSING-KEY --ignore-case
 
-#      MISSING-KEY: YAML:{{.*}}:9: error: missing required key 'Descriptor'
+#      MISSING-KEY: YAML:260:9: error: missing required key 'Descriptor'
 # MISSING-KEY-NEXT:       - DieOffset: 0x12345678
 # MISSING-KEY-NEXT:         ^
 # MISSING-KEY-NEXT: yaml2obj: error: failed to parse YAML input: Invalid argument
@@ -247,7 +251,8 @@ FileHeader:
   Machine: EM_X86_64
 DWARF:
   debug_gnu_pubtypes:
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321

@@ -1,5 +1,3 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: res = ((111)+666)
 ! FLM expansion of argument
       integer function IFLM(x)
         integer :: x
@@ -12,8 +10,8 @@
       integer :: res
       res = IFLM(KWM)
       if (res .eq. 777) then
-        print *, 'pp120.F90 yes'
+        print *, 'pp120.F90 pass'
       else
-        print *, 'pp120.F90 no: ', res
+        print *, 'pp120.F90 FAIL: ', res
       end if
       end

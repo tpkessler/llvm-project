@@ -207,19 +207,6 @@ TEST_F(TargetDeclTest, UsingDecl) {
   )cpp";
   EXPECT_DECLS("MemberExpr", {"using X::foo", Rel::Alias},
                {"int foo()", Rel::Underlying});
-
-  Code = R"cpp(
-      template <typename T>
-      struct Base {
-        void waldo() {}
-      };
-      template <typename T>
-      struct Derived : Base<T> {
-        using Base<T>::[[waldo]];
-      };
-    )cpp";
-  EXPECT_DECLS("UnresolvedUsingValueDecl", {"using Base<T>::waldo", Rel::Alias},
-               {"void waldo()", Rel::Underlying});
 }
 
 TEST_F(TargetDeclTest, ConstructorInitList) {
@@ -389,15 +376,6 @@ TEST_F(TargetDeclTest, ClassTemplate) {
                {"template<> class Foo<int *>", Rel::TemplateInstantiation},
                {"template <typename T> class Foo<T *>", Rel::TemplatePattern});
 
-  Code = R"cpp(
-    // Template template argument.
-    template<typename T> struct Vector {};
-    template <template <typename> class Container>
-    struct A {};
-    A<[[Vector]]> a;
-  )cpp";
-  EXPECT_DECLS("TemplateArgumentLoc", {"template <typename T> struct Vector"});
-
   Flags.push_back("-std=c++17"); // for CTAD tests
 
   Code = R"cpp(
@@ -427,11 +405,6 @@ TEST_F(TargetDeclTest, ClassTemplate) {
 }
 
 TEST_F(TargetDeclTest, Concept) {
-  Flags.push_back("-std=c++20");
-
-  // FIXME: Should we truncate the pretty-printed form of a concept decl
-  // somewhere?
-
   Code = R"cpp(
     template <typename T>
     concept Fooable = requires (T t) { t.foo(); };
@@ -441,42 +414,12 @@ TEST_F(TargetDeclTest, Concept) {
       t.foo();
     }
   )cpp";
+  Flags.push_back("-std=c++20");
   EXPECT_DECLS(
       "ConceptSpecializationExpr",
+      // FIXME: Should we truncate the pretty-printed form of a concept decl
+      // somewhere?
       {"template <typename T> concept Fooable = requires (T t) { t.foo(); };"});
-
-  // trailing requires clause
-  Code = R"cpp(
-      template <typename T>
-      concept Fooable = true;
-
-      template <typename T>
-      void foo() requires [[Fooable]]<T>;
-  )cpp";
-  EXPECT_DECLS("ConceptSpecializationExpr",
-               {"template <typename T> concept Fooable = true;"});
-
-  // constrained-parameter
-  Code = R"cpp(
-    template <typename T>
-    concept Fooable = true;
-
-    template <[[Fooable]] T>
-    void bar(T t);
-  )cpp";
-  EXPECT_DECLS("ConceptSpecializationExpr",
-               {"template <typename T> concept Fooable = true;"});
-
-  // partial-concept-id
-  Code = R"cpp(
-    template <typename T, typename U>
-    concept Fooable = true;
-
-    template <[[Fooable]]<int> T>
-    void bar(T t);
-  )cpp";
-  EXPECT_DECLS("ConceptSpecializationExpr",
-               {"template <typename T, typename U> concept Fooable = true;"});
 }
 
 TEST_F(TargetDeclTest, FunctionTemplate) {
@@ -790,30 +733,6 @@ TEST_F(TargetDeclTest, ObjC) {
     void test([[Foo]] *p);
   )cpp";
   EXPECT_DECLS("ObjCInterfaceTypeLoc", "@interface Foo");
-
-  Code = R"cpp(// Don't consider implicit interface as the target.
-    @implementation [[Implicit]]
-    @end
-  )cpp";
-  EXPECT_DECLS("ObjCImplementationDecl", "@implementation Implicit");
-
-  Code = R"cpp(
-    @interface Foo
-    @end
-    @implementation [[Foo]]
-    @end
-  )cpp";
-  EXPECT_DECLS("ObjCImplementationDecl", "@interface Foo");
-
-  Code = R"cpp(
-    @interface Foo
-    @end
-    @interface Foo (Ext)
-    @end
-    @implementation [[Foo]] (Ext)
-    @end
-  )cpp";
-  EXPECT_DECLS("ObjCCategoryImplDecl", "@interface Foo(Ext)");
 
   Code = R"cpp(
     @protocol Foo

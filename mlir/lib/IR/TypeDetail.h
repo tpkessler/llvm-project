@@ -15,9 +15,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/IR/TypeRange.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/TrailingObjects.h"
 
@@ -56,17 +54,17 @@ struct OpaqueTypeStorage : public TypeStorage {
 struct IntegerTypeStorage : public TypeStorage {
   IntegerTypeStorage(unsigned width,
                      IntegerType::SignednessSemantics signedness)
-      : width(width), signedness(signedness) {}
+      : TypeStorage(packKeyBits(width, signedness)) {}
 
   /// The hash key used for uniquing.
   using KeyTy = std::pair<unsigned, IntegerType::SignednessSemantics>;
 
   static llvm::hash_code hashKey(const KeyTy &key) {
-    return llvm::hash_value(key);
+    return llvm::hash_value(packKeyBits(key.first, key.second));
   }
 
   bool operator==(const KeyTy &key) const {
-    return KeyTy(width, signedness) == key;
+    return getSubclassData() == packKeyBits(key.first, key.second);
   }
 
   static IntegerTypeStorage *construct(TypeStorageAllocator &allocator,
@@ -75,19 +73,39 @@ struct IntegerTypeStorage : public TypeStorage {
         IntegerTypeStorage(key.first, key.second);
   }
 
-  unsigned width : 30;
-  IntegerType::SignednessSemantics signedness : 2;
+  struct KeyBits {
+    unsigned width : 30;
+    unsigned signedness : 2;
+  };
+
+  /// Pack the given `width` and `signedness` as a key.
+  static unsigned packKeyBits(unsigned width,
+                              IntegerType::SignednessSemantics signedness) {
+    KeyBits bits{width, static_cast<unsigned>(signedness)};
+    return llvm::bit_cast<unsigned>(bits);
+  }
+
+  static KeyBits unpackKeyBits(unsigned bits) {
+    return llvm::bit_cast<KeyBits>(bits);
+  }
+
+  unsigned getWidth() { return unpackKeyBits(getSubclassData()).width; }
+
+  IntegerType::SignednessSemantics getSignedness() {
+    return static_cast<IntegerType::SignednessSemantics>(
+        unpackKeyBits(getSubclassData()).signedness);
+  }
 };
 
 /// Function Type Storage and Uniquing.
 struct FunctionTypeStorage : public TypeStorage {
   FunctionTypeStorage(unsigned numInputs, unsigned numResults,
                       Type const *inputsAndResults)
-      : numInputs(numInputs), numResults(numResults),
+      : TypeStorage(numInputs), numResults(numResults),
         inputsAndResults(inputsAndResults) {}
 
   /// The hash key used for uniquing.
-  using KeyTy = std::pair<TypeRange, TypeRange>;
+  using KeyTy = std::pair<ArrayRef<Type>, ArrayRef<Type>>;
   bool operator==(const KeyTy &key) const {
     return key == KeyTy(getInputs(), getResults());
   }
@@ -95,7 +113,7 @@ struct FunctionTypeStorage : public TypeStorage {
   /// Construction.
   static FunctionTypeStorage *construct(TypeStorageAllocator &allocator,
                                         const KeyTy &key) {
-    TypeRange inputs = key.first, results = key.second;
+    ArrayRef<Type> inputs = key.first, results = key.second;
 
     // Copy the inputs and results into the bump pointer.
     SmallVector<Type, 16> types;
@@ -110,20 +128,20 @@ struct FunctionTypeStorage : public TypeStorage {
   }
 
   ArrayRef<Type> getInputs() const {
-    return ArrayRef<Type>(inputsAndResults, numInputs);
+    return ArrayRef<Type>(inputsAndResults, getSubclassData());
   }
   ArrayRef<Type> getResults() const {
-    return ArrayRef<Type>(inputsAndResults + numInputs, numResults);
+    return ArrayRef<Type>(inputsAndResults + getSubclassData(), numResults);
   }
 
-  unsigned numInputs;
   unsigned numResults;
   Type const *inputsAndResults;
 };
 
 /// Shaped Type Storage.
 struct ShapedTypeStorage : public TypeStorage {
-  ShapedTypeStorage(Type elementTy) : elementType(elementTy) {}
+  ShapedTypeStorage(Type elementTy, unsigned subclassData = 0)
+      : TypeStorage(subclassData), elementType(elementTy) {}
 
   /// The hash key used for uniquing.
   using KeyTy = Type;
@@ -136,8 +154,7 @@ struct ShapedTypeStorage : public TypeStorage {
 struct VectorTypeStorage : public ShapedTypeStorage {
   VectorTypeStorage(unsigned shapeSize, Type elementTy,
                     const int64_t *shapeElements)
-      : ShapedTypeStorage(elementTy), shapeElements(shapeElements),
-        shapeSize(shapeSize) {}
+      : ShapedTypeStorage(elementTy, shapeSize), shapeElements(shapeElements) {}
 
   /// The hash key used for uniquing.
   using KeyTy = std::pair<ArrayRef<int64_t>, Type>;
@@ -157,18 +174,16 @@ struct VectorTypeStorage : public ShapedTypeStorage {
   }
 
   ArrayRef<int64_t> getShape() const {
-    return ArrayRef<int64_t>(shapeElements, shapeSize);
+    return ArrayRef<int64_t>(shapeElements, getSubclassData());
   }
 
   const int64_t *shapeElements;
-  unsigned shapeSize;
 };
 
 struct RankedTensorTypeStorage : public ShapedTypeStorage {
   RankedTensorTypeStorage(unsigned shapeSize, Type elementTy,
                           const int64_t *shapeElements)
-      : ShapedTypeStorage(elementTy), shapeElements(shapeElements),
-        shapeSize(shapeSize) {}
+      : ShapedTypeStorage(elementTy, shapeSize), shapeElements(shapeElements) {}
 
   /// The hash key used for uniquing.
   using KeyTy = std::pair<ArrayRef<int64_t>, Type>;
@@ -188,11 +203,10 @@ struct RankedTensorTypeStorage : public ShapedTypeStorage {
   }
 
   ArrayRef<int64_t> getShape() const {
-    return ArrayRef<int64_t>(shapeElements, shapeSize);
+    return ArrayRef<int64_t>(shapeElements, getSubclassData());
   }
 
   const int64_t *shapeElements;
-  unsigned shapeSize;
 };
 
 struct UnrankedTensorTypeStorage : public ShapedTypeStorage {
@@ -211,9 +225,9 @@ struct MemRefTypeStorage : public ShapedTypeStorage {
   MemRefTypeStorage(unsigned shapeSize, Type elementType,
                     const int64_t *shapeElements, const unsigned numAffineMaps,
                     AffineMap const *affineMapList, const unsigned memorySpace)
-      : ShapedTypeStorage(elementType), shapeElements(shapeElements),
-        shapeSize(shapeSize), numAffineMaps(numAffineMaps),
-        affineMapList(affineMapList), memorySpace(memorySpace) {}
+      : ShapedTypeStorage(elementType, shapeSize), shapeElements(shapeElements),
+        numAffineMaps(numAffineMaps), affineMapList(affineMapList),
+        memorySpace(memorySpace) {}
 
   /// The hash key used for uniquing.
   // MemRefs are uniqued based on their shape, element type, affine map
@@ -242,7 +256,7 @@ struct MemRefTypeStorage : public ShapedTypeStorage {
   }
 
   ArrayRef<int64_t> getShape() const {
-    return ArrayRef<int64_t>(shapeElements, shapeSize);
+    return ArrayRef<int64_t>(shapeElements, getSubclassData());
   }
 
   ArrayRef<AffineMap> getAffineMaps() const {
@@ -251,8 +265,6 @@ struct MemRefTypeStorage : public ShapedTypeStorage {
 
   /// An array of integers which stores the shape dimension sizes.
   const int64_t *shapeElements;
-  /// The number of shape elements.
-  unsigned shapeSize;
   /// The number of affine maps in the 'affineMapList' array.
   const unsigned numAffineMaps;
   /// List of affine maps in the memref's layout/index map composition.
@@ -308,13 +320,13 @@ struct ComplexTypeStorage : public TypeStorage {
 struct TupleTypeStorage final
     : public TypeStorage,
       public llvm::TrailingObjects<TupleTypeStorage, Type> {
-  using KeyTy = TypeRange;
+  using KeyTy = ArrayRef<Type>;
 
-  TupleTypeStorage(unsigned numTypes) : numElements(numTypes) {}
+  TupleTypeStorage(unsigned numTypes) : TypeStorage(numTypes) {}
 
   /// Construction.
   static TupleTypeStorage *construct(TypeStorageAllocator &allocator,
-                                     TypeRange key) {
+                                     ArrayRef<Type> key) {
     // Allocate a new storage instance.
     auto byteSize = TupleTypeStorage::totalSizeToAlloc<Type>(key.size());
     auto rawMem = allocator.allocate(byteSize, alignof(TupleTypeStorage));
@@ -329,15 +341,12 @@ struct TupleTypeStorage final
   bool operator==(const KeyTy &key) const { return key == getTypes(); }
 
   /// Return the number of held types.
-  unsigned size() const { return numElements; }
+  unsigned size() const { return getSubclassData(); }
 
   /// Return the held types.
   ArrayRef<Type> getTypes() const {
     return {getTrailingObjects<Type>(), size()};
   }
-
-  /// The number of tuple elements.
-  unsigned numElements;
 };
 
 } // namespace detail

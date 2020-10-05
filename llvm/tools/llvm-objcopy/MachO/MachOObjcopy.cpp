@@ -311,7 +311,8 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
       Config.ExtractDWO || Config.LocalizeHidden || Config.PreserveDates ||
       Config.StripAllGNU || Config.StripDWO || Config.StripNonAlloc ||
       Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
-      Config.StripUnneeded || Config.DiscardMode == DiscardType::Locals ||
+      Config.StripNonAlloc || Config.StripSections || Config.StripUnneeded ||
+      Config.DiscardMode == DiscardType::Locals ||
       !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
     return createStringError(llvm::errc::invalid_argument,
                              "option not supported by llvm-objcopy for MachO");

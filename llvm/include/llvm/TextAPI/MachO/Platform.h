@@ -29,8 +29,7 @@ enum class PlatformKind : unsigned {
   macCatalyst = MachO::PLATFORM_MACCATALYST,
   iOSSimulator = MachO::PLATFORM_IOSSIMULATOR,
   tvOSSimulator = MachO::PLATFORM_TVOSSIMULATOR,
-  watchOSSimulator = MachO::PLATFORM_WATCHOSSIMULATOR,
-  driverKit = MachO::PLATFORM_DRIVERKIT,
+  watchOSSimulator = MachO::PLATFORM_WATCHOSSIMULATOR
 };
 
 using PlatformSet = SmallSet<PlatformKind, 3>;

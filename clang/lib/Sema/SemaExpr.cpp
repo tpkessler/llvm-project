@@ -339,10 +339,11 @@ bool Sema::DiagnoseUseOfDecl(NamedDecl *D, ArrayRef<SourceLocation> Locs,
   //  List-items in map clauses on this construct may only refer to the declared
   //  variable var and entities that could be referenced by a procedure defined
   //  at the same location
-  if (LangOpts.OpenMP && isa<VarDecl>(D) &&
-      !isOpenMPDeclareMapperVarDeclAllowed(cast<VarDecl>(D))) {
+  auto *DMD = dyn_cast<OMPDeclareMapperDecl>(CurContext);
+  if (LangOpts.OpenMP && DMD && !CurContext->containsDecl(D) &&
+      isa<VarDecl>(D)) {
     Diag(Loc, diag::err_omp_declare_mapper_wrong_var)
-        << getOpenMPDeclareMapperVarName();
+        << DMD->getVarName().getAsString();
     Diag(D->getLocation(), diag::note_entity_declared_at) << D;
     return true;
   }
@@ -1125,11 +1126,6 @@ static QualType handleFloatConversion(Sema &S, ExprResult &LHS,
   bool LHSFloat = LHSType->isRealFloatingType();
   bool RHSFloat = RHSType->isRealFloatingType();
 
-  // FIXME: Implement floating to fixed point conversion.(Bug 46268)
-  // Reference N1169 4.1.4 (Type conversion, usual arithmetic conversions).
-  if ((LHSType->isFixedPointType() && RHSFloat) ||
-      (LHSFloat && RHSType->isFixedPointType()))
-    return QualType();
   // If we have two real floating types, convert the smaller operand
   // to the bigger result.
   if (LHSFloat && RHSFloat) {
@@ -1156,8 +1152,8 @@ static QualType handleFloatConversion(Sema &S, ExprResult &LHS,
   }
   assert(RHSFloat);
   return handleIntToFloatConversion(S, RHS, LHS, RHSType, LHSType,
-                                    /*ConvertFloat=*/ true,
-                                    /*ConvertInt=*/!IsCompAssign);
+                                    /*convertInt=*/ true,
+                                    /*convertFloat=*/!IsCompAssign);
 }
 
 /// Diagnose attempts to convert between __float128 and long double if
@@ -9794,10 +9790,6 @@ QualType Sema::CheckVectorOperands(ExprResult &LHS, ExprResult &RHS,
   const VectorType *RHSVecType = RHSType->getAs<VectorType>();
   assert(LHSVecType || RHSVecType);
 
-  if ((LHSVecType && LHSVecType->getElementType()->isBFloat16Type()) ||
-      (RHSVecType && RHSVecType->getElementType()->isBFloat16Type()))
-    return InvalidOperands(Loc, LHS, RHS);
-
   // AltiVec-style "vector bool op vector bool" combinations are allowed
   // for some operators but not others.
   if (!AllowBothBool &&
@@ -10606,13 +10598,9 @@ static void DiagnoseBadShiftValues(Sema& S, ExprResult &LHS, ExprResult &RHS,
   }
 
   QualType LHSExprType = LHS.get()->getType();
-  uint64_t LeftSize = S.Context.getTypeSize(LHSExprType);
-  if (LHSExprType->isExtIntType())
-    LeftSize = S.Context.getIntWidth(LHSExprType);
-  else if (LHSExprType->isFixedPointType()) {
-    FixedPointSemantics FXSema = S.Context.getFixedPointSemantics(LHSExprType);
-    LeftSize = FXSema.getWidth() - (unsigned)FXSema.hasUnsignedPadding();
-  }
+  uint64_t LeftSize = LHSExprType->isExtIntType()
+                          ? S.Context.getIntWidth(LHSExprType)
+                          : S.Context.getTypeSize(LHSExprType);
   llvm::APInt LeftBits(Right.getBitWidth(), LeftSize);
   if (Right.uge(LeftBits)) {
     S.DiagRuntimeBehavior(Loc, RHS.get(),
@@ -10621,8 +10609,7 @@ static void DiagnoseBadShiftValues(Sema& S, ExprResult &LHS, ExprResult &RHS,
     return;
   }
 
-  // FIXME: We probably need to handle fixed point types specially here.
-  if (Opc != BO_Shl || LHSExprType->isFixedPointType())
+  if (Opc != BO_Shl)
     return;
 
   // When left shifting an ICE which is signed, we can check for overflow which
@@ -10806,9 +10793,7 @@ QualType Sema::CheckShiftOperands(ExprResult &LHS, ExprResult &RHS,
   QualType RHSType = RHS.get()->getType();
 
   // C99 6.5.7p2: Each of the operands shall have integer type.
-  // Embedded-C 4.1.6.2.2: The LHS may also be fixed-point.
-  if ((!LHSType->isFixedPointOrIntegerType() &&
-       !LHSType->hasIntegerRepresentation()) ||
+  if (!LHSType->hasIntegerRepresentation() ||
       !RHSType->hasIntegerRepresentation())
     return InvalidOperands(Loc, LHS, RHS);
 
@@ -14193,19 +14178,6 @@ ExprResult Sema::ActOnBinOp(Scope *S, SourceLocation TokLoc,
   return BuildBinOp(S, TokLoc, Opc, LHSExpr, RHSExpr);
 }
 
-void Sema::LookupBinOp(Scope *S, SourceLocation OpLoc, BinaryOperatorKind Opc,
-                       UnresolvedSetImpl &Functions) {
-  OverloadedOperatorKind OverOp = BinaryOperator::getOverloadedOperator(Opc);
-  if (OverOp != OO_None && OverOp != OO_Equal)
-    LookupOverloadedOperatorName(OverOp, S, Functions);
-
-  // In C++20 onwards, we may have a second operator to look up.
-  if (getLangOpts().CPlusPlus20) {
-    if (OverloadedOperatorKind ExtraOp = getRewrittenOverloadedOperator(OverOp))
-      LookupOverloadedOperatorName(ExtraOp, S, Functions);
-  }
-}
-
 /// Build an overloaded binary operator expression in the given scope.
 static ExprResult BuildOverloadedBinOp(Sema &S, Scope *Sc, SourceLocation OpLoc,
                                        BinaryOperatorKind Opc,
@@ -14225,9 +14197,23 @@ static ExprResult BuildOverloadedBinOp(Sema &S, Scope *Sc, SourceLocation OpLoc,
     break;
   }
 
-  // Find all of the overloaded operators visible from this point.
+  // Find all of the overloaded operators visible from this
+  // point. We perform both an operator-name lookup from the local
+  // scope and an argument-dependent lookup based on the types of
+  // the arguments.
   UnresolvedSet<16> Functions;
-  S.LookupBinOp(Sc, OpLoc, Opc, Functions);
+  OverloadedOperatorKind OverOp
+    = BinaryOperator::getOverloadedOperator(Opc);
+  if (Sc && OverOp != OO_None && OverOp != OO_Equal)
+    S.LookupOverloadedOperatorName(OverOp, Sc, LHS->getType(),
+                                   RHS->getType(), Functions);
+
+  // In C++20 onwards, we may have a second operator to look up.
+  if (S.getLangOpts().CPlusPlus20) {
+    if (OverloadedOperatorKind ExtraOp = getRewrittenOverloadedOperator(OverOp))
+      S.LookupOverloadedOperatorName(ExtraOp, Sc, LHS->getType(),
+                                     RHS->getType(), Functions);
+  }
 
   // Build the (potentially-overloaded, potentially-dependent)
   // binary operation.
@@ -14643,11 +14629,15 @@ ExprResult Sema::BuildUnaryOp(Scope *S, SourceLocation OpLoc,
   if (getLangOpts().CPlusPlus && Input->getType()->isOverloadableType() &&
       UnaryOperator::getOverloadedOperator(Opc) != OO_None &&
       !(Opc == UO_AddrOf && isQualifiedMemberAccess(Input))) {
-    // Find all of the overloaded operators visible from this point.
+    // Find all of the overloaded operators visible from this
+    // point. We perform both an operator-name lookup from the local
+    // scope and an argument-dependent lookup based on the types of
+    // the arguments.
     UnresolvedSet<16> Functions;
     OverloadedOperatorKind OverOp = UnaryOperator::getOverloadedOperator(Opc);
     if (S && OverOp != OO_None)
-      LookupOverloadedOperatorName(OverOp, S, Functions);
+      LookupOverloadedOperatorName(OverOp, S, Input->getType(), QualType(),
+                                   Functions);
 
     return CreateOverloadedUnaryOp(OpLoc, Opc, Functions, Input);
   }
@@ -17874,24 +17864,6 @@ static void DoMarkVarDeclReferenced(Sema &SemaRef, SourceLocation Loc,
   if (Var->isInvalidDecl())
     return;
 
-  // Record a CUDA/HIP static device/constant variable if it is referenced
-  // by host code. This is done conservatively, when the variable is referenced
-  // in any of the following contexts:
-  //   - a non-function context
-  //   - a host function
-  //   - a host device function
-  // This also requires the reference of the static device/constant variable by
-  // host code to be visible in the device compilation for the compiler to be
-  // able to externalize the static device/constant variable.
-  if (SemaRef.getASTContext().mayExternalizeStaticVar(Var)) {
-    auto *CurContext = SemaRef.CurContext;
-    if (!CurContext || !isa<FunctionDecl>(CurContext) ||
-        cast<FunctionDecl>(CurContext)->hasAttr<CUDAHostAttr>() ||
-        (!cast<FunctionDecl>(CurContext)->hasAttr<CUDADeviceAttr>() &&
-         !cast<FunctionDecl>(CurContext)->hasAttr<CUDAGlobalAttr>()))
-      SemaRef.getASTContext().CUDAStaticDeviceVarReferencedByHost.insert(Var);
-  }
-
   auto *MSI = Var->getMemberSpecializationInfo();
   TemplateSpecializationKind TSK = MSI ? MSI->getTemplateSpecializationKind()
                                        : Var->getTemplateSpecializationKind();
@@ -17911,6 +17883,8 @@ static void DoMarkVarDeclReferenced(Sema &SemaRef, SourceLocation Loc,
   bool NeedDefinition =
       OdrUse == OdrUseContext::Used || NeededForConstantEvaluation;
 
+  VarTemplateSpecializationDecl *VarSpec =
+      dyn_cast<VarTemplateSpecializationDecl>(Var);
   assert(!isa<VarTemplatePartialSpecializationDecl>(Var) &&
          "Can't instantiate a partial template specialization.");
 
@@ -17945,21 +17919,30 @@ static void DoMarkVarDeclReferenced(Sema &SemaRef, SourceLocation Loc,
           Var->setTemplateSpecializationKind(TSK, PointOfInstantiation);
       }
 
-      if (UsableInConstantExpr) {
-        // Do not defer instantiations of variables that could be used in a
-        // constant expression.
-        SemaRef.runWithSufficientStackSpace(PointOfInstantiation, [&] {
-          SemaRef.InstantiateVariableDefinition(PointOfInstantiation, Var);
-        });
-      } else if (FirstInstantiation ||
-                 isa<VarTemplateSpecializationDecl>(Var)) {
-        // FIXME: For a specialization of a variable template, we don't
-        // distinguish between "declaration and type implicitly instantiated"
-        // and "implicit instantiation of definition requested", so we have
-        // no direct way to avoid enqueueing the pending instantiation
-        // multiple times.
-        SemaRef.PendingInstantiations
-            .push_back(std::make_pair(Var, PointOfInstantiation));
+      bool InstantiationDependent = false;
+      bool IsNonDependent =
+          VarSpec ? !TemplateSpecializationType::anyDependentTemplateArguments(
+                        VarSpec->getTemplateArgsInfo(), InstantiationDependent)
+                  : true;
+
+      // Do not instantiate specializations that are still type-dependent.
+      if (IsNonDependent) {
+        if (UsableInConstantExpr) {
+          // Do not defer instantiations of variables that could be used in a
+          // constant expression.
+          SemaRef.runWithSufficientStackSpace(PointOfInstantiation, [&] {
+            SemaRef.InstantiateVariableDefinition(PointOfInstantiation, Var);
+          });
+        } else if (FirstInstantiation ||
+                   isa<VarTemplateSpecializationDecl>(Var)) {
+          // FIXME: For a specialization of a variable template, we don't
+          // distinguish between "declaration and type implicitly instantiated"
+          // and "implicit instantiation of definition requested", so we have
+          // no direct way to avoid enqueueing the pending instantiation
+          // multiple times.
+          SemaRef.PendingInstantiations
+              .push_back(std::make_pair(Var, PointOfInstantiation));
+        }
       }
     }
   }

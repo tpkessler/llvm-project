@@ -33,7 +33,6 @@ Expected<Target> Target::create(StringRef TargetValue) {
                  .Case("ios-simulator", PlatformKind::iOSSimulator)
                  .Case("tvos-simulator", PlatformKind::tvOSSimulator)
                  .Case("watchos-simulator", PlatformKind::watchOSSimulator)
-                 .Case("driverkit", PlatformKind::driverKit)
                  .Default(PlatformKind::unknown);
 
   if (Platform == PlatformKind::unknown) {

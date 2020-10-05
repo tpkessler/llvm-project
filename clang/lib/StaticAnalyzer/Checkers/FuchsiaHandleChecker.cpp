@@ -324,7 +324,7 @@ void FuchsiaHandleChecker::checkPostCall(const CallEvent &Call,
       if (auto IsInteresting = PathBR->getInterestingnessKind(RetSym)) {
         std::string SBuf;
         llvm::raw_string_ostream OS(SBuf);
-        OS << "Function '" << FuncDecl->getDeclName()
+        OS << "Function '" << FuncDecl->getNameAsString()
            << "' returns an open handle";
         return OS.str();
       } else

@@ -233,7 +233,7 @@ public:
                                    const LocationContext *LCtx,
                                    unsigned count);
 
-  DefinedSVal getMemberPointer(const NamedDecl *ND);
+  DefinedSVal getMemberPointer(const DeclaratorDecl *DD);
 
   DefinedSVal getFunctionPointer(const FunctionDecl *func);
 

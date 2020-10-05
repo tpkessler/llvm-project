@@ -88,13 +88,13 @@ public:
            Property property, bool declOnly);
   virtual ~OpMethod() = default;
 
-  OpMethodBody &body() { return methodBody; }
+  OpMethodBody &body();
 
   // Returns true if this is a static method.
-  bool isStatic() const { return properties & MP_Static; }
+  bool isStatic() const;
 
   // Returns true if this is a private method.
-  bool isPrivate() const { return properties & MP_Private; }
+  bool isPrivate() const;
 
   // Writes the method as a declaration to the given `os`.
   virtual void writeDeclTo(raw_ostream &os) const;

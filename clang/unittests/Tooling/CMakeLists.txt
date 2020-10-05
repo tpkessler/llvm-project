@@ -22,7 +22,6 @@ add_clang_unittest(ToolingTests
   RecursiveASTVisitorTests/Attr.cpp
   RecursiveASTVisitorTests/Callbacks.cpp
   RecursiveASTVisitorTests/Class.cpp
-  RecursiveASTVisitorTests/Concept.cpp
   RecursiveASTVisitorTests/ConstructExpr.cpp
   RecursiveASTVisitorTests/CXXBoolLiteralExpr.cpp
   RecursiveASTVisitorTests/CXXMemberCall.cpp

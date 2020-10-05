@@ -21,10 +21,9 @@
 using namespace mlir;
 
 namespace {
-class TestSCFForUtilsPass
-    : public PassWrapper<TestSCFForUtilsPass, FunctionPass> {
+class TestSCFUtilsPass : public PassWrapper<TestSCFUtilsPass, FunctionPass> {
 public:
-  explicit TestSCFForUtilsPass() {}
+  explicit TestSCFUtilsPass() {}
 
   void runOnFunction() override {
     FuncOp func = getFunction();
@@ -50,31 +49,10 @@ public:
       loop.erase();
   }
 };
-
-class TestSCFIfUtilsPass
-    : public PassWrapper<TestSCFIfUtilsPass, FunctionPass> {
-public:
-  explicit TestSCFIfUtilsPass() {}
-
-  void runOnFunction() override {
-    int count = 0;
-    FuncOp func = getFunction();
-    func.walk([&](scf::IfOp ifOp) {
-      auto strCount = std::to_string(count++);
-      FuncOp thenFn, elseFn;
-      OpBuilder b(ifOp);
-      outlineIfOp(b, ifOp, &thenFn, std::string("outlined_then") + strCount,
-                  &elseFn, std::string("outlined_else") + strCount);
-    });
-  }
-};
 } // end namespace
 
 namespace mlir {
 void registerTestSCFUtilsPass() {
-  PassRegistration<TestSCFForUtilsPass>("test-scf-for-utils",
-                                        "test scf.for utils");
-  PassRegistration<TestSCFIfUtilsPass>("test-scf-if-utils",
-                                       "test scf.if utils");
+  PassRegistration<TestSCFUtilsPass>("test-scf-utils", "test scf utils");
 }
 } // namespace mlir

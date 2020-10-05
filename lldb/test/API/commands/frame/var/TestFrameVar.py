@@ -42,7 +42,7 @@ class TestFrameVar(TestBase):
         # environment variables, add them using SetArguments or
         # SetEnvironmentEntries
 
-        launch_info = target.GetLaunchInfo()
+        launch_info = lldb.SBLaunchInfo(None)
         process = target.Launch(launch_info, error)
         self.assertTrue(process, PROCESS_IS_VALID)
 

@@ -57,7 +57,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Transforms/BufferPlacement.h"
-#include "PassDetail.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
@@ -670,7 +669,8 @@ private:
 /// The actual buffer placement pass that moves alloc and dealloc nodes into
 /// the right positions. It uses the algorithm described at the top of the
 /// file.
-struct BufferPlacementPass : BufferPlacementBase<BufferPlacementPass> {
+struct BufferPlacementPass
+    : mlir::PassWrapper<BufferPlacementPass, FunctionPass> {
 
   void runOnFunction() override {
     // Place all required alloc, copy and dealloc nodes.

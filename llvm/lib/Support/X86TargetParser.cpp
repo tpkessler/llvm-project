@@ -37,10 +37,6 @@ public:
       set(I);
   }
 
-  bool any() const {
-    return llvm::any_of(Bits, [](uint64_t V) { return V != 0; });
-  }
-
   constexpr FeatureBitset &set(unsigned I) {
     // GCC <6.2 crashes if this is written in a single statement.
     uint32_t NewBits = Bits[I / 32] | (uint32_t(1) << (I % 32));
@@ -92,13 +88,6 @@ public:
     for (unsigned I = 0, E = array_lengthof(Bits); I != E; ++I)
       Result.Bits[I] = ~Bits[I];
     return Result;
-  }
-
-  constexpr bool operator!=(const FeatureBitset &RHS) const {
-    for (unsigned I = 0, E = array_lengthof(Bits); I != E; ++I)
-      if (Bits[I] != RHS.Bits[I])
-        return true;
-    return false;
   }
 };
 
@@ -536,6 +525,14 @@ static constexpr FeatureInfo FeatureInfos[X86::CPU_FEATURE_MAX] = {
 #include "llvm/Support/X86TargetParser.def"
 };
 
+// Convert the set bits in FeatureBitset to a list of strings.
+static void getFeatureBitsAsStrings(const FeatureBitset &Bits,
+                                    SmallVectorImpl<StringRef> &Features) {
+  for (unsigned i = 0; i != CPU_FEATURE_MAX; ++i)
+    if (Bits[i] && !FeatureInfos[i].Name.empty())
+      Features.push_back(FeatureInfos[i].Name);
+}
+
 void llvm::X86::getFeaturesForCPU(StringRef CPU,
                                   SmallVectorImpl<StringRef> &EnabledFeatures) {
   auto I = llvm::find_if(Processors,
@@ -549,25 +546,17 @@ void llvm::X86::getFeaturesForCPU(StringRef CPU,
   Bits &= ~Feature64BIT;
 
   // Add the string version of all set bits.
-  for (unsigned i = 0; i != CPU_FEATURE_MAX; ++i)
-    if (Bits[i] && !FeatureInfos[i].Name.empty())
-      EnabledFeatures.push_back(FeatureInfos[i].Name);
+  getFeatureBitsAsStrings(Bits, EnabledFeatures);
 }
 
 // For each feature that is (transitively) implied by this feature, set it.
 static void getImpliedEnabledFeatures(FeatureBitset &Bits,
                                       const FeatureBitset &Implies) {
-  // Fast path: Implies is often empty.
-  if (!Implies.any())
-    return;
-  FeatureBitset Prev;
   Bits |= Implies;
-  do {
-    Prev = Bits;
-    for (unsigned i = CPU_FEATURE_MAX; i;)
-      if (Bits[--i])
-        Bits |= FeatureInfos[i].ImpliedFeatures;
-  } while (Prev != Bits);
+  for (unsigned i = 0; i != CPU_FEATURE_MAX; ++i) {
+    if (Implies[i])
+      getImpliedEnabledFeatures(Bits, FeatureInfos[i].ImpliedFeatures);
+  }
 }
 
 /// Create bit vector of features that are implied disabled if the feature
@@ -575,19 +564,17 @@ static void getImpliedEnabledFeatures(FeatureBitset &Bits,
 static void getImpliedDisabledFeatures(FeatureBitset &Bits, unsigned Value) {
   // Check all features looking for any dependent on this feature. If we find
   // one, mark it and recursively find any feature that depend on it.
-  FeatureBitset Prev;
-  Bits.set(Value);
-  do {
-    Prev = Bits;
-    for (unsigned i = 0; i != CPU_FEATURE_MAX; ++i)
-      if ((FeatureInfos[i].ImpliedFeatures & Bits).any())
-        Bits.set(i);
-  } while (Prev != Bits);
+  for (unsigned i = 0; i != CPU_FEATURE_MAX; ++i) {
+    if (FeatureInfos[i].ImpliedFeatures[Value]) {
+      Bits.set(i);
+      getImpliedDisabledFeatures(Bits, i);
+    }
+  }
 }
 
-void llvm::X86::updateImpliedFeatures(
+void llvm::X86::getImpliedFeatures(
     StringRef Feature, bool Enabled,
-    StringMap<bool> &Features) {
+    SmallVectorImpl<StringRef> &ImpliedFeatures) {
   auto I = llvm::find_if(
       FeatureInfos, [&](const FeatureInfo &FI) { return FI.Name == Feature; });
   if (I == std::end(FeatureInfos)) {
@@ -603,8 +590,6 @@ void llvm::X86::updateImpliedFeatures(
     getImpliedDisabledFeatures(ImpliedBits,
                                std::distance(std::begin(FeatureInfos), I));
 
-  // Update the map entry for all implied features.
-  for (unsigned i = 0; i != CPU_FEATURE_MAX; ++i)
-    if (ImpliedBits[i] && !FeatureInfos[i].Name.empty())
-      Features[FeatureInfos[i].Name] = Enabled;
+  // Convert all the found bits into strings.
+  getFeatureBitsAsStrings(ImpliedBits, ImpliedFeatures);
 }

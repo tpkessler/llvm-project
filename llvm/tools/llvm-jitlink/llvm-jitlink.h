@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// llvm-jitlink Session class and tool utilities.
+// Utilities for remote-JITing with LLI.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,7 +18,6 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
-#include "llvm/ExecutionEngine/Orc/TargetProcessControl.h"
 #include "llvm/ExecutionEngine/RuntimeDyldChecker.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/Regex.h"
@@ -33,8 +32,8 @@ struct Session;
 /// ObjectLinkingLayer with additional support for symbol promotion.
 class LLVMJITLinkObjectLinkingLayer : public orc::ObjectLinkingLayer {
 public:
-  LLVMJITLinkObjectLinkingLayer(Session &S,
-                                jitlink::JITLinkMemoryManager &MemMgr);
+  LLVMJITLinkObjectLinkingLayer(
+      Session &S, std::unique_ptr<jitlink::JITLinkMemoryManager> MemMgr);
 
   Error add(orc::JITDylib &JD, std::unique_ptr<MemoryBuffer> O,
             orc::VModuleKey K = orc::VModuleKey()) override;
@@ -45,11 +44,12 @@ private:
 
 struct Session {
   orc::ExecutionSession ES;
-  std::unique_ptr<orc::TargetProcessControl> TPC;
   orc::JITDylib *MainJD;
   LLVMJITLinkObjectLinkingLayer ObjLayer;
   std::vector<orc::JITDylib *> JDSearchOrder;
+  Triple TT;
 
+  Session(Triple TT);
   static Expected<std::unique_ptr<Session>> Create(Triple TT);
   void dumpSessionInfo(raw_ostream &OS);
   void modifyPassConfig(const Triple &FTT,
@@ -89,7 +89,7 @@ struct Session {
   DenseMap<StringRef, StringRef> CanonicalWeakDefs;
 
 private:
-  Session(Triple TT, uint64_t PageSize, Error &Err);
+  Session(Triple TT, Error &Err);
 };
 
 /// Record symbols, GOT entries, stubs, and sections for ELF file.

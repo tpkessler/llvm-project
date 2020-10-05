@@ -266,7 +266,7 @@ TEST_F(AArch64GISelMITest, BuildCasts) {
   EXPECT_TRUE(CheckMachineFunction(*MF, CheckStr)) << *MF;
 }
 
-TEST_F(AArch64GISelMITest, BuildMinMaxAbs) {
+TEST_F(AArch64GISelMITest, BuildMinMax) {
   setUp();
   if (!TM)
     return;
@@ -279,7 +279,6 @@ TEST_F(AArch64GISelMITest, BuildMinMaxAbs) {
   B.buildSMax(S64, Copies[0], Copies[1]);
   B.buildUMin(S64, Copies[0], Copies[1]);
   B.buildUMax(S64, Copies[0], Copies[1]);
-  B.buildAbs(S64, Copies[0]);
 
   auto CheckStr = R"(
   ; CHECK: [[COPY0:%[0-9]+]]:_(s64) = COPY $x0
@@ -288,7 +287,6 @@ TEST_F(AArch64GISelMITest, BuildMinMaxAbs) {
   ; CHECK: [[SMAX0:%[0-9]+]]:_(s64) = G_SMAX [[COPY0]]:_, [[COPY1]]:_
   ; CHECK: [[UMIN0:%[0-9]+]]:_(s64) = G_UMIN [[COPY0]]:_, [[COPY1]]:_
   ; CHECK: [[UMAX0:%[0-9]+]]:_(s64) = G_UMAX [[COPY0]]:_, [[COPY1]]:_
-  ; CHECK: [[UABS0:%[0-9]+]]:_(s64) = G_ABS [[COPY0]]:_
   )";
 
   EXPECT_TRUE(CheckMachineFunction(*MF, CheckStr)) << *MF;

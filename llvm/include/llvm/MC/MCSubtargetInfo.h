@@ -54,7 +54,6 @@ struct SubtargetFeatureKV {
 struct SubtargetSubTypeKV {
   const char *Key;                      ///< K-V key string
   FeatureBitArray Implies;              ///< K-V bit mask
-  FeatureBitArray TuneImplies;          ///< K-V bit mask
   const MCSchedModel *SchedModel;
 
   /// Compare routine for std::lower_bound
@@ -75,7 +74,6 @@ struct SubtargetSubTypeKV {
 class MCSubtargetInfo {
   Triple TargetTriple;
   std::string CPU; // CPU being targeted.
-  std::string TuneCPU; // CPU being tuned for.
   ArrayRef<SubtargetFeatureKV> ProcFeatures;  // Processor feature list
   ArrayRef<SubtargetSubTypeKV> ProcDesc;  // Processor descriptions
 
@@ -92,8 +90,8 @@ class MCSubtargetInfo {
 
 public:
   MCSubtargetInfo(const MCSubtargetInfo &) = default;
-  MCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef TuneCPU,
-                  StringRef FS, ArrayRef<SubtargetFeatureKV> PF,
+  MCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef FS,
+                  ArrayRef<SubtargetFeatureKV> PF,
                   ArrayRef<SubtargetSubTypeKV> PD,
                   const MCWriteProcResEntry *WPR, const MCWriteLatencyEntry *WL,
                   const MCReadAdvanceEntry *RA, const InstrStage *IS,
@@ -105,7 +103,6 @@ public:
 
   const Triple &getTargetTriple() const { return TargetTriple; }
   StringRef getCPU() const { return CPU; }
-  StringRef getTuneCPU() const { return TuneCPU; }
 
   const FeatureBitset& getFeatureBits() const { return FeatureBits; }
   void setFeatureBits(const FeatureBitset &FeatureBits_) {
@@ -121,12 +118,12 @@ protected:
   ///
   /// FIXME: Find a way to stick this in the constructor, since it should only
   /// be called during initialization.
-  void InitMCProcessorInfo(StringRef CPU, StringRef TuneCPU, StringRef FS);
+  void InitMCProcessorInfo(StringRef CPU, StringRef FS);
 
 public:
-  /// Set the features to the default for the given CPU and TuneCPU, with ano
-  /// appended feature string.
-  void setDefaultFeatures(StringRef CPU, StringRef TuneCPU, StringRef FS);
+  /// Set the features to the default for the given CPU with an appended feature
+  /// string.
+  void setDefaultFeatures(StringRef CPU, StringRef FS);
 
   /// Toggle a feature and return the re-computed feature bits.
   /// This version does not change the implied bits.

@@ -824,11 +824,13 @@ bool inbounds(A v, B lb, B ub) {
 }
 
 bool isa_fir_type(mlir::Type t) {
-  return llvm::isa<FIROpsDialect>(t.getDialect());
+  return inbounds(t.getKind(), mlir::Type::FIRST_FIR_TYPE,
+                  mlir::Type::LAST_FIR_TYPE);
 }
 
 bool isa_std_type(mlir::Type t) {
-  return t.getDialect().getNamespace().empty();
+  return inbounds(t.getKind(), mlir::Type::FIRST_STANDARD_TYPE,
+                  mlir::Type::LAST_STANDARD_TYPE);
 }
 
 bool isa_fir_or_std_type(mlir::Type t) {
@@ -866,7 +868,7 @@ mlir::Type dyn_cast_ptrEleTy(mlir::Type t) {
 // CHARACTER
 
 CharacterType fir::CharacterType::get(mlir::MLIRContext *ctxt, KindTy kind) {
-  return Base::get(ctxt, kind);
+  return Base::get(ctxt, FIR_CHARACTER, kind);
 }
 
 int fir::CharacterType::getFKind() const { return getImpl()->getFKind(); }
@@ -874,7 +876,7 @@ int fir::CharacterType::getFKind() const { return getImpl()->getFKind(); }
 // Dims
 
 DimsType fir::DimsType::get(mlir::MLIRContext *ctxt, unsigned rank) {
-  return Base::get(ctxt, rank);
+  return Base::get(ctxt, FIR_DIMS, rank);
 }
 
 unsigned fir::DimsType::getRank() const { return getImpl()->getRank(); }
@@ -882,19 +884,19 @@ unsigned fir::DimsType::getRank() const { return getImpl()->getRank(); }
 // Field
 
 FieldType fir::FieldType::get(mlir::MLIRContext *ctxt) {
-  return Base::get(ctxt, 0);
+  return Base::get(ctxt, FIR_FIELD, 0);
 }
 
 // Len
 
 LenType fir::LenType::get(mlir::MLIRContext *ctxt) {
-  return Base::get(ctxt, 0);
+  return Base::get(ctxt, FIR_LEN, 0);
 }
 
 // LOGICAL
 
 LogicalType fir::LogicalType::get(mlir::MLIRContext *ctxt, KindTy kind) {
-  return Base::get(ctxt, kind);
+  return Base::get(ctxt, FIR_LOGICAL, kind);
 }
 
 int fir::LogicalType::getFKind() const { return getImpl()->getFKind(); }
@@ -902,7 +904,7 @@ int fir::LogicalType::getFKind() const { return getImpl()->getFKind(); }
 // INTEGER
 
 IntType fir::IntType::get(mlir::MLIRContext *ctxt, KindTy kind) {
-  return Base::get(ctxt, kind);
+  return Base::get(ctxt, FIR_INT, kind);
 }
 
 int fir::IntType::getFKind() const { return getImpl()->getFKind(); }
@@ -910,7 +912,7 @@ int fir::IntType::getFKind() const { return getImpl()->getFKind(); }
 // COMPLEX
 
 CplxType fir::CplxType::get(mlir::MLIRContext *ctxt, KindTy kind) {
-  return Base::get(ctxt, kind);
+  return Base::get(ctxt, FIR_COMPLEX, kind);
 }
 
 mlir::Type fir::CplxType::getElementType() const {
@@ -922,7 +924,7 @@ KindTy fir::CplxType::getFKind() const { return getImpl()->getFKind(); }
 // REAL
 
 RealType fir::RealType::get(mlir::MLIRContext *ctxt, KindTy kind) {
-  return Base::get(ctxt, kind);
+  return Base::get(ctxt, FIR_REAL, kind);
 }
 
 int fir::RealType::getFKind() const { return getImpl()->getFKind(); }
@@ -930,7 +932,7 @@ int fir::RealType::getFKind() const { return getImpl()->getFKind(); }
 // Box<T>
 
 BoxType fir::BoxType::get(mlir::Type elementType, mlir::AffineMapAttr map) {
-  return Base::get(elementType.getContext(), elementType, map);
+  return Base::get(elementType.getContext(), FIR_BOX, elementType, map);
 }
 
 mlir::Type fir::BoxType::getEleTy() const {
@@ -951,7 +953,7 @@ fir::BoxType::verifyConstructionInvariants(mlir::Location, mlir::Type eleTy,
 // BoxChar<C>
 
 BoxCharType fir::BoxCharType::get(mlir::MLIRContext *ctxt, KindTy kind) {
-  return Base::get(ctxt, kind);
+  return Base::get(ctxt, FIR_BOXCHAR, kind);
 }
 
 CharacterType fir::BoxCharType::getEleTy() const {
@@ -961,7 +963,7 @@ CharacterType fir::BoxCharType::getEleTy() const {
 // BoxProc<T>
 
 BoxProcType fir::BoxProcType::get(mlir::Type elementType) {
-  return Base::get(elementType.getContext(), elementType);
+  return Base::get(elementType.getContext(), FIR_BOXPROC, elementType);
 }
 
 mlir::Type fir::BoxProcType::getEleTy() const {
@@ -982,7 +984,7 @@ fir::BoxProcType::verifyConstructionInvariants(mlir::Location loc,
 // Reference<T>
 
 ReferenceType fir::ReferenceType::get(mlir::Type elementType) {
-  return Base::get(elementType.getContext(), elementType);
+  return Base::get(elementType.getContext(), FIR_REFERENCE, elementType);
 }
 
 mlir::Type fir::ReferenceType::getEleTy() const {
@@ -1003,7 +1005,7 @@ fir::ReferenceType::verifyConstructionInvariants(mlir::Location loc,
 
 PointerType fir::PointerType::get(mlir::Type elementType) {
   assert(singleIndirectionLevel(elementType) && "invalid element type");
-  return Base::get(elementType.getContext(), elementType);
+  return Base::get(elementType.getContext(), FIR_POINTER, elementType);
 }
 
 mlir::Type fir::PointerType::getEleTy() const {
@@ -1031,7 +1033,7 @@ fir::PointerType::verifyConstructionInvariants(mlir::Location loc,
 
 HeapType fir::HeapType::get(mlir::Type elementType) {
   assert(singleIndirectionLevel(elementType) && "invalid element type");
-  return Base::get(elementType.getContext(), elementType);
+  return Base::get(elementType.getContext(), FIR_HEAP, elementType);
 }
 
 mlir::Type fir::HeapType::getEleTy() const {
@@ -1052,7 +1054,7 @@ fir::HeapType::verifyConstructionInvariants(mlir::Location loc,
 SequenceType fir::SequenceType::get(const Shape &shape, mlir::Type elementType,
                                     mlir::AffineMapAttr map) {
   auto *ctxt = elementType.getContext();
-  return Base::get(ctxt, shape, elementType, map);
+  return Base::get(ctxt, FIR_SEQUENCE, shape, elementType, map);
 }
 
 mlir::Type fir::SequenceType::getEleTy() const {
@@ -1134,7 +1136,7 @@ llvm::hash_code fir::hash_value(const SequenceType::Shape &sh) {
 /// This type captures a Fortran "derived type"
 
 RecordType fir::RecordType::get(mlir::MLIRContext *ctxt, llvm::StringRef name) {
-  return Base::get(ctxt, name);
+  return Base::get(ctxt, FIR_DERIVED, name);
 }
 
 void fir::RecordType::finalize(llvm::ArrayRef<TypePair> lenPList,
@@ -1177,7 +1179,7 @@ mlir::Type fir::RecordType::getType(llvm::StringRef ident) {
 
 TypeDescType fir::TypeDescType::get(mlir::Type ofType) {
   assert(!ofType.isa<ReferenceType>());
-  return Base::get(ofType.getContext(), ofType);
+  return Base::get(ofType.getContext(), FIR_TYPEDESC, ofType);
 }
 
 mlir::Type fir::TypeDescType::getOfTy() const { return getImpl()->getOfType(); }
@@ -1220,7 +1222,9 @@ void fir::verifyIntegralType(mlir::Type type) {
 void fir::printFirType(FIROpsDialect *, mlir::Type ty,
                        mlir::DialectAsmPrinter &p) {
   auto &os = p.getStream();
-  if (auto type = ty.dyn_cast<BoxType>()) {
+  switch (ty.getKind()) {
+  case fir::FIR_BOX: {
+    auto type = ty.cast<BoxType>();
     os << "box<";
     p.printType(type.getEleTy());
     if (auto map = type.getLayoutMap()) {
@@ -1228,28 +1232,24 @@ void fir::printFirType(FIROpsDialect *, mlir::Type ty,
       p.printAttribute(map);
     }
     os << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<BoxCharType>()) {
-    os << "boxchar<" << type.getEleTy().cast<fir::CharacterType>().getFKind()
-       << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<BoxProcType>()) {
+  } break;
+  case fir::FIR_BOXCHAR: {
+    auto type = ty.cast<BoxCharType>().getEleTy();
+    os << "boxchar<" << type.cast<fir::CharacterType>().getFKind() << '>';
+  } break;
+  case fir::FIR_BOXPROC:
     os << "boxproc<";
-    p.printType(type.getEleTy());
+    p.printType(ty.cast<BoxProcType>().getEleTy());
     os << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<CharacterType>()) {
-    os << "char<" << type.getFKind() << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<CplxType>()) {
-    os << "complex<" << type.getFKind() << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<RecordType>()) {
+    break;
+  case fir::FIR_CHARACTER: // intrinsic
+    os << "char<" << ty.cast<CharacterType>().getFKind() << '>';
+    break;
+  case fir::FIR_COMPLEX: // intrinsic
+    os << "complex<" << ty.cast<CplxType>().getFKind() << '>';
+    break;
+  case fir::FIR_DERIVED: { // derived
+    auto type = ty.cast<fir::RecordType>();
     os << "type<" << type.getName();
     if (!recordTypeVisited.count(type.uniqueKey())) {
       recordTypeVisited.insert(type.uniqueKey());
@@ -1274,52 +1274,43 @@ void fir::printFirType(FIROpsDialect *, mlir::Type ty,
       recordTypeVisited.erase(type.uniqueKey());
     }
     os << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<DimsType>()) {
-    os << "dims<" << type.getRank() << '>';
-    return;
-  }
-  if (ty.isa<FieldType>()) {
+  } break;
+  case fir::FIR_DIMS:
+    os << "dims<" << ty.cast<DimsType>().getRank() << '>';
+    break;
+  case fir::FIR_FIELD:
     os << "field";
-    return;
-  }
-  if (auto type = ty.dyn_cast<HeapType>()) {
+    break;
+  case fir::FIR_HEAP:
     os << "heap<";
-    p.printType(type.getEleTy());
+    p.printType(ty.cast<HeapType>().getEleTy());
     os << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<fir::IntType>()) {
-    os << "int<" << type.getFKind() << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<LenType>()) {
+    break;
+  case fir::FIR_INT: // intrinsic
+    os << "int<" << ty.cast<fir::IntType>().getFKind() << '>';
+    break;
+  case fir::FIR_LEN:
     os << "len";
-    return;
-  }
-  if (auto type = ty.dyn_cast<LogicalType>()) {
-    os << "logical<" << type.getFKind() << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<PointerType>()) {
+    break;
+  case fir::FIR_LOGICAL: // intrinsic
+    os << "logical<" << ty.cast<LogicalType>().getFKind() << '>';
+    break;
+  case fir::FIR_POINTER:
     os << "ptr<";
-    p.printType(type.getEleTy());
+    p.printType(ty.cast<PointerType>().getEleTy());
     os << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<fir::RealType>()) {
-    os << "real<" << type.getFKind() << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<ReferenceType>()) {
+    break;
+  case fir::FIR_REAL: // intrinsic
+    os << "real<" << ty.cast<fir::RealType>().getFKind() << '>';
+    break;
+  case fir::FIR_REFERENCE:
     os << "ref<";
-    p.printType(type.getEleTy());
+    p.printType(ty.cast<ReferenceType>().getEleTy());
     os << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<SequenceType>()) {
+    break;
+  case fir::FIR_SEQUENCE: {
     os << "array";
+    auto type = ty.cast<SequenceType>();
     auto shape = type.getShape();
     if (shape.size()) {
       printBounds(os, shape);
@@ -1332,12 +1323,11 @@ void fir::printFirType(FIROpsDialect *, mlir::Type ty,
       map.print(os);
     }
     os << '>';
-    return;
-  }
-  if (auto type = ty.dyn_cast<TypeDescType>()) {
+  } break;
+  case fir::FIR_TYPEDESC:
     os << "tdesc<";
-    p.printType(type.getOfTy());
+    p.printType(ty.cast<TypeDescType>().getOfTy());
     os << '>';
-    return;
+    break;
   }
 }

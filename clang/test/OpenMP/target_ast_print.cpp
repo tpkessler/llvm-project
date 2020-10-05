@@ -1,5 +1,3 @@
-
-
 // expected-no-diagnostics
 #ifndef HEADER
 #define HEADER

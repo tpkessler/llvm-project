@@ -255,7 +255,7 @@ static void dumpRnglistsSection(
         break;
       Offset = TableOffset + Length;
     } else {
-      Rnglists.dump(rnglistData, OS, LookupPooledAddress, DumpOpts);
+      Rnglists.dump(OS, LookupPooledAddress, DumpOpts);
     }
   }
 }
@@ -316,7 +316,7 @@ static void dumpLoclistsSection(raw_ostream &OS, DIDumpOptions DumpOpts,
       return;
     }
 
-    Header.dump(Data, OS, DumpOpts);
+    Header.dump(OS, DumpOpts);
 
     uint64_t EndOffset = Header.length() + Header.getHeaderOffset();
     Data.setAddressSize(Header.getAddrSize());
@@ -502,8 +502,7 @@ void DWARFContext::dump(
                                    0);
     DWARFDebugArangeSet set;
     while (arangesData.isValidOffset(offset)) {
-      if (Error E =
-              set.extract(arangesData, &offset, DumpOpts.WarningHandler)) {
+      if (Error E = set.extract(arangesData, &offset)) {
         RecoverableErrorHandler(std::move(E));
         break;
       }

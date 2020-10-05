@@ -58,9 +58,6 @@ class WebAssemblyFastISel final : public FastISel {
       int FI;
     } Base;
 
-    // Whether the base has been determined yet
-    bool IsBaseSet = false;
-
     int64_t Offset = 0;
 
     const GlobalValue *GV = nullptr;
@@ -77,9 +74,8 @@ class WebAssemblyFastISel final : public FastISel {
     bool isFIBase() const { return Kind == FrameIndexBase; }
     void setReg(unsigned Reg) {
       assert(isRegBase() && "Invalid base register access!");
-      assert(!IsBaseSet && "Base cannot be reset");
+      assert(Base.Reg == 0 && "Overwriting non-zero register");
       Base.Reg = Reg;
-      IsBaseSet = true;
     }
     unsigned getReg() const {
       assert(isRegBase() && "Invalid base register access!");
@@ -87,9 +83,8 @@ class WebAssemblyFastISel final : public FastISel {
     }
     void setFI(unsigned FI) {
       assert(isFIBase() && "Invalid base frame index access!");
-      assert(!IsBaseSet && "Base cannot be reset");
+      assert(Base.FI == 0 && "Overwriting non-zero frame index");
       Base.FI = FI;
-      IsBaseSet = true;
     }
     unsigned getFI() const {
       assert(isFIBase() && "Invalid base frame index access!");
@@ -103,7 +98,13 @@ class WebAssemblyFastISel final : public FastISel {
     int64_t getOffset() const { return Offset; }
     void setGlobalValue(const GlobalValue *G) { GV = G; }
     const GlobalValue *getGlobalValue() const { return GV; }
-    bool isSet() const { return IsBaseSet; }
+    bool isSet() const {
+      if (isRegBase()) {
+        return Base.Reg != 0;
+      } else {
+        return Base.FI != 0;
+      }
+    }
   };
 
   /// Keep a pointer to the WebAssemblySubtarget around so that we can make the

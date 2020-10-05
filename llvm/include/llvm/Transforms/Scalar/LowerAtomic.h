@@ -22,7 +22,6 @@ namespace llvm {
 class LowerAtomicPass : public PassInfoMixin<LowerAtomicPass> {
 public:
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &);
-  static bool isRequired() { return true; }
 };
 }
 

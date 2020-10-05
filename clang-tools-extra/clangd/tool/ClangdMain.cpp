@@ -450,13 +450,6 @@ opt<bool> EnableConfig{
     init(true),
 };
 
-opt<bool> CollectMainFileRefs{
-    "collect-main-file-refs",
-    cat(Misc),
-    desc("Store references to main-file-only symbols in the index"),
-    init(false),
-};
-
 #if CLANGD_ENABLE_REMOTE
 opt<std::string> RemoteIndexAddress{
     "remote-index-address",
@@ -689,7 +682,7 @@ clangd accepts flags on the commandline, and in the CLANGD_FLAGS environment var
   if (!ResourceDir.empty())
     Opts.ResourceDir = ResourceDir;
   Opts.BuildDynamicSymbolIndex = EnableIndex;
-  Opts.CollectMainFileRefs = CollectMainFileRefs;
+  Opts.BackgroundIndex = EnableBackgroundIndex;
   std::unique_ptr<SymbolIndex> StaticIdx;
   std::future<void> AsyncIndexLoad; // Block exit while loading the index.
   if (EnableIndex && !IndexFile.empty()) {
@@ -720,7 +713,6 @@ clangd accepts flags on the commandline, and in the CLANGD_FLAGS environment var
     }
   }
 #endif
-  Opts.BackgroundIndex = EnableBackgroundIndex;
   Opts.StaticIndex = StaticIdx.get();
   Opts.AsyncThreadsCount = WorkerThreadsCount;
   Opts.BuildRecoveryAST = RecoveryAST;
@@ -815,6 +807,23 @@ clangd accepts flags on the commandline, and in the CLANGD_FLAGS environment var
         std::lock_guard<std::mutex> Lock(ClangTidyOptMu);
         // FIXME: use the FS provided to the function.
         Opts = ClangTidyOptProvider->getOptions(File);
+      }
+      if (!Opts.Checks) {
+        // If the user hasn't configured clang-tidy checks at all, including
+        // via .clang-tidy, give them a nice set of checks.
+        // (This should be what the "default" options does, but it isn't...)
+        //
+        // These default checks are chosen for:
+        //  - low false-positive rate
+        //  - providing a lot of value
+        //  - being reasonably efficient
+        Opts.Checks = llvm::join_items(
+            ",", "readability-misleading-indentation",
+            "readability-deleted-default", "bugprone-integer-division",
+            "bugprone-sizeof-expression", "bugprone-suspicious-missing-comma",
+            "bugprone-unused-raii", "bugprone-unused-return-value",
+            "misc-unused-using-decls", "misc-unused-alias-decls",
+            "misc-definitions-in-headers");
       }
       return Opts;
     };

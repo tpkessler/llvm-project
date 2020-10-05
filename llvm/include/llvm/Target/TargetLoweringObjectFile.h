@@ -226,8 +226,7 @@ public:
   /// On targets that support TOC entries, return a section for the entry given
   /// the symbol it refers to.
   /// TODO: Implement this interface for existing ELF targets.
-  virtual MCSection *getSectionForTOCEntry(const MCSymbol *S,
-                                           const TargetMachine &TM) const {
+  virtual MCSection *getSectionForTOCEntry(const MCSymbol *S) const {
     return nullptr;
   }
 

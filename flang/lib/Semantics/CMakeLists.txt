@@ -26,7 +26,6 @@ add_flang_library(FortranSemantics
   check-select-type.cpp
   check-stop.cpp
   compute-offsets.cpp
-  data-to-inits.cpp
   expression.cpp
   mod-file.cpp
   pointer-assignment.cpp
@@ -44,7 +43,6 @@ add_flang_library(FortranSemantics
   unparse-with-symbols.cpp
 
   DEPENDS
-  acc_gen
   omp_gen
 
   LINK_LIBS

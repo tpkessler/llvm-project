@@ -91,26 +91,28 @@ bool shardIsStale(const LoadedShard &LS, llvm::vfs::FileSystem *FS) {
 } // namespace
 
 BackgroundIndex::BackgroundIndex(
-    const ThreadsafeFS &TFS, const GlobalCompilationDatabase &CDB,
-    BackgroundIndexStorage::Factory IndexStorageFactory, Options Opts)
+    Context BackgroundContext, const ThreadsafeFS &TFS,
+    const GlobalCompilationDatabase &CDB,
+    BackgroundIndexStorage::Factory IndexStorageFactory, size_t ThreadPoolSize,
+    std::function<void(BackgroundQueue::Stats)> OnProgress,
+    std::function<Context(PathRef)> ContextProvider)
     : SwapIndex(std::make_unique<MemIndex>()), TFS(TFS), CDB(CDB),
-      ContextProvider(std::move(Opts.ContextProvider)),
-      CollectMainFileRefs(Opts.CollectMainFileRefs),
-      Rebuilder(this, &IndexedSymbols, Opts.ThreadPoolSize),
+      BackgroundContext(std::move(BackgroundContext)),
+      ContextProvider(std::move(ContextProvider)),
+      Rebuilder(this, &IndexedSymbols, ThreadPoolSize),
       IndexStorageFactory(std::move(IndexStorageFactory)),
-      Queue(std::move(Opts.OnProgress)),
+      Queue(std::move(OnProgress)),
       CommandsChanged(
           CDB.watch([&](const std::vector<std::string> &ChangedFiles) {
             enqueue(ChangedFiles);
           })) {
-  assert(Opts.ThreadPoolSize > 0 && "Thread pool size can't be zero.");
+  assert(ThreadPoolSize > 0 && "Thread pool size can't be zero.");
   assert(this->IndexStorageFactory && "Storage factory can not be null!");
-  for (unsigned I = 0; I < Opts.ThreadPoolSize; ++I) {
-    ThreadPool.runAsync("background-worker-" + llvm::Twine(I + 1),
-                        [this, Ctx(Context::current().clone())]() mutable {
-                          WithContext BGContext(std::move(Ctx));
-                          Queue.work([&] { Rebuilder.idle(); });
-                        });
+  for (unsigned I = 0; I < ThreadPoolSize; ++I) {
+    ThreadPool.runAsync("background-worker-" + llvm::Twine(I + 1), [this] {
+      WithContext Ctx(this->BackgroundContext.clone());
+      Queue.work([&] { Rebuilder.idle(); });
+    });
   }
 }
 
@@ -302,7 +304,6 @@ llvm::Error BackgroundIndex::index(tooling::CompileCommand Cmd) {
       return false; // Skip files that haven't changed, without errors.
     return true;
   };
-  IndexOpts.CollectMainFileRefs = CollectMainFileRefs;
 
   IndexFileIn Index;
   auto Action = createStaticIndexingAction(

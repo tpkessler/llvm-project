@@ -86,39 +86,39 @@ Optional<std::pair<const Module *, std::string>> unwrapModule(Any IR) {
   llvm_unreachable("Unknown IR unit");
 }
 
-void printIR(raw_ostream &OS, const Function *F, StringRef Banner,
-             StringRef Extra = StringRef(), bool Brief = false) {
+void printIR(const Function *F, StringRef Banner, StringRef Extra = StringRef(),
+             bool Brief = false) {
   if (Brief) {
-    OS << F->getName() << '\n';
+    dbgs() << F->getName() << '\n';
     return;
   }
 
   if (!llvm::isFunctionInPrintList(F->getName()))
     return;
-  OS << Banner << Extra << "\n" << static_cast<const Value &>(*F);
+  dbgs() << Banner << Extra << "\n" << static_cast<const Value &>(*F);
 }
 
-void printIR(raw_ostream &OS, const Module *M, StringRef Banner,
-             StringRef Extra = StringRef(), bool Brief = false) {
+void printIR(const Module *M, StringRef Banner, StringRef Extra = StringRef(),
+             bool Brief = false) {
   if (Brief) {
-    OS << M->getName() << '\n';
+    dbgs() << M->getName() << '\n';
     return;
   }
 
   if (llvm::isFunctionInPrintList("*") || llvm::forcePrintModuleIR()) {
-    OS << Banner << Extra << "\n";
-    M->print(OS, nullptr, false);
+    dbgs() << Banner << Extra << "\n";
+    M->print(dbgs(), nullptr, false);
   } else {
     for (const auto &F : M->functions()) {
-      printIR(OS, &F, Banner, Extra);
+      printIR(&F, Banner, Extra);
     }
   }
 }
 
-void printIR(raw_ostream &OS, const LazyCallGraph::SCC *C, StringRef Banner,
+void printIR(const LazyCallGraph::SCC *C, StringRef Banner,
              StringRef Extra = StringRef(), bool Brief = false) {
   if (Brief) {
-    OS << *C << '\n';
+    dbgs() << *C << '\n';
     return;
   }
 
@@ -127,48 +127,47 @@ void printIR(raw_ostream &OS, const LazyCallGraph::SCC *C, StringRef Banner,
     const Function &F = N.getFunction();
     if (!F.isDeclaration() && llvm::isFunctionInPrintList(F.getName())) {
       if (!BannerPrinted) {
-        OS << Banner << Extra << "\n";
+        dbgs() << Banner << Extra << "\n";
         BannerPrinted = true;
       }
-      F.print(OS);
+      F.print(dbgs());
     }
   }
 }
 
-void printIR(raw_ostream &OS, const Loop *L, StringRef Banner,
-             bool Brief = false) {
+void printIR(const Loop *L, StringRef Banner, bool Brief = false) {
   if (Brief) {
-    OS << *L;
+    dbgs() << *L;
     return;
   }
 
   const Function *F = L->getHeader()->getParent();
   if (!llvm::isFunctionInPrintList(F->getName()))
     return;
-  llvm::printLoop(const_cast<Loop &>(*L), OS, std::string(Banner));
+  llvm::printLoop(const_cast<Loop &>(*L), dbgs(), std::string(Banner));
 }
 
 /// Generic IR-printing helper that unpacks a pointer to IRUnit wrapped into
 /// llvm::Any and does actual print job.
-void unwrapAndPrint(raw_ostream &OS, Any IR, StringRef Banner,
-                    bool ForceModule = false, bool Brief = false) {
+void unwrapAndPrint(Any IR, StringRef Banner, bool ForceModule = false,
+                    bool Brief = false) {
   if (ForceModule) {
     if (auto UnwrappedModule = unwrapModule(IR))
-      printIR(OS, UnwrappedModule->first, Banner, UnwrappedModule->second);
+      printIR(UnwrappedModule->first, Banner, UnwrappedModule->second);
     return;
   }
 
   if (any_isa<const Module *>(IR)) {
     const Module *M = any_cast<const Module *>(IR);
     assert(M && "module should be valid for printing");
-    printIR(OS, M, Banner, "", Brief);
+    printIR(M, Banner, "", Brief);
     return;
   }
 
   if (any_isa<const Function *>(IR)) {
     const Function *F = any_cast<const Function *>(IR);
     assert(F && "function should be valid for printing");
-    printIR(OS, F, Banner, "", Brief);
+    printIR(F, Banner, "", Brief);
     return;
   }
 
@@ -176,14 +175,14 @@ void unwrapAndPrint(raw_ostream &OS, Any IR, StringRef Banner,
     const LazyCallGraph::SCC *C = any_cast<const LazyCallGraph::SCC *>(IR);
     assert(C && "scc should be valid for printing");
     std::string Extra = std::string(formatv(" (scc: {0})", C->getName()));
-    printIR(OS, C, Banner, Extra, Brief);
+    printIR(C, Banner, Extra, Brief);
     return;
   }
 
   if (any_isa<const Loop *>(IR)) {
     const Loop *L = any_cast<const Loop *>(IR);
     assert(L && "Loop should be valid for printing");
-    printIR(OS, L, Banner, Brief);
+    printIR(L, Banner, Brief);
     return;
   }
   llvm_unreachable("Unknown wrapped IR type");
@@ -227,7 +226,7 @@ void PrintIRInstrumentation::printBeforePass(StringRef PassID, Any IR) {
     return;
 
   SmallString<20> Banner = formatv("*** IR Dump Before {0} ***", PassID);
-  unwrapAndPrint(dbgs(), IR, Banner, llvm::forcePrintModuleIR());
+  unwrapAndPrint(IR, Banner, llvm::forcePrintModuleIR());
   return;
 }
 
@@ -242,7 +241,7 @@ void PrintIRInstrumentation::printAfterPass(StringRef PassID, Any IR) {
     popModuleDesc(PassID);
 
   SmallString<20> Banner = formatv("*** IR Dump After {0} ***", PassID);
-  unwrapAndPrint(dbgs(), IR, Banner, llvm::forcePrintModuleIR());
+  unwrapAndPrint(IR, Banner, llvm::forcePrintModuleIR());
 }
 
 void PrintIRInstrumentation::printAfterPassInvalidated(StringRef PassID) {
@@ -263,7 +262,7 @@ void PrintIRInstrumentation::printAfterPassInvalidated(StringRef PassID) {
 
   SmallString<20> Banner =
       formatv("*** IR Dump After {0} *** invalidated: ", PassID);
-  printIR(dbgs(), M, Banner, Extra);
+  printIR(M, Banner, Extra);
 }
 
 void PrintIRInstrumentation::registerCallbacks(
@@ -298,7 +297,12 @@ bool OptNoneInstrumentation::skip(StringRef PassID, Any IR) {
   } else if (any_isa<const Loop *>(IR)) {
     F = any_cast<const Loop *>(IR)->getHeader()->getParent();
   }
-  return !(F && F->hasOptNone());
+  if (F && F->hasOptNone()) {
+    if (DebugLogging)
+      dbgs() << "Skipping pass: " << PassID << " (optnone)\n";
+    return false;
+  }
+  return true;
 }
 
 void PrintPassInstrumentation::registerCallbacks(
@@ -310,27 +314,18 @@ void PrintPassInstrumentation::registerCallbacks(
   if (!DebugPMVerbose)
     SpecialPasses.emplace_back("PassAdaptor");
 
-  PIC.registerBeforeSkippedPassCallback(
-      [SpecialPasses](StringRef PassID, Any IR) {
-        assert(!isSpecialPass(PassID, SpecialPasses) &&
-               "Unexpectedly skipping special pass");
-
-        dbgs() << "Skipping pass: " << PassID << " on ";
-        unwrapAndPrint(dbgs(), IR, "", false, true);
-      });
-
   PIC.registerBeforeNonSkippedPassCallback(
       [SpecialPasses](StringRef PassID, Any IR) {
         if (isSpecialPass(PassID, SpecialPasses))
           return;
 
         dbgs() << "Running pass: " << PassID << " on ";
-        unwrapAndPrint(dbgs(), IR, "", false, true);
+        unwrapAndPrint(IR, "", false, true);
       });
 
   PIC.registerBeforeAnalysisCallback([](StringRef PassID, Any IR) {
     dbgs() << "Running analysis: " << PassID << " on ";
-    unwrapAndPrint(dbgs(), IR, "", false, true);
+    unwrapAndPrint(IR, "", false, true);
   });
 }
 

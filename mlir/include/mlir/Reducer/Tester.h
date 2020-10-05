@@ -9,8 +9,8 @@
 // This file defines the Tester class used in the MLIR Reduce tool.
 //
 // A Tester object is passed as an argument to the reduction passes and it is
-// used to run the interestigness testing script on the different generated
-// reduced variants of the test case.
+// used to keep track of the state of the reduction throughout the multiple
+// passes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,9 +27,9 @@
 
 namespace mlir {
 
-/// This class is used to keep track of the testing environment of the tool. It
-/// contains a method to run the interestingness testing script on a MLIR test
-/// case file.
+/// This class is used to keep track of the state of the reduction. It contains
+/// a method to run the interestingness testing script on MLIR test case files
+/// and provides functionality to track the most reduced test case.
 class Tester {
 public:
   Tester(StringRef testScript, ArrayRef<std::string> testScriptArgs);
@@ -37,11 +37,21 @@ public:
   /// Runs the interestingness testing script on a MLIR test case file. Returns
   /// true if the interesting behavior is present in the test case or false
   /// otherwise.
-  bool isInteresting(StringRef testCase) const;
+  bool isInteresting(StringRef testCase);
+
+  /// Returns the most reduced MLIR test case module.
+  ModuleOp getMostReduced() const { return mostReduced; }
+
+  /// Updates the most reduced MLIR test case module. If a
+  /// generated variant is found to be successful and shorter than the
+  /// mostReduced module, the mostReduced module must be updated with the new
+  /// variant.
+  void setMostReduced(ModuleOp t) { mostReduced = t; }
 
 private:
   StringRef testScript;
   ArrayRef<std::string> testScriptArgs;
+  ModuleOp mostReduced;
 };
 
 } // end namespace mlir

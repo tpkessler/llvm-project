@@ -109,7 +109,7 @@ class IteratorModeling
                        bool Postfix) const;
   void handleRandomIncrOrDecr(CheckerContext &C, const Expr *CE,
                               OverloadedOperatorKind Op, const SVal &RetVal,
-                              const SVal &Iterator, const SVal &Amount) const;
+                              const SVal &LHS, const SVal &RHS) const;
   void handlePtrIncrOrDecr(CheckerContext &C, const Expr *Iterator,
                            OverloadedOperatorKind OK, SVal Offset) const;
   void handleAdvance(CheckerContext &C, const Expr *CE, SVal RetVal, SVal Iter,
@@ -262,30 +262,20 @@ void IteratorModeling::checkPostStmt(const UnaryOperator *UO,
 
 void IteratorModeling::checkPostStmt(const BinaryOperator *BO,
                                      CheckerContext &C) const {
-  const ProgramStateRef State = C.getState();
-  const BinaryOperatorKind OK = BO->getOpcode();
-  const Expr *const LHS = BO->getLHS();
-  const Expr *const RHS = BO->getRHS();
-  const SVal LVal = State->getSVal(LHS, C.getLocationContext());
-  const SVal RVal = State->getSVal(RHS, C.getLocationContext());
+  ProgramStateRef State = C.getState();
+  BinaryOperatorKind OK = BO->getOpcode();
+  SVal RVal = State->getSVal(BO->getRHS(), C.getLocationContext());
 
   if (isSimpleComparisonOperator(BO->getOpcode())) {
+    SVal LVal = State->getSVal(BO->getLHS(), C.getLocationContext());
     SVal Result = State->getSVal(BO, C.getLocationContext());
     handleComparison(C, BO, Result, LVal, RVal,
                      BinaryOperator::getOverloadedOperator(OK));
   } else if (isRandomIncrOrDecrOperator(OK)) {
-    // In case of operator+ the iterator can be either on the LHS (eg.: it + 1),
-    // or on the RHS (eg.: 1 + it). Both cases are modeled.
-    const bool IsIterOnLHS = BO->getLHS()->getType()->isPointerType();
-    const Expr *const &IterExpr = IsIterOnLHS ? LHS : RHS;
-    const Expr *const &AmountExpr = IsIterOnLHS ? RHS : LHS;
-
-    // The non-iterator side must have an integral or enumeration type.
-    if (!AmountExpr->getType()->isIntegralOrEnumerationType())
+    if (!BO->getRHS()->getType()->isIntegralOrEnumerationType())
       return;
-    const SVal &AmountVal = IsIterOnLHS ? RVal : LVal;
-    handlePtrIncrOrDecr(C, IterExpr, BinaryOperator::getOverloadedOperator(OK),
-                        AmountVal);
+    handlePtrIncrOrDecr(C, BO->getLHS(),
+                        BinaryOperator::getOverloadedOperator(OK), RVal);
   }
 }
 
@@ -378,24 +368,11 @@ IteratorModeling::handleOverloadedOperator(CheckerContext &C,
                                  InstCall->getCXXThisVal(), Call.getArgSVal(0));
           return;
         }
-      } else if (Call.getNumArgs() >= 2) {
-        const Expr *FirstArg = Call.getArgExpr(0);
-        const Expr *SecondArg = Call.getArgExpr(1);
-        const QualType FirstType = FirstArg->getType();
-        const QualType SecondType = SecondArg->getType();
-
-        if (FirstType->isIntegralOrEnumerationType() ||
-            SecondType->isIntegralOrEnumerationType()) {
-          // In case of operator+ the iterator can be either on the LHS (eg.:
-          // it + 1), or on the RHS (eg.: 1 + it). Both cases are modeled.
-          const bool IsIterFirst = FirstType->isStructureOrClassType();
-          const SVal FirstArg = Call.getArgSVal(0);
-          const SVal SecondArg = Call.getArgSVal(1);
-          const SVal &Iterator = IsIterFirst ? FirstArg : SecondArg;
-          const SVal &Amount = IsIterFirst ? SecondArg : FirstArg;
-
+      } else {
+        if (Call.getNumArgs() >= 2 &&
+              Call.getArgExpr(1)->getType()->isIntegralOrEnumerationType()) {
           handleRandomIncrOrDecr(C, OrigExpr, Op, Call.getReturnValue(),
-                                 Iterator, Amount);
+                                 Call.getArgSVal(0), Call.getArgSVal(1));
           return;
         }
       }
@@ -587,35 +564,35 @@ void IteratorModeling::handleDecrement(CheckerContext &C, const SVal &RetVal,
   C.addTransition(State);
 }
 
-void IteratorModeling::handleRandomIncrOrDecr(CheckerContext &C, const Expr *CE,
+void IteratorModeling::handleRandomIncrOrDecr(CheckerContext &C,
+                                              const Expr *CE,
                                               OverloadedOperatorKind Op,
                                               const SVal &RetVal,
-                                              const SVal &Iterator,
-                                              const SVal &Amount) const {
+                                              const SVal &LHS,
+                                              const SVal &RHS) const {
   // Increment or decrement the symbolic expressions which represents the
   // position of the iterator
   auto State = C.getState();
 
-  const auto *Pos = getIteratorPosition(State, Iterator);
+  const auto *Pos = getIteratorPosition(State, LHS);
   if (!Pos)
     return;
 
-  const auto *Value = &Amount;
-  SVal Val;
-  if (auto LocAmount = Amount.getAs<Loc>()) {
-    Val = State->getRawSVal(*LocAmount);
-    Value = &Val;
+  const auto *value = &RHS;
+  SVal val;
+  if (auto loc = RHS.getAs<Loc>()) {
+    val = State->getRawSVal(*loc);
+    value = &val;
   }
 
-  const auto &TgtVal =
-      (Op == OO_PlusEqual || Op == OO_MinusEqual) ? Iterator : RetVal;
+  auto &TgtVal = (Op == OO_PlusEqual || Op == OO_MinusEqual) ? LHS : RetVal;
 
   // `AdvancedState` is a state where the position of `LHS` is advanced. We
   // only need this state to retrieve the new position, but we do not want
   // to change the position of `LHS` (in every case).
-  auto AdvancedState = advancePosition(State, Iterator, Op, *Value);
+  auto AdvancedState = advancePosition(State, LHS, Op, *value);
   if (AdvancedState) {
-    const auto *NewPos = getIteratorPosition(AdvancedState, Iterator);
+    const auto *NewPos = getIteratorPosition(AdvancedState, LHS);
     assert(NewPos &&
            "Iterator should have position after successful advancement");
 

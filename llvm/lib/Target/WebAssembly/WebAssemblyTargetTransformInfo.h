@@ -67,9 +67,6 @@ public:
   unsigned getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index);
 
   /// @}
-
-  bool areInlineCompatible(const Function *Caller,
-                           const Function *Callee) const;
 };
 
 } // end namespace llvm

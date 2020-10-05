@@ -767,7 +767,6 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
 #endif // LIBFUZZER_EMSCRIPTEN
 
   Options.HandleAbrt = Flags.handle_abrt;
-  Options.HandleAlrm = !Flags.minimize_crash;
   Options.HandleBus = Flags.handle_bus;
   Options.HandleFpe = Flags.handle_fpe;
   Options.HandleIll = Flags.handle_ill;

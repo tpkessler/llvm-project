@@ -48,7 +48,6 @@ enum class Operation : int {
   Floor,
   Round,
   Sin,
-  Sqrt,
   Trunc
 };
 
@@ -56,9 +55,6 @@ namespace internal {
 
 template <typename T>
 bool compare(Operation op, T input, T libcOutput, const Tolerance &t);
-
-template <typename T>
-bool compare(Operation op, T input, T libcOutput, double t);
 
 template <typename T> class MPFRMatcher : public testing::Matcher<T> {
   static_assert(__llvm_libc::cpp::IsFloatingPointType<T>::Value,
@@ -68,21 +64,14 @@ template <typename T> class MPFRMatcher : public testing::Matcher<T> {
   T input;
   Tolerance tolerance;
   T matchValue;
-  double ulpTolerance;
-  bool useULP;
 
 public:
   MPFRMatcher(Operation op, T testInput, Tolerance &t)
-      : operation(op), input(testInput), tolerance(t), useULP(false) {}
-  MPFRMatcher(Operation op, T testInput, double ulpTolerance)
-      : operation(op), input(testInput), ulpTolerance(ulpTolerance),
-        useULP(true) {}
+      : operation(op), input(testInput), tolerance(t) {}
 
   bool match(T libcResult) {
     matchValue = libcResult;
-    return (useULP
-                ? internal::compare(operation, input, libcResult, ulpTolerance)
-                : internal::compare(operation, input, libcResult, tolerance));
+    return internal::compare(operation, input, libcResult, tolerance);
   }
 
   void explainError(testutils::StreamWrapper &OS) override;
@@ -90,12 +79,9 @@ public:
 
 } // namespace internal
 
-template <typename T, typename U>
+template <typename T>
 __attribute__((no_sanitize("address")))
-typename cpp::EnableIfType<cpp::IsSameV<U, Tolerance> ||
-                               cpp::IsSameV<U, double>,
-                           internal::MPFRMatcher<T>>
-getMPFRMatcher(Operation op, T input, U t) {
+internal::MPFRMatcher<T> getMPFRMatcher(Operation op, T input, Tolerance t) {
   static_assert(
       __llvm_libc::cpp::IsFloatingPointType<T>::Value,
       "getMPFRMatcher can only be used to match floating point results.");

@@ -55,11 +55,6 @@ public:
 
   virtual bool isWeakDef() const { llvm_unreachable("cannot be weak"); }
 
-  virtual bool isTlv() const { llvm_unreachable("cannot be TLV"); }
-
-  // The index of this symbol in the GOT or the TLVPointer section, depending
-  // on whether it is a thread-local. A given symbol cannot be referenced by
-  // both these sections at once.
   uint32_t gotIndex = UINT32_MAX;
 
 protected:
@@ -76,8 +71,6 @@ public:
         weakDef(isWeakDef) {}
 
   bool isWeakDef() const override { return weakDef; }
-
-  bool isTlv() const override { return isThreadLocalVariables(isec->flags); }
 
   static bool classof(const Symbol *s) { return s->kind() == DefinedKind; }
 
@@ -103,12 +96,10 @@ public:
 
 class DylibSymbol : public Symbol {
 public:
-  DylibSymbol(DylibFile *file, StringRefZ name, bool isWeakDef, bool isTlv)
-      : Symbol(DylibKind, name), file(file), weakDef(isWeakDef), tlv(isTlv) {}
+  DylibSymbol(DylibFile *file, StringRefZ name, bool isWeakDef)
+      : Symbol(DylibKind, name), file(file), weakDef(isWeakDef) {}
 
   bool isWeakDef() const override { return weakDef; }
-
-  bool isTlv() const override { return tlv; }
 
   static bool classof(const Symbol *s) { return s->kind() == DylibKind; }
 
@@ -118,7 +109,6 @@ public:
 
 private:
   const bool weakDef;
-  const bool tlv;
 };
 
 class LazySymbol : public Symbol {

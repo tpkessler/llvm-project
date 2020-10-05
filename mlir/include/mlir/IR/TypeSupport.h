@@ -35,7 +35,7 @@ public:
   /// This method is used by Dialect objects when they register the list of
   /// types they contain.
   template <typename T> static AbstractType get(Dialect &dialect) {
-    return AbstractType(dialect, T::getInterfaceMap(), T::getTypeID());
+    return AbstractType(dialect, T::getInterfaceMap());
   }
 
   /// Return the dialect this type was registered to.
@@ -48,23 +48,15 @@ public:
     return interfaceMap.lookup<T>();
   }
 
-  /// Return the unique identifier representing the concrete type class.
-  TypeID getTypeID() const { return typeID; }
-
 private:
-  AbstractType(Dialect &dialect, detail::InterfaceMap &&interfaceMap,
-               TypeID typeID)
-      : dialect(dialect), interfaceMap(std::move(interfaceMap)),
-        typeID(typeID) {}
+  AbstractType(Dialect &dialect, detail::InterfaceMap &&interfaceMap)
+      : dialect(dialect), interfaceMap(std::move(interfaceMap)) {}
 
   /// This is the dialect that this type was registered to.
   Dialect &dialect;
 
   /// This is a collection of the interfaces registered to this type.
   detail::InterfaceMap interfaceMap;
-
-  /// The unique identifier of the derived Type class.
-  TypeID typeID;
 };
 
 //===----------------------------------------------------------------------===//
@@ -87,9 +79,16 @@ public:
     return *abstractType;
   }
 
+  /// Get the subclass data.
+  unsigned getSubclassData() const { return subclassData; }
+
+  /// Set the subclass data.
+  void setSubclassData(unsigned val) { subclassData = val; }
+
 protected:
   /// This constructor is used by derived classes as part of the TypeUniquer.
-  TypeStorage() : abstractType(nullptr) {}
+  TypeStorage(unsigned subclassData = 0)
+      : abstractType(nullptr), subclassData(subclassData) {}
 
 private:
   /// Set the abstract type for this storage instance. This is used by the
@@ -100,6 +99,9 @@ private:
 
   /// The abstract description for this type.
   const AbstractType *abstractType;
+
+  /// Space for subclasses to store data.
+  unsigned subclassData;
 };
 
 /// Default storage type for types that require no additional initialization or
@@ -121,52 +123,23 @@ namespace detail {
 /// A utility class to get, or create, unique instances of types within an
 /// MLIRContext. This class manages all creation and uniquing of types.
 struct TypeUniquer {
-  /// Get an uniqued instance of a parametric type T.
+  /// Get an uniqued instance of a type T.
   template <typename T, typename... Args>
-  static typename std::enable_if_t<
-      !std::is_same<typename T::ImplType, TypeStorage>::value, T>
-  get(MLIRContext *ctx, Args &&...args) {
+  static T get(MLIRContext *ctx, unsigned kind, Args &&... args) {
     return ctx->getTypeUniquer().get<typename T::ImplType>(
         [&](TypeStorage *storage) {
           storage->initialize(AbstractType::lookup(T::getTypeID(), ctx));
         },
-        T::getTypeID(), std::forward<Args>(args)...);
-  }
-  /// Get an uniqued instance of a singleton type T.
-  template <typename T>
-  static typename std::enable_if_t<
-      std::is_same<typename T::ImplType, TypeStorage>::value, T>
-  get(MLIRContext *ctx) {
-    return ctx->getTypeUniquer().get<typename T::ImplType>(T::getTypeID());
+        kind, std::forward<Args>(args)...);
   }
 
   /// Change the mutable component of the given type instance in the provided
   /// context.
-  template <typename T, typename... Args>
-  static LogicalResult mutate(MLIRContext *ctx, typename T::ImplType *impl,
+  template <typename ImplType, typename... Args>
+  static LogicalResult mutate(MLIRContext *ctx, ImplType *impl,
                               Args &&...args) {
     assert(impl && "cannot mutate null type");
-    return ctx->getTypeUniquer().mutate(T::getTypeID(), impl,
-                                        std::forward<Args>(args)...);
-  }
-
-  /// Register a parametric type instance T with the uniquer.
-  template <typename T>
-  static typename std::enable_if_t<
-      !std::is_same<typename T::ImplType, TypeStorage>::value>
-  registerType(MLIRContext *ctx) {
-    ctx->getTypeUniquer().registerParametricStorageType<typename T::ImplType>(
-        T::getTypeID());
-  }
-  /// Register a singleton type instance T with the uniquer.
-  template <typename T>
-  static typename std::enable_if_t<
-      std::is_same<typename T::ImplType, TypeStorage>::value>
-  registerType(MLIRContext *ctx) {
-    ctx->getTypeUniquer().registerSingletonStorageType<TypeStorage>(
-        T::getTypeID(), [&](TypeStorage *storage) {
-          storage->initialize(AbstractType::lookup(T::getTypeID(), ctx));
-        });
+    return ctx->getTypeUniquer().mutate(impl, std::forward<Args>(args)...);
   }
 };
 } // namespace detail

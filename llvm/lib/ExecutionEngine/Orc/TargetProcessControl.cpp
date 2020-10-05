@@ -21,33 +21,25 @@ TargetProcessControl::MemoryAccess::~MemoryAccess() {}
 
 TargetProcessControl::~TargetProcessControl() {}
 
-SelfTargetProcessControl::SelfTargetProcessControl(
-    Triple TT, unsigned PageSize,
-    std::unique_ptr<jitlink::JITLinkMemoryManager> MemMgr) {
-
-  OwnedMemMgr = std::move(MemMgr);
-  if (!OwnedMemMgr)
-    OwnedMemMgr = std::make_unique<jitlink::InProcessMemoryManager>();
-
+SelfTargetProcessControl::SelfTargetProcessControl(Triple TT,
+                                                   unsigned PageSize) {
   this->TT = std::move(TT);
   this->PageSize = PageSize;
-  this->MemMgr = OwnedMemMgr.get();
+  this->MemMgr = IPMM.get();
   this->MemAccess = this;
   if (this->TT.isOSBinFormatMachO())
     GlobalManglingPrefix = '_';
 }
 
 Expected<std::unique_ptr<SelfTargetProcessControl>>
-SelfTargetProcessControl::Create(
-    std::unique_ptr<jitlink::JITLinkMemoryManager> MemMgr) {
+SelfTargetProcessControl::Create() {
   auto PageSize = sys::Process::getPageSize();
   if (!PageSize)
     return PageSize.takeError();
 
   Triple TT(sys::getProcessTriple());
 
-  return std::make_unique<SelfTargetProcessControl>(std::move(TT), *PageSize,
-                                                    std::move(MemMgr));
+  return std::make_unique<SelfTargetProcessControl>(std::move(TT), *PageSize);
 }
 
 Expected<TargetProcessControl::DylibHandle>

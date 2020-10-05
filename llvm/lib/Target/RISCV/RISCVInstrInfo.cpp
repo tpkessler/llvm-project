@@ -279,7 +279,7 @@ bool RISCVInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
 
   // Handle a single unconditional branch.
   if (NumTerminators == 1 && I->getDesc().isUnconditionalBranch()) {
-    TBB = getBranchDestBlock(*I);
+    TBB = I->getOperand(0).getMBB();
     return false;
   }
 
@@ -293,7 +293,7 @@ bool RISCVInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
   if (NumTerminators == 2 && std::prev(I)->getDesc().isConditionalBranch() &&
       I->getDesc().isUnconditionalBranch()) {
     parseCondBranch(*std::prev(I), TBB, Cond);
-    FBB = getBranchDestBlock(*I);
+    FBB = I->getOperand(0).getMBB();
     return false;
   }
 
@@ -384,6 +384,10 @@ unsigned RISCVInstrInfo::insertIndirectBranch(MachineBasicBlock &MBB,
 
   MachineFunction *MF = MBB.getParent();
   MachineRegisterInfo &MRI = MF->getRegInfo();
+  const auto &TM = static_cast<const RISCVTargetMachine &>(MF->getTarget());
+
+  if (TM.isPositionIndependent())
+    report_fatal_error("Unable to insert indirect branch");
 
   if (!isInt<32>(BrOffset))
     report_fatal_error(
@@ -395,13 +399,15 @@ unsigned RISCVInstrInfo::insertIndirectBranch(MachineBasicBlock &MBB,
   Register ScratchReg = MRI.createVirtualRegister(&RISCV::GPRRegClass);
   auto II = MBB.end();
 
-  MachineInstr &MI = *BuildMI(MBB, II, DL, get(RISCV::PseudoJump))
-                          .addReg(ScratchReg, RegState::Define | RegState::Dead)
-                          .addMBB(&DestBB, RISCVII::MO_CALL);
+  MachineInstr &LuiMI = *BuildMI(MBB, II, DL, get(RISCV::LUI), ScratchReg)
+                             .addMBB(&DestBB, RISCVII::MO_HI);
+  BuildMI(MBB, II, DL, get(RISCV::PseudoBRIND))
+      .addReg(ScratchReg, RegState::Kill)
+      .addMBB(&DestBB, RISCVII::MO_LO);
 
   RS->enterBasicBlockEnd(MBB);
   unsigned Scav = RS->scavengeRegisterBackwards(RISCV::GPRRegClass,
-                                                MI.getIterator(), false, 0);
+                                                LuiMI.getIterator(), false, 0);
   MRI.replaceRegWith(ScratchReg, Scav);
   MRI.clearVirtRegs();
   RS->setRegUsed(Scav);
@@ -425,7 +431,6 @@ RISCVInstrInfo::getBranchDestBlock(const MachineInstr &MI) const {
 
 bool RISCVInstrInfo::isBranchOffsetInRange(unsigned BranchOp,
                                            int64_t BrOffset) const {
-  unsigned XLen = STI.getXLen();
   // Ideally we could determine the supported branch offset from the
   // RISCVII::FormMask, but this can't be used for Pseudo instructions like
   // PseudoBR.
@@ -442,8 +447,6 @@ bool RISCVInstrInfo::isBranchOffsetInRange(unsigned BranchOp,
   case RISCV::JAL:
   case RISCV::PseudoBR:
     return isIntN(21, BrOffset);
-  case RISCV::PseudoJump:
-    return isIntN(32, SignExtend64(BrOffset + 0x800, XLen));
   }
 }
 

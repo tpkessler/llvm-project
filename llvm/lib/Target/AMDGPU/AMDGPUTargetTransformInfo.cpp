@@ -510,21 +510,11 @@ int GCNTTIImpl::getArithmeticInstrCost(unsigned Opcode, Type *Ty,
     // Check possible fuse {fadd|fsub}(a,fmul(b,c)) and return zero cost for
     // fmul(b,c) supposing the fadd|fsub will get estimated cost for the whole
     // fused operation.
-    if (CxtI && CxtI->hasOneUse())
+    if (!HasFP32Denormals && SLT == MVT::f32 && CxtI && CxtI->hasOneUse())
       if (const auto *FAdd = dyn_cast<BinaryOperator>(*CxtI->user_begin())) {
         const int OPC = TLI->InstructionOpcodeToISD(FAdd->getOpcode());
         if (OPC == ISD::FADD || OPC == ISD::FSUB) {
-          if (ST->hasMadMacF32Insts() && SLT == MVT::f32 && !HasFP32Denormals)
-            return TargetTransformInfo::TCC_Free;
-          if (ST->has16BitInsts() && SLT == MVT::f16 && !HasFP64FP16Denormals)
-            return TargetTransformInfo::TCC_Free;
-
-          // Estimate all types may be fused with contract/unsafe flags
-          const TargetOptions &Options = TLI->getTargetMachine().Options;
-          if (Options.AllowFPOpFusion == FPOpFusion::Fast ||
-              Options.UnsafeFPMath ||
-              (FAdd->hasAllowContract() && CxtI->hasAllowContract()))
-            return TargetTransformInfo::TCC_Free;
+          return TargetTransformInfo::TCC_Free;
         }
       }
     LLVM_FALLTHROUGH;

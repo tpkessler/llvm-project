@@ -491,21 +491,14 @@ struct TimeTracerRAII {
 // it exists.
 static bool IsCodegenPass(StringRef Pass) {
   std::vector<StringRef> PassNamePrefix = {
-      "x86-",  "xcore-", "wasm-",    "systemz-", "ppc-",   "nvvm-",   "nvptx-",
-      "mips-", "lanai-", "hexagon-", "bpf-",     "avr-",   "thumb2-", "arm-",
-      "si-",   "gcn-",   "amdgpu-",  "aarch64-", "amdgcn-"};
+      "x86-",    "xcore-", "wasm-",  "systemz-", "ppc-",    "nvvm-",
+      "nvptx-",  "mips-",  "lanai-", "hexagon-", "bpf-",    "avr-",
+      "thumb2-", "arm-",   "si-",    "gcn-",     "amdgpu-", "aarch64-"};
   std::vector<StringRef> PassNameContain = {"ehprepare"};
   std::vector<StringRef> PassNameExact = {
       "safe-stack",           "cost-model",
       "codegenprepare",       "interleaved-load-combine",
-      "unreachableblockelim", "scalarize-masked-mem-intrin",
-      "verify-safepoint-ir",  "divergence",
-      "infer-address-spaces", "atomic-expand",
-      "hardware-loops",       "type-promotion",
-      "mve-tail-predication", "interleaved-access",
-      "global-merge",         "pre-isel-intrinsic-lowering",
-      "expand-reductions",    "indirectbr-expand",
-      "generic-to-nvvm",      "expandmemcmp"};
+      "unreachableblockelim", "sclaraized-masked-mem-intrin"};
   for (const auto &P : PassNamePrefix)
     if (Pass.startswith(P))
       return true;

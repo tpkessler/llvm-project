@@ -27,24 +27,21 @@ namespace detail {
 /// Base storage class appearing in an affine expression.
 struct AffineExprStorage : public StorageUniquer::BaseStorage {
   MLIRContext *context;
-  AffineExprKind kind;
 };
 
 /// A binary operation appearing in an affine expression.
 struct AffineBinaryOpExprStorage : public AffineExprStorage {
-  using KeyTy = std::tuple<unsigned, AffineExpr, AffineExpr>;
+  using KeyTy = std::pair<AffineExpr, AffineExpr>;
 
   bool operator==(const KeyTy &key) const {
-    return static_cast<AffineExprKind>(std::get<0>(key)) == kind &&
-           std::get<1>(key) == lhs && std::get<2>(key) == rhs;
+    return key.first == lhs && key.second == rhs;
   }
 
   static AffineBinaryOpExprStorage *
   construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
     auto *result = allocator.allocate<AffineBinaryOpExprStorage>();
-    result->kind = static_cast<AffineExprKind>(std::get<0>(key));
-    result->lhs = std::get<1>(key);
-    result->rhs = std::get<2>(key);
+    result->lhs = key.first;
+    result->rhs = key.second;
     result->context = result->lhs.getContext();
     return result;
   }
@@ -55,18 +52,14 @@ struct AffineBinaryOpExprStorage : public AffineExprStorage {
 
 /// A dimensional or symbolic identifier appearing in an affine expression.
 struct AffineDimExprStorage : public AffineExprStorage {
-  using KeyTy = std::pair<unsigned, unsigned>;
+  using KeyTy = unsigned;
 
-  bool operator==(const KeyTy &key) const {
-    return kind == static_cast<AffineExprKind>(key.first) &&
-           position == key.second;
-  }
+  bool operator==(const KeyTy &key) const { return position == key; }
 
   static AffineDimExprStorage *
   construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
     auto *result = allocator.allocate<AffineDimExprStorage>();
-    result->kind = static_cast<AffineExprKind>(key.first);
-    result->position = key.second;
+    result->position = key;
     return result;
   }
 
@@ -83,7 +76,6 @@ struct AffineConstantExprStorage : public AffineExprStorage {
   static AffineConstantExprStorage *
   construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
     auto *result = allocator.allocate<AffineConstantExprStorage>();
-    result->kind = AffineExprKind::Constant;
     result->constant = key;
     return result;
   }

@@ -36,12 +36,7 @@ struct Reloc {
 };
 
 inline bool isZeroFill(uint8_t flags) {
-  return llvm::MachO::isVirtualSection(flags & llvm::MachO::SECTION_TYPE);
-}
-
-inline bool isThreadLocalVariables(uint8_t flags) {
-  return (flags & llvm::MachO::SECTION_TYPE) ==
-         llvm::MachO::S_THREAD_LOCAL_VARIABLES;
+  return (flags & llvm::MachO::SECTION_TYPE) == llvm::MachO::S_ZEROFILL;
 }
 
 class InputSection {
@@ -74,9 +69,6 @@ public:
 extern std::vector<InputSection *> inputSections;
 
 } // namespace macho
-
-std::string toString(const macho::InputSection *);
-
 } // namespace lld
 
 #endif

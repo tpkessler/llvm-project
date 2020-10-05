@@ -12,6 +12,21 @@
 
 namespace Fortran::semantics {
 
+std::string OmpStructureChecker::ContextDirectiveAsFortran() {
+  auto dir = llvm::omp::getOpenMPDirectiveName(GetContext().directive).str();
+  std::transform(dir.begin(), dir.end(), dir.begin(),
+      [](unsigned char c) { return std::toupper(c); });
+  return dir;
+}
+
+void OmpStructureChecker::SayNotMatching(
+    const parser::CharBlock &beginSource, const parser::CharBlock &endSource) {
+  context_
+      .Say(endSource, "Unmatched %s directive"_err_en_US,
+          parser::ToUpperCaseLetters(endSource.ToString()))
+      .Attach(beginSource, "Does not match directive"_en_US);
+}
+
 bool OmpStructureChecker::HasInvalidWorksharingNesting(
     const parser::CharBlock &source, const OmpDirectiveSet &set) {
   // set contains all the invalid closely nested directives
@@ -26,6 +41,85 @@ bool OmpStructureChecker::HasInvalidWorksharingNesting(
   return false;
 }
 
+void OmpStructureChecker::CheckAllowed(llvm::omp::Clause type) {
+  if (!GetContext().allowedClauses.test(type) &&
+      !GetContext().allowedOnceClauses.test(type) &&
+      !GetContext().allowedExclusiveClauses.test(type) &&
+      !GetContext().requiredClauses.test(type)) {
+    context_.Say(GetContext().clauseSource,
+        "%s clause is not allowed on the %s directive"_err_en_US,
+        parser::ToUpperCaseLetters(llvm::omp::getOpenMPClauseName(type).str()),
+        parser::ToUpperCaseLetters(GetContext().directiveSource.ToString()));
+    return;
+  }
+  if ((GetContext().allowedOnceClauses.test(type) ||
+          GetContext().allowedExclusiveClauses.test(type)) &&
+      FindClause(type)) {
+    context_.Say(GetContext().clauseSource,
+        "At most one %s clause can appear on the %s directive"_err_en_US,
+        parser::ToUpperCaseLetters(llvm::omp::getOpenMPClauseName(type).str()),
+        parser::ToUpperCaseLetters(GetContext().directiveSource.ToString()));
+    return;
+  }
+  if (GetContext().allowedExclusiveClauses.test(type)) {
+    std::vector<llvm::omp::Clause> others;
+    GetContext().allowedExclusiveClauses.IterateOverMembers(
+        [&](llvm::omp::Clause o) {
+          if (FindClause(o)) {
+            others.emplace_back(o);
+          }
+        });
+    for (const auto &e : others) {
+      context_.Say(GetContext().clauseSource,
+          "%s and %s are mutually exclusive and may not appear on the "
+          "same %s directive"_err_en_US,
+          parser::ToUpperCaseLetters(
+              llvm::omp::getOpenMPClauseName(type).str()),
+          parser::ToUpperCaseLetters(llvm::omp::getOpenMPClauseName(e).str()),
+          parser::ToUpperCaseLetters(GetContext().directiveSource.ToString()));
+    }
+    if (!others.empty()) {
+      return;
+    }
+  }
+  SetContextClauseInfo(type);
+}
+
+void OmpStructureChecker::CheckRequired(llvm::omp::Clause c) {
+  if (!FindClause(c)) {
+    context_.Say(GetContext().directiveSource,
+        "At least one %s clause must appear on the %s directive"_err_en_US,
+        parser::ToUpperCaseLetters(llvm::omp::getOpenMPClauseName(c).str()),
+        ContextDirectiveAsFortran());
+  }
+}
+
+void OmpStructureChecker::RequiresConstantPositiveParameter(
+    const llvm::omp::Clause &clause, const parser::ScalarIntConstantExpr &i) {
+  if (const auto v{GetIntValue(i)}) {
+    if (*v <= 0) {
+      context_.Say(GetContext().clauseSource,
+          "The parameter of the %s clause must be "
+          "a constant positive integer expression"_err_en_US,
+          parser::ToUpperCaseLetters(
+              llvm::omp::getOpenMPClauseName(clause).str()));
+    }
+  }
+}
+
+void OmpStructureChecker::RequiresPositiveParameter(
+    const llvm::omp::Clause &clause, const parser::ScalarIntExpr &i) {
+  if (const auto v{GetIntValue(i)}) {
+    if (*v <= 0) {
+      context_.Say(GetContext().clauseSource,
+          "The parameter of the %s clause must be "
+          "a positive integer expression"_err_en_US,
+          parser::ToUpperCaseLetters(
+              llvm::omp::getOpenMPClauseName(clause).str()));
+    }
+  }
+}
+
 void OmpStructureChecker::Enter(const parser::OpenMPConstruct &) {
   // 2.8.1 TODO: Simd Construct with Ordered Construct Nesting check
 }
@@ -37,10 +131,7 @@ void OmpStructureChecker::Enter(const parser::OpenMPLoopConstruct &x) {
   // check matching, End directive is optional
   if (const auto &endLoopDir{
           std::get<std::optional<parser::OmpEndLoopDirective>>(x.t)}) {
-    const auto &endDir{
-        std::get<parser::OmpLoopDirective>(endLoopDir.value().t)};
-
-    CheckMatching<parser::OmpLoopDirective>(beginDir, endDir);
+    CheckMatching<parser::OmpLoopDirective>(beginLoopDir, *endLoopDir);
   }
 
   if (beginDir.v != llvm::omp::Directive::OMPD_do) {
@@ -71,7 +162,7 @@ void OmpStructureChecker::Enter(const parser::OpenMPLoopConstruct &x) {
 }
 
 void OmpStructureChecker::Leave(const parser::OpenMPLoopConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(const parser::OmpEndLoopDirective &x) {
@@ -93,31 +184,28 @@ void OmpStructureChecker::Enter(const parser::OmpEndLoopDirective &x) {
 void OmpStructureChecker::Enter(const parser::OpenMPBlockConstruct &x) {
   const auto &beginBlockDir{std::get<parser::OmpBeginBlockDirective>(x.t)};
   const auto &endBlockDir{std::get<parser::OmpEndBlockDirective>(x.t)};
-  const auto &beginDir{std::get<parser::OmpBlockDirective>(beginBlockDir.t)};
-  const auto &endDir{std::get<parser::OmpBlockDirective>(endBlockDir.t)};
-  CheckMatching<parser::OmpBlockDirective>(beginDir, endDir);
+  const auto &beginDir{
+      CheckMatching<parser::OmpBlockDirective>(beginBlockDir, endBlockDir)};
 
   PushContextAndClauseSets(beginDir.source, beginDir.v);
 }
 
 void OmpStructureChecker::Leave(const parser::OpenMPBlockConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(const parser::OpenMPSectionsConstruct &x) {
   const auto &beginSectionsDir{
       std::get<parser::OmpBeginSectionsDirective>(x.t)};
   const auto &endSectionsDir{std::get<parser::OmpEndSectionsDirective>(x.t)};
-  const auto &beginDir{
-      std::get<parser::OmpSectionsDirective>(beginSectionsDir.t)};
-  const auto &endDir{std::get<parser::OmpSectionsDirective>(endSectionsDir.t)};
-  CheckMatching<parser::OmpSectionsDirective>(beginDir, endDir);
+  const auto &beginDir{CheckMatching<parser::OmpSectionsDirective>(
+      beginSectionsDir, endSectionsDir)};
 
   PushContextAndClauseSets(beginDir.source, beginDir.v);
 }
 
 void OmpStructureChecker::Leave(const parser::OpenMPSectionsConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(const parser::OmpEndSectionsDirective &x) {
@@ -141,7 +229,7 @@ void OmpStructureChecker::Enter(const parser::OpenMPDeclareSimdConstruct &x) {
 }
 
 void OmpStructureChecker::Leave(const parser::OpenMPDeclareSimdConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(const parser::OpenMPDeclareTargetConstruct &x) {
@@ -155,7 +243,7 @@ void OmpStructureChecker::Enter(const parser::OpenMPDeclareTargetConstruct &x) {
 }
 
 void OmpStructureChecker::Leave(const parser::OpenMPDeclareTargetConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(
@@ -166,7 +254,7 @@ void OmpStructureChecker::Enter(
 
 void OmpStructureChecker::Leave(
     const parser::OpenMPSimpleStandaloneConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(const parser::OpenMPFlushConstruct &x) {
@@ -175,7 +263,7 @@ void OmpStructureChecker::Enter(const parser::OpenMPFlushConstruct &x) {
 }
 
 void OmpStructureChecker::Leave(const parser::OpenMPFlushConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(const parser::OpenMPCancelConstruct &x) {
@@ -184,7 +272,7 @@ void OmpStructureChecker::Enter(const parser::OpenMPCancelConstruct &x) {
 }
 
 void OmpStructureChecker::Leave(const parser::OpenMPCancelConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(
@@ -196,7 +284,7 @@ void OmpStructureChecker::Enter(
 
 void OmpStructureChecker::Leave(
     const parser::OpenMPCancellationPointConstruct &) {
-  dirContext_.pop_back();
+  ompContext_.pop_back();
 }
 
 void OmpStructureChecker::Enter(const parser::OmpEndBlockDirective &x) {
@@ -355,7 +443,7 @@ void OmpStructureChecker::Enter(const parser::OmpClause::Copyprivate &) {
 void OmpStructureChecker::Enter(const parser::OmpClause::Device &) {
   CheckAllowed(llvm::omp::Clause::OMPC_device);
 }
-void OmpStructureChecker::Enter(const parser::OmpDistScheduleClause &) {
+void OmpStructureChecker::Enter(const parser::OmpClause::DistSchedule &) {
   CheckAllowed(llvm::omp::Clause::OMPC_dist_schedule);
 }
 void OmpStructureChecker::Enter(const parser::OmpClause::Final &) {
@@ -613,14 +701,4 @@ void OmpStructureChecker::Enter(const parser::OmpScheduleClause &x) {
     }
   }
 }
-
-llvm::StringRef OmpStructureChecker::getClauseName(llvm::omp::Clause clause) {
-  return llvm::omp::getOpenMPClauseName(clause);
-}
-
-llvm::StringRef OmpStructureChecker::getDirectiveName(
-    llvm::omp::Directive directive) {
-  return llvm::omp::getOpenMPDirectiveName(directive);
-}
-
 } // namespace Fortran::semantics

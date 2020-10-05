@@ -173,9 +173,11 @@ void Patch657417Section::writeTo(uint8_t *buf) {
     write32le(buf, 0xea000000);
   else
     write32le(buf, 0x9000f000);
-  // If we have a relocation then apply it.
+  // If we have a relocation then apply it. For a SyntheticSection buf already
+  // has outSecOff added, but relocateAlloc also adds outSecOff so we need to
+  // subtract to avoid double counting.
   if (!relocations.empty()) {
-    relocateAlloc(buf, buf + getSize());
+    relocateAlloc(buf - outSecOff, buf - outSecOff + getSize());
     return;
   }
 

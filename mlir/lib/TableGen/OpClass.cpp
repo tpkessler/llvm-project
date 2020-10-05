@@ -13,23 +13,22 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
-using namespace mlir::tblgen;
 
 //===----------------------------------------------------------------------===//
 // OpMethodSignature definitions
 //===----------------------------------------------------------------------===//
 
-OpMethodSignature::OpMethodSignature(StringRef retType, StringRef name,
-                                     StringRef params)
+tblgen::OpMethodSignature::OpMethodSignature(StringRef retType, StringRef name,
+                                             StringRef params)
     : returnType(retType), methodName(name), parameters(params) {}
 
-void OpMethodSignature::writeDeclTo(raw_ostream &os) const {
+void tblgen::OpMethodSignature::writeDeclTo(raw_ostream &os) const {
   os << returnType << (elideSpaceAfterType(returnType) ? "" : " ") << methodName
      << "(" << parameters << ")";
 }
 
-void OpMethodSignature::writeDefTo(raw_ostream &os,
-                                   StringRef namePrefix) const {
+void tblgen::OpMethodSignature::writeDefTo(raw_ostream &os,
+                                           StringRef namePrefix) const {
   // We need to remove the default values for parameters in method definition.
   // TODO: We are using '=' and ',' as delimiters for parameter
   // initializers. This is incorrect for initializer list with more than one
@@ -51,7 +50,7 @@ void OpMethodSignature::writeDefTo(raw_ostream &os,
      << removeParamDefaultValue(parameters) << ")";
 }
 
-bool OpMethodSignature::elideSpaceAfterType(StringRef type) {
+bool tblgen::OpMethodSignature::elideSpaceAfterType(StringRef type) {
   return type.empty() || type.endswith("&") || type.endswith("*");
 }
 
@@ -59,27 +58,28 @@ bool OpMethodSignature::elideSpaceAfterType(StringRef type) {
 // OpMethodBody definitions
 //===----------------------------------------------------------------------===//
 
-OpMethodBody::OpMethodBody(bool declOnly) : isEffective(!declOnly) {}
+tblgen::OpMethodBody::OpMethodBody(bool declOnly) : isEffective(!declOnly) {}
 
-OpMethodBody &OpMethodBody::operator<<(Twine content) {
+tblgen::OpMethodBody &tblgen::OpMethodBody::operator<<(Twine content) {
   if (isEffective)
     body.append(content.str());
   return *this;
 }
 
-OpMethodBody &OpMethodBody::operator<<(int content) {
+tblgen::OpMethodBody &tblgen::OpMethodBody::operator<<(int content) {
   if (isEffective)
     body.append(std::to_string(content));
   return *this;
 }
 
-OpMethodBody &OpMethodBody::operator<<(const FmtObjectBase &content) {
+tblgen::OpMethodBody &
+tblgen::OpMethodBody::operator<<(const FmtObjectBase &content) {
   if (isEffective)
     body.append(content.str());
   return *this;
 }
 
-void OpMethodBody::writeTo(raw_ostream &os) const {
+void tblgen::OpMethodBody::writeTo(raw_ostream &os) const {
   auto bodyRef = StringRef(body).drop_while([](char c) { return c == '\n'; });
   os << bodyRef;
   if (bodyRef.empty() || bodyRef.back() != '\n')
@@ -90,11 +90,18 @@ void OpMethodBody::writeTo(raw_ostream &os) const {
 // OpMethod definitions
 //===----------------------------------------------------------------------===//
 
-OpMethod::OpMethod(StringRef retType, StringRef name, StringRef params,
-                   OpMethod::Property property, bool declOnly)
+tblgen::OpMethod::OpMethod(StringRef retType, StringRef name, StringRef params,
+                           OpMethod::Property property, bool declOnly)
     : properties(property), isDeclOnly(declOnly),
       methodSignature(retType, name, params), methodBody(declOnly) {}
-void OpMethod::writeDeclTo(raw_ostream &os) const {
+
+tblgen::OpMethodBody &tblgen::OpMethod::body() { return methodBody; }
+
+bool tblgen::OpMethod::isStatic() const { return properties & MP_Static; }
+
+bool tblgen::OpMethod::isPrivate() const { return properties & MP_Private; }
+
+void tblgen::OpMethod::writeDeclTo(raw_ostream &os) const {
   os.indent(2);
   if (isStatic())
     os << "static ";
@@ -102,7 +109,7 @@ void OpMethod::writeDeclTo(raw_ostream &os) const {
   os << ";";
 }
 
-void OpMethod::writeDefTo(raw_ostream &os, StringRef namePrefix) const {
+void tblgen::OpMethod::writeDefTo(raw_ostream &os, StringRef namePrefix) const {
   if (isDeclOnly)
     return;
 
@@ -116,12 +123,14 @@ void OpMethod::writeDefTo(raw_ostream &os, StringRef namePrefix) const {
 // OpConstructor definitions
 //===----------------------------------------------------------------------===//
 
-void OpConstructor::addMemberInitializer(StringRef name, StringRef value) {
+void mlir::tblgen::OpConstructor::addMemberInitializer(StringRef name,
+                                                       StringRef value) {
   memberInitializers.append(std::string(llvm::formatv(
       "{0}{1}({2})", memberInitializers.empty() ? " : " : ", ", name, value)));
 }
 
-void OpConstructor::writeDefTo(raw_ostream &os, StringRef namePrefix) const {
+void mlir::tblgen::OpConstructor::writeDefTo(raw_ostream &os,
+                                             StringRef namePrefix) const {
   if (isDeclOnly)
     return;
 
@@ -135,21 +144,25 @@ void OpConstructor::writeDefTo(raw_ostream &os, StringRef namePrefix) const {
 // Class definitions
 //===----------------------------------------------------------------------===//
 
-Class::Class(StringRef name) : className(name) {}
+tblgen::Class::Class(StringRef name) : className(name) {}
 
-OpMethod &Class::newMethod(StringRef retType, StringRef name, StringRef params,
-                           OpMethod::Property property, bool declOnly) {
+tblgen::OpMethod &tblgen::Class::newMethod(StringRef retType, StringRef name,
+                                           StringRef params,
+                                           OpMethod::Property property,
+                                           bool declOnly) {
   methods.emplace_back(retType, name, params, property, declOnly);
   return methods.back();
 }
 
-OpConstructor &Class::newConstructor(StringRef params, bool declOnly) {
+tblgen::OpConstructor &tblgen::Class::newConstructor(StringRef params,
+                                                     bool declOnly) {
   constructors.emplace_back("", getClassName(), params,
                             OpMethod::MP_Constructor, declOnly);
   return constructors.back();
 }
 
-void Class::newField(StringRef type, StringRef name, StringRef defaultValue) {
+void tblgen::Class::newField(StringRef type, StringRef name,
+                             StringRef defaultValue) {
   std::string varName = formatv("{0} {1}", type, name).str();
   std::string field = defaultValue.empty()
                           ? varName
@@ -157,7 +170,7 @@ void Class::newField(StringRef type, StringRef name, StringRef defaultValue) {
   fields.push_back(std::move(field));
 }
 
-void Class::writeDeclTo(raw_ostream &os) const {
+void tblgen::Class::writeDeclTo(raw_ostream &os) const {
   bool hasPrivateMethod = false;
   os << "class " << className << " {\n";
   os << "public:\n";
@@ -187,7 +200,7 @@ void Class::writeDeclTo(raw_ostream &os) const {
   os << "};\n";
 }
 
-void Class::writeDefTo(raw_ostream &os) const {
+void tblgen::Class::writeDefTo(raw_ostream &os) const {
   for (const auto &method :
        llvm::concat<const OpMethod>(constructors, methods)) {
     method.writeDefTo(os, className);
@@ -199,16 +212,16 @@ void Class::writeDefTo(raw_ostream &os) const {
 // OpClass definitions
 //===----------------------------------------------------------------------===//
 
-OpClass::OpClass(StringRef name, StringRef extraClassDeclaration)
+tblgen::OpClass::OpClass(StringRef name, StringRef extraClassDeclaration)
     : Class(name), extraClassDeclaration(extraClassDeclaration) {}
 
-void OpClass::addTrait(Twine trait) {
+void tblgen::OpClass::addTrait(Twine trait) {
   auto traitStr = trait.str();
   if (traitsSet.insert(traitStr).second)
     traitsVec.push_back(std::move(traitStr));
 }
 
-void OpClass::writeDeclTo(raw_ostream &os) const {
+void tblgen::OpClass::writeDeclTo(raw_ostream &os) const {
   os << "class " << className << " : public ::mlir::Op<" << className;
   for (const auto &trait : traitsVec)
     os << ", " << trait;

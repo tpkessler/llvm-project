@@ -582,7 +582,6 @@ static const char *getPlatformName(MachO::PlatformType Type) {
   case MachO::PLATFORM_IOSSIMULATOR:     return "iossimulator";
   case MachO::PLATFORM_TVOSSIMULATOR:    return "tvossimulator";
   case MachO::PLATFORM_WATCHOSSIMULATOR: return "watchossimulator";
-  case MachO::PLATFORM_DRIVERKIT:        return "driverkit";
   }
   llvm_unreachable("Invalid Mach-O platform type");
 }
@@ -799,16 +798,15 @@ void MCAsmStreamer::emitXCOFFLocalCommonSymbol(MCSymbol *LabelSym,
   OS << ',' << Log2_32(ByteAlignment);
 
   EmitEOL();
-
-  // Print symbol's rename (original name contains invalid character(s)) if
-  // there is one.
-  MCSymbolXCOFF *XSym = cast<MCSymbolXCOFF>(CsectSym);
-  if (XSym->hasRename())
-    emitXCOFFRenameDirective(XSym, XSym->getSymbolTableName());
 }
 
 void MCAsmStreamer::emitXCOFFSymbolLinkageWithVisibility(
     MCSymbol *Symbol, MCSymbolAttr Linkage, MCSymbolAttr Visibility) {
+  // Print symbol's rename (original name contains invalid character(s)) if
+  // there is one.
+  if (cast<MCSymbolXCOFF>(Symbol)->hasRename())
+    emitXCOFFRenameDirective(Symbol,
+                             cast<MCSymbolXCOFF>(Symbol)->getSymbolTableName());
 
   switch (Linkage) {
   case MCSA_Global:
@@ -843,12 +841,6 @@ void MCAsmStreamer::emitXCOFFSymbolLinkageWithVisibility(
     report_fatal_error("unexpected value for Visibility type");
   }
   EmitEOL();
-
-  // Print symbol's rename (original name contains invalid character(s)) if
-  // there is one.
-  if (cast<MCSymbolXCOFF>(Symbol)->hasRename())
-    emitXCOFFRenameDirective(Symbol,
-                             cast<MCSymbolXCOFF>(Symbol)->getSymbolTableName());
 }
 
 void MCAsmStreamer::emitXCOFFRenameDirective(const MCSymbol *Name,
@@ -878,6 +870,12 @@ void MCAsmStreamer::emitELFSize(MCSymbol *Symbol, const MCExpr *Value) {
 
 void MCAsmStreamer::emitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                      unsigned ByteAlignment) {
+  // Print symbol's rename (original name contains invalid character(s)) if
+  // there is one.
+  MCSymbolXCOFF *XSym = dyn_cast<MCSymbolXCOFF>(Symbol);
+  if (XSym && XSym->hasRename())
+    emitXCOFFRenameDirective(XSym, XSym->getSymbolTableName());
+
   OS << "\t.comm\t";
   Symbol->print(OS, MAI);
   OS << ',' << Size;
@@ -889,13 +887,6 @@ void MCAsmStreamer::emitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
       OS << ',' << Log2_32(ByteAlignment);
   }
   EmitEOL();
-
-  // Print symbol's rename (original name contains invalid character(s)) if
-  // there is one.
-  MCSymbolXCOFF *XSym = dyn_cast<MCSymbolXCOFF>(Symbol);
-  if (XSym && XSym->hasRename())
-    emitXCOFFRenameDirective(XSym, XSym->getSymbolTableName());
-
 }
 
 void MCAsmStreamer::emitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,

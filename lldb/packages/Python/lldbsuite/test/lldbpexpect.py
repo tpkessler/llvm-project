@@ -11,7 +11,6 @@ import six
 import lldb
 from .lldbtest import *
 from . import lldbutil
-from lldbsuite.test.decorators import *
 
 if sys.platform.startswith('win32'):
     # llvm.org/pr22274: need a pexpect replacement for windows
@@ -20,7 +19,6 @@ if sys.platform.startswith('win32'):
 else:
     import pexpect
 
-    @skipIfRemote
     class PExpectTest(TestBase):
 
         NO_DEBUG_INFO_TESTCASE = True
@@ -68,10 +66,3 @@ else:
             self.child.sendeof()
             self.child.close(force=not gracefully)
             self.child = None
-
-        def cursor_forward_escape_seq(self, chars_to_move):
-            """
-            Returns the escape sequence to move the cursor forward/right
-            by a certain amount of characters.
-            """
-            return b"\x1b\[" + str(chars_to_move).encode("utf-8") + b"C"

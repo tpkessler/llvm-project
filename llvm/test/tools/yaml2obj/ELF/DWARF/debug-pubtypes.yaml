@@ -43,8 +43,8 @@ FileHeader:
   Machine: EM_X86_64
 DWARF:
   debug_pubtypes:
-    Format:     [[FORMAT=DWARF32]]
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321
@@ -136,7 +136,8 @@ Sections:
     Size: 0x10
 DWARF:
   debug_pubtypes:
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321
@@ -159,7 +160,8 @@ Sections:
     Content: "00"
 DWARF:
   debug_pubtypes:
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321
@@ -221,7 +223,8 @@ Sections:
     Type:         SHT_STRTAB
 DWARF:
   debug_pubtypes:
-    Length:     0x1234
+    Length:
+      TotalLength: 0x1234
     Version:    2
     UnitOffset: 0x1234
     UnitSize:   0x4321

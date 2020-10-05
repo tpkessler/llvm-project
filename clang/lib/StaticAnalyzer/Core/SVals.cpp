@@ -157,18 +157,18 @@ bool nonloc::PointerToMember::isNullMemberPointer() const {
   return getPTMData().isNull();
 }
 
-const NamedDecl *nonloc::PointerToMember::getDecl() const {
+const DeclaratorDecl *nonloc::PointerToMember::getDecl() const {
   const auto PTMD = this->getPTMData();
   if (PTMD.isNull())
     return nullptr;
 
-  const NamedDecl *ND = nullptr;
-  if (PTMD.is<const NamedDecl *>())
-    ND = PTMD.get<const NamedDecl *>();
+  const DeclaratorDecl *DD = nullptr;
+  if (PTMD.is<const DeclaratorDecl *>())
+    DD = PTMD.get<const DeclaratorDecl *>();
   else
-    ND = PTMD.get<const PointerToMemberData *>()->getDeclaratorDecl();
+    DD = PTMD.get<const PointerToMemberData *>()->getDeclaratorDecl();
 
-  return ND;
+  return DD;
 }
 
 //===----------------------------------------------------------------------===//
@@ -185,14 +185,14 @@ nonloc::CompoundVal::iterator nonloc::CompoundVal::end() const {
 
 nonloc::PointerToMember::iterator nonloc::PointerToMember::begin() const {
   const PTMDataType PTMD = getPTMData();
-  if (PTMD.is<const NamedDecl *>())
+  if (PTMD.is<const DeclaratorDecl *>())
     return {};
   return PTMD.get<const PointerToMemberData *>()->begin();
 }
 
 nonloc::PointerToMember::iterator nonloc::PointerToMember::end() const {
   const PTMDataType PTMD = getPTMData();
-  if (PTMD.is<const NamedDecl *>())
+  if (PTMD.is<const DeclaratorDecl *>())
     return {};
   return PTMD.get<const PointerToMemberData *>()->end();
 }

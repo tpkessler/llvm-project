@@ -6,8 +6,6 @@
 // RUN: %clangxx_asan -std=c++20 -fexceptions -O0 %s -o %t -pthread
 // RUN: %run %t
 
-// XFAIL: ios && !iossim
-
 #include <cassert>
 #include <cerrno>
 #include <csetjmp>
@@ -64,14 +62,12 @@ void testOnCurrentStack() {
                                         c.RightRedzone - c.LeftRedzone));
 }
 
-bool isOnSignalStack() {
-  stack_t Stack;
-  sigaltstack(nullptr, &Stack);
-  return Stack.ss_flags == SS_ONSTACK;
-}
-
 void signalHandler(int, siginfo_t *, void *) {
-  assert(isOnSignalStack());
+  {
+    stack_t Stack;
+    sigaltstack(nullptr, &Stack);
+    assert(Stack.ss_flags == SS_ONSTACK);
+  }
 
   // test on signal alternate stack
   testOnCurrentStack();
@@ -113,8 +109,6 @@ void *threadFun(void *AltStack) {
   if (0 == setjmp(defaultStack.JmpBuf))
     // Test on signal alternate stack, via signalHandler
     poisonStackAndJump(defaultStack, [] { raise(SIGUSR1); });
-
-  assert(!isOnSignalStack());
 
   assert(0 == __asan_region_is_poisoned(
                   defaultStack.LeftRedzone,

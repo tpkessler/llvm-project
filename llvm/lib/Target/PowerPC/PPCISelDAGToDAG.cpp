@@ -1253,7 +1253,6 @@ class BitPermutationSelector {
       }
       break;
     case ISD::SHL:
-    case PPCISD::SHL:
       if (isa<ConstantSDNode>(V.getOperand(1))) {
         unsigned ShiftAmt = V.getConstantOperandVal(1);
 
@@ -1269,7 +1268,6 @@ class BitPermutationSelector {
       }
       break;
     case ISD::SRL:
-    case PPCISD::SRL:
       if (isa<ConstantSDNode>(V.getOperand(1))) {
         unsigned ShiftAmt = V.getConstantOperandVal(1);
 

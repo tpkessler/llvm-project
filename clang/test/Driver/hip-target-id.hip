@@ -9,42 +9,21 @@
 // RUN:   --rocm-path=%S/Inputs/rocm \
 // RUN:   %s 2>&1 | FileCheck %s
 
-// RUN: %clang -### -target x86_64-linux-gnu \
-// RUN:   -x hip \
-// RUN:   --offload-arch=gfx908:xnack+:sram-ecc+ \
-// RUN:   --offload-arch=gfx908:xnack+:sram-ecc- \
-// RUN:   --rocm-path=%S/Inputs/rocm \
-// RUN:   -save-temps \
-// RUN:   %s 2>&1 | FileCheck --check-prefixes=CHECK,TMP %s
-
-// RUN: %clang -### -target x86_64-linux-gnu \
-// RUN:   -x hip \
-// RUN:   --offload-arch=gfx908:xnack+:sram-ecc+ \
-// RUN:   --offload-arch=gfx908:xnack+:sram-ecc- \
-// RUN:   --rocm-path=%S/Inputs/rocm \
-// RUN:   -fgpu-rdc \
-// RUN:   %s 2>&1 | FileCheck --check-prefixes=CHECK %s
-
 // CHECK: [[CLANG:"[^"]*clang[^"]*"]] "-cc1" "-triple" "amdgcn-amd-amdhsa"
-// CHECK-SAME: "-target-cpu" "gfx908"
 // CHECK-SAME: "-target-feature" "+sram-ecc"
 // CHECK-SAME: "-target-feature" "+xnack"
+// CHECK-SAME: "-target-cpu" "gfx908"
 
-// TMP: [[CLANG:"[^"]*clang[^"]*"]] "-cc1as" "-triple" "amdgcn-amd-amdhsa"
-// TMP-SAME: "-target-cpu" "gfx908"
-// TMP-SAME: "-target-feature" "+sram-ecc"
-// TMP-SAME: "-target-feature" "+xnack"
-
-// CHECK: [[LLD:"[^"]*lld[^"]*"]] {{.*}} "-plugin-opt=mcpu=gfx908"
-// CHECK-SAME: "-plugin-opt=-mattr=+sram-ecc,+xnack"
+// CHECK: [[LLD:"[^"]*lld[^"]*"]]
+// CHECK-SAME: "-plugin-opt=mcpu=gfx908"
 
 // CHECK: [[CLANG]] "-cc1" "-triple" "amdgcn-amd-amdhsa"
-// CHECK-SAME: "-target-cpu" "gfx908"
 // CHECK-SAME: "-target-feature" "-sram-ecc"
 // CHECK-SAME: "-target-feature" "+xnack"
+// CHECK-SAME: "-target-cpu" "gfx908"
 
-// CHECK: [[LLD]] {{.*}} "-plugin-opt=mcpu=gfx908"
-// CHECK-SAME: "-plugin-opt=-mattr=-sram-ecc,+xnack"
+// CHECK: [[LLD]]
+// CHECK-SAME: "-plugin-opt=mcpu=gfx908"
 
 // CHECK: {{"[^"]*clang-offload-bundler[^"]*"}}
 // CHECK-SAME: "-targets=host-x86_64-unknown-linux,hip-amdgcn-amd-amdhsa-gfx908:sram-ecc+:xnack+,hip-amdgcn-amd-amdhsa-gfx908:sram-ecc-:xnack+"
@@ -53,12 +32,12 @@
 
 // RUN: %clang -### -target x86_64-linux-gnu \
 // RUN:   -x hip \
-// RUN:   --offload-arch=fiji \
-// RUN:   --offload-arch=gfx803 \
-// RUN:   --offload-arch=fiji \
+// RUN:   --offload-arch=fiji:xnack+ \
+// RUN:   --offload-arch=gfx803:xnack+ \
+// RUN:   --offload-arch=fiji:xnack+ \
 // RUN:   --rocm-path=%S/Inputs/rocm \
 // RUN:   %s 2>&1 | FileCheck -check-prefix=FIJI %s
-// FIJI: "-targets=host-x86_64-unknown-linux,hip-amdgcn-amd-amdhsa-gfx803"
+// FIJI: "-targets=host-x86_64-unknown-linux,hip-amdgcn-amd-amdhsa-gfx803:xnack+"
 
 // RUN: %clang -### -target x86_64-linux-gnu \
 // RUN:   -x hip \

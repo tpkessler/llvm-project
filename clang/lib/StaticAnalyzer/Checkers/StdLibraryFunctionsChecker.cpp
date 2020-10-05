@@ -40,12 +40,12 @@
 //
 // The following standard C functions are currently supported:
 //
-//   fgetc      getline   isdigit   isupper     toascii
+//   fgetc      getline   isdigit   isupper
 //   fread      isalnum   isgraph   isxdigit
 //   fwrite     isalpha   islower   read
 //   getc       isascii   isprint   write
-//   getchar    isblank   ispunct   toupper
-//   getdelim   iscntrl   isspace   tolower
+//   getchar    isblank   ispunct
+//   getdelim   iscntrl   isspace
 //
 //===----------------------------------------------------------------------===//
 
@@ -147,7 +147,9 @@ class StdLibraryFunctionsChecker
     RangeConstraint(ArgNo ArgN, RangeKind Kind, const IntRangeVector &Args)
         : ValueConstraint(ArgN), Kind(Kind), Args(Args) {}
 
-    const IntRangeVector &getRanges() const { return Args; }
+    const IntRangeVector &getRanges() const {
+      return Args;
+    }
 
   private:
     ProgramStateRef applyAsOutOfRange(ProgramStateRef State,
@@ -156,7 +158,6 @@ class StdLibraryFunctionsChecker
     ProgramStateRef applyAsWithinRange(ProgramStateRef State,
                                        const CallEvent &Call,
                                        const Summary &Summary) const;
-
   public:
     ProgramStateRef apply(ProgramStateRef State, const CallEvent &Call,
                           const Summary &Summary,
@@ -407,7 +408,7 @@ class StdLibraryFunctionsChecker
       return *this;
     }
 
-    Summary &Case(ConstraintSet &&CS) {
+    Summary &Case(ConstraintSet&& CS) {
       CaseConstraints.push_back(std::move(CS));
       return *this;
     }
@@ -795,13 +796,13 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
   const QualType LongLongTy = ACtx.LongLongTy;
   const QualType SizeTy = ACtx.getSizeType();
 
-  const QualType VoidPtrTy = ACtx.VoidPtrTy;            // void *
+  const QualType VoidPtrTy = ACtx.VoidPtrTy; // void *
   const QualType IntPtrTy = ACtx.getPointerType(IntTy); // int *
   const QualType UnsignedIntPtrTy =
       ACtx.getPointerType(UnsignedIntTy); // unsigned int *
   const QualType VoidPtrRestrictTy = getRestrictTy(VoidPtrTy);
   const QualType ConstVoidPtrTy =
-      ACtx.getPointerType(ACtx.VoidTy.withConst());            // const void *
+      ACtx.getPointerType(ACtx.VoidTy.withConst()); // const void *
   const QualType CharPtrTy = ACtx.getPointerType(ACtx.CharTy); // char *
   const QualType CharPtrRestrictTy = getRestrictTy(CharPtrTy);
   const QualType ConstCharPtrTy =
@@ -1116,18 +1117,6 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
           .Case({ArgumentCondition(0U, OutOfRange,
                                    {{'0', '9'}, {'A', 'F'}, {'a', 'f'}}),
                  ReturnValueCondition(WithinRange, SingleValue(0))}));
-  addToFunctionSummaryMap(
-      "toupper", Summary(ArgTypes{IntTy}, RetType{IntTy}, EvalCallAsPure)
-                     .ArgConstraint(ArgumentCondition(
-                         0U, WithinRange, {{EOFv, EOFv}, {0, UCharRangeMax}})));
-  addToFunctionSummaryMap(
-      "tolower", Summary(ArgTypes{IntTy}, RetType{IntTy}, EvalCallAsPure)
-                     .ArgConstraint(ArgumentCondition(
-                         0U, WithinRange, {{EOFv, EOFv}, {0, UCharRangeMax}})));
-  addToFunctionSummaryMap(
-      "toascii", Summary(ArgTypes{IntTy}, RetType{IntTy}, EvalCallAsPure)
-                     .ArgConstraint(ArgumentCondition(
-                         0U, WithinRange, {{EOFv, EOFv}, {0, UCharRangeMax}})));
 
   // The getc() family of functions that returns either a char or an EOF.
   if (FilePtrTy) {
@@ -2044,8 +2033,7 @@ void ento::registerStdCLibraryFunctionsChecker(CheckerManager &mgr) {
       mgr.getAnalyzerOptions().getCheckerBooleanOption(Checker, "ModelPOSIX");
 }
 
-bool ento::shouldRegisterStdCLibraryFunctionsChecker(
-    const CheckerManager &mgr) {
+bool ento::shouldRegisterStdCLibraryFunctionsChecker(const CheckerManager &mgr) {
   return true;
 }
 

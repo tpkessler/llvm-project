@@ -26,7 +26,6 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineOperand.h"
-#include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/CodeGen/VirtRegMap.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Target/TargetMachine.h"
@@ -312,7 +311,6 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
   bool MadeChange = false;
 
   const bool SpillToAGPR = EnableSpillVGPRToAGPR && ST.hasMAIInsts();
-  std::unique_ptr<RegScavenger> RS;
 
   // TODO: CSR VGPRs will never be spilled to AGPRs. These can probably be
   // handled as SpilledToReg in regular PrologEpilogInserter.
@@ -342,12 +340,7 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
               TII->getNamedOperand(MI, AMDGPU::OpName::vdata)->getReg();
           if (FuncInfo->allocateVGPRSpillToAGPR(MF, FI,
                                                 TRI->isAGPR(MRI, VReg))) {
-            if (!RS)
-              RS.reset(new RegScavenger());
-
-            // FIXME: change to enterBasicBlockEnd()
-            RS->enterBasicBlock(MBB);
-            TRI->eliminateFrameIndex(MI, 0, FIOp, RS.get());
+            TRI->eliminateFrameIndex(MI, 0, FIOp, nullptr);
             continue;
           }
         }

@@ -14,24 +14,16 @@ using namespace mlir::detail;
 
 namespace {
 struct TestDialect : public Dialect {
-  static StringRef getDialectNamespace() { return "test"; };
-  TestDialect(MLIRContext *context)
-      : Dialect(getDialectNamespace(), context, TypeID::get<TestDialect>()) {}
-};
-struct AnotherTestDialect : public Dialect {
-  static StringRef getDialectNamespace() { return "test"; };
-  AnotherTestDialect(MLIRContext *context)
-      : Dialect(getDialectNamespace(), context,
-                TypeID::get<AnotherTestDialect>()) {}
+  TestDialect(MLIRContext *context) : Dialect(/*name=*/"test", context) {}
 };
 
 TEST(DialectDeathTest, MultipleDialectsWithSameNamespace) {
-  MLIRContext context(false);
+  MLIRContext context;
 
   // Registering a dialect with the same namespace twice should result in a
   // failure.
-  context.loadDialect<TestDialect>();
-  ASSERT_DEATH(context.loadDialect<AnotherTestDialect>(), "");
+  new TestDialect(&context);
+  ASSERT_DEATH(new TestDialect(&context), "");
 }
 
 } // end namespace

@@ -10561,13 +10561,7 @@ ScalarEvolution::howManyLessThans(const SCEV *LHS, const SCEV *RHS,
   if (isLoopEntryGuardedByCond(L, Cond, getMinusSCEV(Start, Stride), RHS))
     BECount = BECountIfBackedgeTaken;
   else {
-    // If we know that RHS >= Start in the context of loop, then we know that
-    // max(RHS, Start) = RHS at this point.
-    if (isLoopEntryGuardedByCond(
-            L, IsSigned ? ICmpInst::ICMP_SGE : ICmpInst::ICMP_UGE, RHS, Start))
-      End = RHS;
-    else
-      End = IsSigned ? getSMaxExpr(RHS, Start) : getUMaxExpr(RHS, Start);
+    End = IsSigned ? getSMaxExpr(RHS, Start) : getUMaxExpr(RHS, Start);
     BECount = computeBECount(getMinusSCEV(End, Start), Stride, false);
   }
 

@@ -2122,12 +2122,7 @@ void Sema::CheckImplementationIvars(ObjCImplementationDecl *ImpDecl,
     // Add ivar's to class's DeclContext.
     for (unsigned i = 0, e = numIvars; i != e; ++i) {
       ivars[i]->setLexicalDeclContext(ImpDecl);
-      // In a 'fragile' runtime the ivar was added to the implicit
-      // ObjCInterfaceDecl while in a 'non-fragile' runtime the ivar is
-      // only in the ObjCImplementationDecl. In the non-fragile case the ivar
-      // therefore also needs to be propagated to the ObjCInterfaceDecl.
-      if (!LangOpts.ObjCRuntime.isFragile())
-        IDecl->makeDeclVisibleInContext(ivars[i]);
+      IDecl->makeDeclVisibleInContext(ivars[i]);
       ImpDecl->addDecl(ivars[i]);
     }
 
@@ -3927,11 +3922,15 @@ Decl *Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd, ArrayRef<Decl *> allMethods,
   if (auto *OID = dyn_cast<ObjCImplementationDecl>(CurContext)) {
     for (auto PropImpl : OID->property_impls()) {
       if (auto *Getter = PropImpl->getGetterMethodDecl())
-        if (Getter->isSynthesizedAccessorStub())
+        if (Getter->isSynthesizedAccessorStub()) {
+          OID->makeDeclVisibleInContext(Getter);
           OID->addDecl(Getter);
+        }
       if (auto *Setter = PropImpl->getSetterMethodDecl())
-        if (Setter->isSynthesizedAccessorStub())
+        if (Setter->isSynthesizedAccessorStub()) {
+          OID->makeDeclVisibleInContext(Setter);
           OID->addDecl(Setter);
+        }
     }
   }
 

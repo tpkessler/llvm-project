@@ -18,5 +18,9 @@ using namespace clang::driver::tools;
 using namespace clang;
 using namespace llvm::opt;
 
+const char *ve::getVEAsmModeForCPU(StringRef Name, const llvm::Triple &Triple) {
+  return "";
+}
+
 void ve::getVETargetFeatures(const Driver &D, const ArgList &Args,
                              std::vector<StringRef> &Features) {}

@@ -30,8 +30,7 @@ static Preprocessor *PP;
 
 void BadSignalToKillThreadCheck::check(const MatchFinder::MatchResult &Result) {
   const auto IsSigterm = [](const auto &KeyValue) -> bool {
-    return KeyValue.first->getName() == "SIGTERM" &&
-           KeyValue.first->hasMacroDefinition();
+    return KeyValue.first->getName() == "SIGTERM";
   };
   const auto TryExpandAsInteger =
       [](Preprocessor::macro_iterator It) -> Optional<unsigned> {
@@ -39,8 +38,6 @@ void BadSignalToKillThreadCheck::check(const MatchFinder::MatchResult &Result) {
       return llvm::None;
     const MacroInfo *MI = PP->getMacroInfo(It->first);
     const Token &T = MI->tokens().back();
-    if (!T.isLiteral() || !T.getLiteralData())
-      return llvm::None;
     StringRef ValueStr = StringRef(T.getLiteralData(), T.getLength());
 
     llvm::APInt IntValue;

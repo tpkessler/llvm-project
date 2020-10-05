@@ -161,7 +161,8 @@ bool SectionMemoryManager::finalizeMemory(std::string *ErrMsg) {
   }
 
   // Make read-only data memory read-only.
-  ec = applyMemoryGroupPermissions(RODataMem, sys::Memory::MF_READ);
+  ec = applyMemoryGroupPermissions(RODataMem,
+                                   sys::Memory::MF_READ | sys::Memory::MF_EXEC);
   if (ec) {
     if (ErrMsg) {
       *ErrMsg = ec.message();

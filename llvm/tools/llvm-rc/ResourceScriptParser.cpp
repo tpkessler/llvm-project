@@ -698,14 +698,8 @@ RCParser::ParseType RCParser::parseStringTableResource() {
     // between, however we strictly adhere to the single statement definition.
     ASSIGN_OR_RETURN(IDResult, readInt());
     consumeOptionalType(Kind::Comma);
-
-    std::vector<StringRef> Strings;
     ASSIGN_OR_RETURN(StrResult, readString());
-    Strings.push_back(*StrResult);
-    while (isNextTokenKind(Kind::String))
-      Strings.push_back(read().value());
-
-    Table->addStrings(*IDResult, std::move(Strings));
+    Table->addString(*IDResult, *StrResult);
   }
 
   return std::move(Table);

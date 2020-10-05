@@ -289,11 +289,6 @@ private:
   /// MachineBasicBlocks for the function have been created.
   void finishPendingPhis();
 
-  /// Translate \p Inst into a unary operation \p Opcode.
-  /// \pre \p U is a unary operation.
-  bool translateUnaryOp(unsigned Opcode, const User &U,
-                        MachineIRBuilder &MIRBuilder);
-
   /// Translate \p Inst into a binary operation \p Opcode.
   /// \pre \p U is a binary operation.
   bool translateBinaryOp(unsigned Opcode, const User &U,
@@ -312,37 +307,25 @@ private:
   void emitSwitchCase(SwitchCG::CaseBlock &CB, MachineBasicBlock *SwitchBB,
                       MachineIRBuilder &MIB);
 
-  /// Generate for for the BitTest header block, which precedes each sequence of
-  /// BitTestCases.
-  void emitBitTestHeader(SwitchCG::BitTestBlock &BTB,
-                         MachineBasicBlock *SwitchMBB);
-  /// Generate code to produces one "bit test" for a given BitTestCase \p B.
-  void emitBitTestCase(SwitchCG::BitTestBlock &BB, MachineBasicBlock *NextMBB,
-                       BranchProbability BranchProbToNext, Register Reg,
-                       SwitchCG::BitTestCase &B, MachineBasicBlock *SwitchBB);
+  bool lowerJumpTableWorkItem(SwitchCG::SwitchWorkListItem W,
+                              MachineBasicBlock *SwitchMBB,
+                              MachineBasicBlock *CurMBB,
+                              MachineBasicBlock *DefaultMBB,
+                              MachineIRBuilder &MIB,
+                              MachineFunction::iterator BBI,
+                              BranchProbability UnhandledProbs,
+                              SwitchCG::CaseClusterIt I,
+                              MachineBasicBlock *Fallthrough,
+                              bool FallthroughUnreachable);
 
-  bool lowerJumpTableWorkItem(
-      SwitchCG::SwitchWorkListItem W, MachineBasicBlock *SwitchMBB,
-      MachineBasicBlock *CurMBB, MachineBasicBlock *DefaultMBB,
-      MachineIRBuilder &MIB, MachineFunction::iterator BBI,
-      BranchProbability UnhandledProbs, SwitchCG::CaseClusterIt I,
-      MachineBasicBlock *Fallthrough, bool FallthroughUnreachable);
-
-  bool lowerSwitchRangeWorkItem(SwitchCG::CaseClusterIt I, Value *Cond,
+  bool lowerSwitchRangeWorkItem(SwitchCG::CaseClusterIt I,
+                                Value *Cond,
                                 MachineBasicBlock *Fallthrough,
                                 bool FallthroughUnreachable,
                                 BranchProbability UnhandledProbs,
                                 MachineBasicBlock *CurMBB,
                                 MachineIRBuilder &MIB,
                                 MachineBasicBlock *SwitchMBB);
-
-  bool lowerBitTestWorkItem(
-      SwitchCG::SwitchWorkListItem W, MachineBasicBlock *SwitchMBB,
-      MachineBasicBlock *CurMBB, MachineBasicBlock *DefaultMBB,
-      MachineIRBuilder &MIB, MachineFunction::iterator BBI,
-      BranchProbability DefaultProb, BranchProbability UnhandledProbs,
-      SwitchCG::CaseClusterIt I, MachineBasicBlock *Fallthrough,
-      bool FallthroughUnreachable);
 
   bool lowerSwitchWorkItem(SwitchCG::SwitchWorkListItem W, Value *Cond,
                            MachineBasicBlock *SwitchMBB,
@@ -369,6 +352,8 @@ private:
   /// this to succeed.
   /// \pre \p U is a return instruction.
   bool translateRet(const User &U, MachineIRBuilder &MIRBuilder);
+
+  bool translateFSub(const User &U, MachineIRBuilder &MIRBuilder);
 
   bool translateFNeg(const User &U, MachineIRBuilder &MIRBuilder);
 
@@ -453,9 +438,6 @@ private:
 
   bool translateFAdd(const User &U, MachineIRBuilder &MIRBuilder) {
     return translateBinaryOp(TargetOpcode::G_FADD, U, MIRBuilder);
-  }
-  bool translateFSub(const User &U, MachineIRBuilder &MIRBuilder) {
-    return translateBinaryOp(TargetOpcode::G_FSUB, U, MIRBuilder);
   }
   bool translateFMul(const User &U, MachineIRBuilder &MIRBuilder) {
     return translateBinaryOp(TargetOpcode::G_FMUL, U, MIRBuilder);

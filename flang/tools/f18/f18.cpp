@@ -25,7 +25,6 @@
 #include "flang/Semantics/unparse-with-symbols.h"
 #include "llvm/Support/Errno.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdio>
 #include <cstring>
@@ -35,6 +34,8 @@
 #include <optional>
 #include <stdlib.h>
 #include <string>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <vector>
 
 static std::list<std::string> argList(int argc, char *const argv[]) {
@@ -67,7 +68,7 @@ std::vector<std::string> filesToDelete;
 void CleanUpAtExit() {
   for (const auto &path : filesToDelete) {
     if (!path.empty()) {
-      llvm::sys::fs::remove(path);
+      unlink(path.data());
     }
   }
 }
@@ -109,29 +110,36 @@ struct DriverOptions {
   bool getSymbolsSources{false};
 };
 
-void Exec(std::vector<llvm::StringRef> &argv, bool verbose = false) {
+bool ParentProcess() {
+  if (fork() == 0) {
+    return false; // in child process
+  }
+  int childStat{0};
+  wait(&childStat);
+  if (!WIFEXITED(childStat) || WEXITSTATUS(childStat) != 0) {
+    exit(EXIT_FAILURE);
+  }
+  return true;
+}
+
+void Exec(std::vector<char *> &argv, bool verbose = false) {
   if (verbose) {
     for (size_t j{0}; j < argv.size(); ++j) {
       llvm::errs() << (j > 0 ? " " : "") << argv[j];
     }
     llvm::errs() << '\n';
   }
-  std::string ErrMsg;
-  llvm::ErrorOr<std::string> Program = llvm::sys::findProgramByName(argv[0]);
-  if (!Program)
-    ErrMsg = Program.getError().message();
-  if (!Program ||
-      llvm::sys::ExecuteAndWait(
-          Program.get(), argv, llvm::None, {}, 0, 0, &ErrMsg)) {
-    llvm::errs() << "execvp(" << argv[0] << ") failed: " << ErrMsg << '\n';
-    exit(EXIT_FAILURE);
-  }
+  argv.push_back(nullptr);
+  execvp(argv[0], &argv[0]);
+  llvm::errs() << "execvp(" << argv[0]
+               << ") failed: " << llvm::sys::StrError(errno) << '\n';
+  exit(EXIT_FAILURE);
 }
 
 void RunOtherCompiler(DriverOptions &driver, char *source, char *relo) {
-  std::vector<llvm::StringRef> argv;
+  std::vector<char *> argv;
   for (size_t j{0}; j < driver.F18_FCArgs.size(); ++j) {
-    argv.push_back(driver.F18_FCArgs[j]);
+    argv.push_back(driver.F18_FCArgs[j].data());
   }
   char dashC[3] = "-c", dashO[3] = "-o";
   argv.push_back(dashC);
@@ -321,16 +329,16 @@ std::string CompileFortran(std::string path, Fortran::parser::Options options,
 
   std::string relo{RelocatableName(driver, path)};
 
-  llvm::SmallString<32> tmpSourcePath;
+  char tmpSourcePath[32];
+  std::snprintf(tmpSourcePath, sizeof tmpSourcePath, "/tmp/f18-%lx.f90",
+      static_cast<unsigned long>(getpid()));
   {
-    int fd;
-    std::error_code EC =
-        llvm::sys::fs::createUniqueFile("f18-%%%%.f90", fd, tmpSourcePath);
+    std::error_code EC;
+    llvm::raw_fd_ostream tmpSource(tmpSourcePath, EC, llvm::sys::fs::F_None);
     if (EC) {
       llvm::errs() << EC.message() << "\n";
       std::exit(EXIT_FAILURE);
     }
-    llvm::raw_fd_ostream tmpSource(fd, /*shouldClose*/ true);
     Unparse(tmpSource, parseTree, driver.encoding, true /*capitalize*/,
         options.features.IsEnabled(
             Fortran::common::LanguageFeature::BackslashEscapes),
@@ -338,41 +346,49 @@ std::string CompileFortran(std::string path, Fortran::parser::Options options,
         driver.unparseTypedExprsToF18_FC ? &asFortran : nullptr);
   }
 
-  RunOtherCompiler(driver, tmpSourcePath.data(), relo.data());
-  filesToDelete.emplace_back(tmpSourcePath);
-  if (!driver.compileOnly && driver.outputPath.empty()) {
-    filesToDelete.push_back(relo);
+  if (ParentProcess()) {
+    filesToDelete.push_back(tmpSourcePath);
+    if (!driver.compileOnly && driver.outputPath.empty()) {
+      filesToDelete.push_back(relo);
+    }
+    return relo;
   }
-  return relo;
+  RunOtherCompiler(driver, tmpSourcePath, relo.data());
+  return {};
 }
 
 std::string CompileOtherLanguage(std::string path, DriverOptions &driver) {
   std::string relo{RelocatableName(driver, path)};
-  RunOtherCompiler(driver, path.data(), relo.data());
-  if (!driver.compileOnly && driver.outputPath.empty()) {
-    filesToDelete.push_back(relo);
+  if (ParentProcess()) {
+    if (!driver.compileOnly && driver.outputPath.empty()) {
+      filesToDelete.push_back(relo);
+    }
+    return relo;
   }
-  return relo;
+  RunOtherCompiler(driver, path.data(), relo.data());
+  return {};
 }
 
 void Link(std::vector<std::string> &liblist, std::vector<std::string> &objects,
     DriverOptions &driver) {
-  std::vector<llvm::StringRef> argv;
-  for (size_t j{0}; j < driver.F18_FCArgs.size(); ++j) {
-    argv.push_back(driver.F18_FCArgs[j].data());
+  if (!ParentProcess()) {
+    std::vector<char *> argv;
+    for (size_t j{0}; j < driver.F18_FCArgs.size(); ++j) {
+      argv.push_back(driver.F18_FCArgs[j].data());
+    }
+    for (auto &obj : objects) {
+      argv.push_back(obj.data());
+    }
+    if (!driver.outputPath.empty()) {
+      char dashO[3] = "-o";
+      argv.push_back(dashO);
+      argv.push_back(driver.outputPath.data());
+    }
+    for (auto &lib : liblist) {
+      argv.push_back(lib.data());
+    }
+    Exec(argv, driver.verbose);
   }
-  for (auto &obj : objects) {
-    argv.push_back(obj.data());
-  }
-  if (!driver.outputPath.empty()) {
-    char dashO[3] = "-o";
-    argv.push_back(dashO);
-    argv.push_back(driver.outputPath.data());
-  }
-  for (auto &lib : liblist) {
-    argv.push_back(lib.data());
-  }
-  Exec(argv, driver.verbose);
 }
 
 int main(int argc, char *const argv[]) {
@@ -487,12 +503,6 @@ int main(int argc, char *const argv[]) {
       options.features.Enable(
           Fortran::parser::LanguageFeature::LogicalAbbreviations,
           arg == "-flogical-abbreviations");
-    } else if (arg == "-fimplicit-none-type-always") {
-      options.features.Enable(
-          Fortran::common::LanguageFeature::ImplicitNoneTypeAlways);
-    } else if (arg == "-fimplicit-none-type-never") {
-      options.features.Enable(
-          Fortran::common::LanguageFeature::ImplicitNoneTypeNever);
     } else if (arg == "-fdebug-dump-provenance") {
       driver.dumpProvenance = true;
       options.needProvenanceRangeToCharBlockMappings = true;
@@ -593,8 +603,7 @@ int main(int argc, char *const argv[]) {
       driver.getSymbolsSources = true;
     } else if (arg == "-byteswapio") {
       driver.byteswapio = true; // TODO: Pass to lowering, generate call
-    } else if (arg == "-h" || arg == "-help" || arg == "--help" ||
-        arg == "-?") {
+    } else if (arg == "-h" || arg == "-help" || arg == "--help" || arg == "-?") {
       llvm::errs()
           << "f18: LLVM Fortran compiler\n"
           << "\n"

@@ -1,5 +1,3 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: res = iflm(666 )
 ! FLM call with closing ')' on next line (not a continuation)
       integer function IFLM(x)
         integer :: x
@@ -11,8 +9,8 @@
       res = IFLM(666
 )
       if (res .eq. 777) then
-        print *, 'pp127.F90 yes'
+        print *, 'pp127.F90 pass'
       else
-        print *, 'pp127.F90 no: ', res
+        print *, 'pp127.F90 FAIL: ', res
       end if
       end

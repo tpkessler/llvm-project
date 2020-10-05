@@ -641,7 +641,7 @@ bool HexagonAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
       return true;
     return finishBundle(IDLoc, Out);
   }
-  MCInst *SubInst = getParser().getContext().createMCInst();
+  MCInst *SubInst = new (getParser().getContext()) MCInst;
   if (matchOneInstruction(*SubInst, IDLoc, Operands, ErrorInfo,
                           MatchingInlineAsm)) {
     if (InBrackets)

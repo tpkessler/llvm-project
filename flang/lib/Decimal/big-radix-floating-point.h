@@ -66,12 +66,12 @@ private:
 
 public:
   explicit BigRadixFloatingPointNumber(
-      enum FortranRounding rounding = RoundNearest)
+      enum FortranRounding rounding = RoundDefault)
       : rounding_{rounding} {}
 
   // Converts a binary floating point value.
   explicit BigRadixFloatingPointNumber(
-      Real, enum FortranRounding = RoundNearest);
+      Real, enum FortranRounding = RoundDefault);
 
   BigRadixFloatingPointNumber &SetToZero() {
     isNegative_ = false;
@@ -355,7 +355,7 @@ private:
   int digitLimit_{maxDigits}; // precision clamp
   int exponent_{0}; // signed power of ten
   bool isNegative_{false};
-  enum FortranRounding rounding_ { RoundNearest };
+  enum FortranRounding rounding_ { RoundDefault };
 };
 } // namespace Fortran::decimal
 #endif

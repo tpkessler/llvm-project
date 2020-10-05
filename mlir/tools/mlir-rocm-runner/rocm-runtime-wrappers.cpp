@@ -76,19 +76,17 @@ extern "C" void mgpuMemHostRegister(void *ptr, uint64_t sizeBytes) {
   HIP_REPORT_IF_ERROR(hipHostRegister(ptr, sizeBytes, /*flags=*/0));
 }
 
-// Allows to register a MemRef with the ROCm runtime. Helpful until we have
-// transfer functions implemented.
-extern "C" void
-mgpuMemHostRegisterMemRef(int64_t rank, StridedMemRefType<char, 1> *descriptor,
-                          int64_t elementSizeBytes) {
-
-  llvm::SmallVector<int64_t, 4> denseStrides(rank);
-  llvm::ArrayRef<int64_t> sizes(descriptor->sizes, rank);
-  llvm::ArrayRef<int64_t> strides(sizes.end(), rank);
+// Allows to register a MemRef with the ROCM runtime. Initializes array with
+// value. Helpful until we have transfer functions implemented.
+template <typename T>
+void mgpuMemHostRegisterMemRef(T *pointer, llvm::ArrayRef<int64_t> sizes,
+                               llvm::ArrayRef<int64_t> strides, T value) {
+  assert(sizes.size() == strides.size());
+  llvm::SmallVector<int64_t, 4> denseStrides(strides.size());
 
   std::partial_sum(sizes.rbegin(), sizes.rend(), denseStrides.rbegin(),
                    std::multiplies<int64_t>());
-  auto sizeBytes = denseStrides.front() * elementSizeBytes;
+  auto count = denseStrides.front();
 
   // Only densely packed tensors are currently supported.
   std::rotate(denseStrides.begin(), denseStrides.begin() + 1,
@@ -96,8 +94,22 @@ mgpuMemHostRegisterMemRef(int64_t rank, StridedMemRefType<char, 1> *descriptor,
   denseStrides.back() = 1;
   assert(strides == llvm::makeArrayRef(denseStrides));
 
-  auto ptr = descriptor->data + descriptor->offset * elementSizeBytes;
-  mgpuMemHostRegister(ptr, sizeBytes);
+  std::fill_n(pointer, count, value);
+  mgpuMemHostRegister(pointer, count * sizeof(T));
+}
+
+extern "C" void mgpuMemHostRegisterFloat(int64_t rank, void *ptr) {
+  auto *desc = static_cast<StridedMemRefType<float, 1> *>(ptr);
+  auto sizes = llvm::ArrayRef<int64_t>(desc->sizes, rank);
+  auto strides = llvm::ArrayRef<int64_t>(desc->sizes + rank, rank);
+  mgpuMemHostRegisterMemRef(desc->data + desc->offset, sizes, strides, 1.23f);
+}
+
+extern "C" void mgpuMemHostRegisterInt32(int64_t rank, void *ptr) {
+  auto *desc = static_cast<StridedMemRefType<int32_t, 1> *>(ptr);
+  auto sizes = llvm::ArrayRef<int64_t>(desc->sizes, rank);
+  auto strides = llvm::ArrayRef<int64_t>(desc->sizes + rank, rank);
+  mgpuMemHostRegisterMemRef(desc->data + desc->offset, sizes, strides, 123);
 }
 
 template <typename T>

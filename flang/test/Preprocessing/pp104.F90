@@ -1,11 +1,9 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: if(kwm .eq. 777) then
 ! KWMs case-sensitive
       integer, parameter :: KWM = 777
 #define KWM 666
       if (kwm .eq. 777) then
-        print *, 'pp104.F90 yes'
+        print *, 'pp104.F90 pass'
       else
-        print *, 'pp104.F90 no: ', kwm
+        print *, 'pp104.F90 FAIL: ', kwm
       end if
       end

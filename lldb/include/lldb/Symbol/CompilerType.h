@@ -177,7 +177,8 @@ public:
 
   /// Creating related types.
   /// \{
-  CompilerType GetArrayElementType(ExecutionContextScope *exe_scope) const;
+  CompilerType GetArrayElementType(ExecutionContextScope *exe_scope,
+                                   uint64_t *stride = nullptr) const;
 
   CompilerType GetArrayType(uint64_t size) const;
 

@@ -480,6 +480,17 @@ CapturedZoneInfo captureZoneInfo(const ExtractionZone &ExtZone) {
         CurNumberOfSwitch += Increment;
     }
 
+    // Decrement CurNumberOf{NestedLoops,Switch} if statement is {Loop,Switch}
+    // and inside Extraction Zone.
+    void decrementLoopSwitchCounters(Stmt *S) {
+      if (CurrentLocation != ZoneRelative::Inside)
+        return;
+      if (isLoop(S))
+        CurNumberOfNestedLoops--;
+      else if (isa<SwitchStmt>(S))
+        CurNumberOfSwitch--;
+    }
+
     bool VisitDecl(Decl *D) {
       Info.createDeclInfo(D, CurrentLocation);
       return true;
@@ -673,8 +684,6 @@ bool ExtractFunction::prepare(const Selection &Inputs) {
   const Node *CommonAnc = Inputs.ASTSelection.commonAncestor();
   const SourceManager &SM = Inputs.AST->getSourceManager();
   const LangOptions &LangOpts = Inputs.AST->getLangOpts();
-  if (!LangOpts.CPlusPlus)
-    return false;
   if (auto MaybeExtZone = findExtractionZone(CommonAnc, SM, LangOpts)) {
     ExtZone = std::move(*MaybeExtZone);
     return true;

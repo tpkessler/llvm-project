@@ -471,7 +471,6 @@ static MachineInstr *foldPatchpoint(MachineFunction &MF, MachineInstr &MI,
                                     ArrayRef<unsigned> Ops, int FrameIndex,
                                     const TargetInstrInfo &TII) {
   unsigned StartIdx = 0;
-  unsigned NumDefs = 0;
   switch (MI.getOpcode()) {
   case TargetOpcode::STACKMAP: {
     // StackMapLiveValues are foldable
@@ -487,26 +486,17 @@ static MachineInstr *foldPatchpoint(MachineFunction &MF, MachineInstr &MI,
   case TargetOpcode::STATEPOINT: {
     // For statepoints, fold deopt and gc arguments, but not call arguments.
     StartIdx = StatepointOpers(&MI).getVarIdx();
-    NumDefs = MI.getNumDefs();
     break;
   }
   default:
     llvm_unreachable("unexpected stackmap opcode");
   }
 
-  unsigned DefToFoldIdx = MI.getNumOperands();
-
   // Return false if any operands requested for folding are not foldable (not
   // part of the stackmap's live values).
   for (unsigned Op : Ops) {
-    // Caller is expected to avoid passing in tied operands
-    assert(!MI.getOperand(Op).isTied());
-    if (Op < NumDefs) {
-      assert(DefToFoldIdx == MI.getNumOperands() && "Folding multiple defs");
-      DefToFoldIdx = Op;
-    } else if (Op < StartIdx) {
+    if (Op < StartIdx)
       return nullptr;
-    }
   }
 
   MachineInstr *NewMI =
@@ -515,16 +505,11 @@ static MachineInstr *foldPatchpoint(MachineFunction &MF, MachineInstr &MI,
 
   // No need to fold return, the meta data, and function arguments
   for (unsigned i = 0; i < StartIdx; ++i)
-    if (i != DefToFoldIdx)
-      MIB.add(MI.getOperand(i));
+    MIB.add(MI.getOperand(i));
 
-  for (unsigned i = StartIdx, e = MI.getNumOperands(); i < e; ++i) {
+  for (unsigned i = StartIdx; i < MI.getNumOperands(); ++i) {
     MachineOperand &MO = MI.getOperand(i);
-    unsigned TiedTo = e;
-    (void)MI.isRegTiedToDefOperand(i, &TiedTo);
-
     if (is_contained(Ops, i)) {
-      assert(TiedTo == e && "Cannot fold tied operands");
       unsigned SpillSize;
       unsigned SpillOffset;
       // Compute the spill slot size and offset.
@@ -538,15 +523,9 @@ static MachineInstr *foldPatchpoint(MachineFunction &MF, MachineInstr &MI,
       MIB.addImm(SpillSize);
       MIB.addFrameIndex(FrameIndex);
       MIB.addImm(SpillOffset);
-    } else {
-      MIB.add(MO);
-      if (TiedTo < e) {
-        assert(TiedTo < NumDefs && "Bad tied operand");
-        if (TiedTo > DefToFoldIdx)
-          --TiedTo;
-        NewMI->tieOperands(TiedTo, NewMI->getNumOperands() - 1);
-      }
     }
+    else
+      MIB.add(MO);
   }
   return NewMI;
 }

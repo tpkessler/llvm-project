@@ -54,6 +54,29 @@ struct SequenceTypeStorage;
 struct TypeDescTypeStorage;
 } // namespace detail
 
+/// Integral identifier for all the types comprising the FIR type system
+enum TypeKind {
+  // The enum starts at the range reserved for this dialect.
+  FIR_TYPE = mlir::Type::FIRST_FIR_TYPE,
+  FIR_BOX,       // (static) descriptor
+  FIR_BOXCHAR,   // CHARACTER pointer and length
+  FIR_BOXPROC,   // procedure with host association
+  FIR_CHARACTER, // intrinsic type
+  FIR_COMPLEX,   // intrinsic type
+  FIR_DERIVED,   // derived
+  FIR_DIMS,
+  FIR_FIELD,
+  FIR_HEAP,
+  FIR_INT, // intrinsic type
+  FIR_LEN,
+  FIR_LOGICAL, // intrinsic type
+  FIR_POINTER, // POINTER attr
+  FIR_REAL,    // intrinsic type
+  FIR_REFERENCE,
+  FIR_SEQUENCE, // DIMENSION attr
+  FIR_TYPEDESC,
+};
+
 // These isa_ routines follow the precedent of llvm::isa_or_null<>
 
 /// Is `t` any of the FIR dialect types?
@@ -88,6 +111,13 @@ bool isa_aggregate(mlir::Type t);
 /// not a memory reference type, then returns a null `Type`.
 mlir::Type dyn_cast_ptrEleTy(mlir::Type t);
 
+/// Boilerplate mixin template
+template <typename A, unsigned Id>
+struct IntrinsicTypeMixin {
+  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
+  static constexpr unsigned getId() { return Id; }
+};
+
 // Intrinsic types
 
 /// Model of the Fortran CHARACTER intrinsic type, including the KIND type
@@ -95,7 +125,8 @@ mlir::Type dyn_cast_ptrEleTy(mlir::Type t);
 /// is thus the type of a single character value.
 class CharacterType
     : public mlir::Type::TypeBase<CharacterType, mlir::Type,
-                                  detail::CharacterTypeStorage> {
+                                  detail::CharacterTypeStorage>,
+      public IntrinsicTypeMixin<CharacterType, TypeKind::FIR_CHARACTER> {
 public:
   using Base::Base;
   static CharacterType get(mlir::MLIRContext *ctxt, KindTy kind);
@@ -106,7 +137,8 @@ public:
 /// parameter. COMPLEX is a floating point type with a real and imaginary
 /// member.
 class CplxType : public mlir::Type::TypeBase<CplxType, mlir::Type,
-                                             detail::CplxTypeStorage> {
+                                             detail::CplxTypeStorage>,
+                 public IntrinsicTypeMixin<CplxType, TypeKind::FIR_COMPLEX> {
 public:
   using Base::Base;
   static CplxType get(mlir::MLIRContext *ctxt, KindTy kind);
@@ -120,7 +152,8 @@ public:
 /// Model of a Fortran INTEGER intrinsic type, including the KIND type
 /// parameter.
 class IntType
-    : public mlir::Type::TypeBase<IntType, mlir::Type, detail::IntTypeStorage> {
+    : public mlir::Type::TypeBase<IntType, mlir::Type, detail::IntTypeStorage>,
+      public IntrinsicTypeMixin<IntType, TypeKind::FIR_INT> {
 public:
   using Base::Base;
   static IntType get(mlir::MLIRContext *ctxt, KindTy kind);
@@ -131,7 +164,8 @@ public:
 /// parameter.
 class LogicalType
     : public mlir::Type::TypeBase<LogicalType, mlir::Type,
-                                  detail::LogicalTypeStorage> {
+                                  detail::LogicalTypeStorage>,
+      public IntrinsicTypeMixin<LogicalType, TypeKind::FIR_LOGICAL> {
 public:
   using Base::Base;
   static LogicalType get(mlir::MLIRContext *ctxt, KindTy kind);
@@ -141,7 +175,8 @@ public:
 /// Model of a Fortran REAL (and DOUBLE PRECISION) intrinsic type, including the
 /// KIND type parameter.
 class RealType : public mlir::Type::TypeBase<RealType, mlir::Type,
-                                             detail::RealTypeStorage> {
+                                             detail::RealTypeStorage>,
+                 public IntrinsicTypeMixin<RealType, TypeKind::FIR_REAL> {
 public:
   using Base::Base;
   static RealType get(mlir::MLIRContext *ctxt, KindTy kind);
@@ -159,6 +194,7 @@ class BoxType
 public:
   using Base::Base;
   static BoxType get(mlir::Type eleTy, mlir::AffineMapAttr map = {});
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_BOX; }
   mlir::Type getEleTy() const;
   mlir::AffineMapAttr getLayoutMap() const;
 
@@ -175,6 +211,7 @@ class BoxCharType : public mlir::Type::TypeBase<BoxCharType, mlir::Type,
 public:
   using Base::Base;
   static BoxCharType get(mlir::MLIRContext *ctxt, KindTy kind);
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_BOXCHAR; }
   CharacterType getEleTy() const;
 };
 
@@ -186,6 +223,7 @@ class BoxProcType : public mlir::Type::TypeBase<BoxProcType, mlir::Type,
 public:
   using Base::Base;
   static BoxProcType get(mlir::Type eleTy);
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_BOXPROC; }
   mlir::Type getEleTy() const;
 
   static mlir::LogicalResult verifyConstructionInvariants(mlir::Location,
@@ -201,6 +239,7 @@ class DimsType : public mlir::Type::TypeBase<DimsType, mlir::Type,
 public:
   using Base::Base;
   static DimsType get(mlir::MLIRContext *ctx, unsigned rank);
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_DIMS; }
 
   /// returns -1 if the rank is unknown
   unsigned getRank() const;
@@ -214,6 +253,7 @@ class FieldType : public mlir::Type::TypeBase<FieldType, mlir::Type,
 public:
   using Base::Base;
   static FieldType get(mlir::MLIRContext *ctxt);
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_FIELD; }
 };
 
 /// The type of a heap pointer. Fortran entities with the ALLOCATABLE attribute
@@ -225,6 +265,7 @@ class HeapType : public mlir::Type::TypeBase<HeapType, mlir::Type,
 public:
   using Base::Base;
   static HeapType get(mlir::Type elementType);
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_HEAP; }
 
   mlir::Type getEleTy() const;
 
@@ -240,6 +281,7 @@ class LenType
 public:
   using Base::Base;
   static LenType get(mlir::MLIRContext *ctxt);
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_LEN; }
 };
 
 /// The type of entities with the POINTER attribute.  These pointers are
@@ -250,6 +292,7 @@ class PointerType : public mlir::Type::TypeBase<PointerType, mlir::Type,
 public:
   using Base::Base;
   static PointerType get(mlir::Type elementType);
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_POINTER; }
 
   mlir::Type getEleTy() const;
 
@@ -264,6 +307,7 @@ class ReferenceType
 public:
   using Base::Base;
   static ReferenceType get(mlir::Type elementType);
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_REFERENCE; }
 
   mlir::Type getEleTy() const;
 
@@ -317,6 +361,8 @@ public:
   /// The value `-1` represents an unknown extent for a dimension
   static constexpr Extent getUnknownExtent() { return -1; }
 
+  static bool kindof(unsigned kind) { return kind == TypeKind::FIR_SEQUENCE; }
+
   static mlir::LogicalResult
   verifyConstructionInvariants(mlir::Location loc, const Shape &shape,
                                mlir::Type eleTy, mlir::AffineMapAttr map);
@@ -333,6 +379,9 @@ class TypeDescType : public mlir::Type::TypeBase<TypeDescType, mlir::Type,
 public:
   using Base::Base;
   static TypeDescType get(mlir::Type ofType);
+  static constexpr bool kindof(unsigned kind) {
+    return kind == TypeKind::FIR_TYPEDESC;
+  }
   mlir::Type getOfTy() const;
 
   static mlir::LogicalResult verifyConstructionInvariants(mlir::Location,
@@ -366,6 +415,8 @@ public:
   static RecordType get(mlir::MLIRContext *ctxt, llvm::StringRef name);
   void finalize(llvm::ArrayRef<TypePair> lenPList,
                 llvm::ArrayRef<TypePair> typeList);
+  static constexpr bool kindof(unsigned kind) { return kind == getId(); }
+  static constexpr unsigned getId() { return TypeKind::FIR_DERIVED; }
 
   detail::RecordTypeStorage const *uniqueKey() const;
 

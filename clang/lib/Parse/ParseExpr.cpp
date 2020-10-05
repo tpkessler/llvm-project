@@ -3324,9 +3324,8 @@ ExprResult Parser::ParseFoldExpression(ExprResult LHS,
                         : diag::ext_fold_expression);
 
   T.consumeClose();
-  return Actions.ActOnCXXFoldExpr(getCurScope(), T.getOpenLocation(), LHS.get(),
-                                  Kind, EllipsisLoc, RHS.get(),
-                                  T.getCloseLocation());
+  return Actions.ActOnCXXFoldExpr(T.getOpenLocation(), LHS.get(), Kind,
+                                  EllipsisLoc, RHS.get(), T.getCloseLocation());
 }
 
 /// ParseExpressionList - Used for C/C++ (argument-)expression-list.

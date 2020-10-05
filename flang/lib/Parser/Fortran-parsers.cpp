@@ -116,8 +116,7 @@ TYPE_PARSER(first(
     construct<ImplicitPartStmt>(statement(indirect(parameterStmt))),
     construct<ImplicitPartStmt>(statement(indirect(oldParameterStmt))),
     construct<ImplicitPartStmt>(statement(indirect(formatStmt))),
-    construct<ImplicitPartStmt>(statement(indirect(entryStmt))),
-    construct<ImplicitPartStmt>(indirect(compilerDirective))))
+    construct<ImplicitPartStmt>(statement(indirect(entryStmt)))))
 
 // R512 internal-subprogram -> function-subprogram | subroutine-subprogram
 // Internal subprograms are not program units, so their END statements

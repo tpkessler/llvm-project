@@ -48,7 +48,7 @@ static MCRegisterInfo *createARCMCRegisterInfo(const Triple &TT) {
 
 static MCSubtargetInfo *createARCMCSubtargetInfo(const Triple &TT,
                                                  StringRef CPU, StringRef FS) {
-  return createARCMCSubtargetInfoImpl(TT, CPU, /*TuneCPU=*/CPU, FS);
+  return createARCMCSubtargetInfoImpl(TT, CPU, FS);
 }
 
 static MCAsmInfo *createARCMCAsmInfo(const MCRegisterInfo &MRI,

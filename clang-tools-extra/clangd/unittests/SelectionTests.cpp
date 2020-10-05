@@ -407,16 +407,8 @@ TEST(SelectionTest, CommonAncestor) {
           s2[[-^>]]f();
         }
       )cpp",
-       "DeclRefExpr"}, // DeclRefExpr to the "operator->" method.
-
-      // Template template argument.
-      {R"cpp(
-        template <typename> class Vector {};
-        template <template <typename> class Container> class A {};
-        A<[[V^ector]]> a;
-      )cpp",
-       "TemplateArgumentLoc"}};
-
+       "DeclRefExpr"} // DeclRefExpr to the "operator->" method.
+  };
   for (const Case &C : Cases) {
     trace::TestTracer Tracer;
     Annotations Test(C.Code);

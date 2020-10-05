@@ -31,7 +31,6 @@ class SBEnvironmentAPICase(TestBase):
 
 
     @add_test_categories(['pyapi'])
-    @skipIfRemote # Remote environment not supported.
     def test_platform_environment(self):
         env = self.dbg.GetSelectedPlatform().GetEnvironment()
         # We assume at least PATH is set
@@ -68,7 +67,6 @@ class SBEnvironmentAPICase(TestBase):
 
 
     @add_test_categories(['pyapi'])
-    @skipIfRemote # Remote environment not supported.
     def test_target_environment(self):
         env = self.dbg.GetSelectedTarget().GetEnvironment()
         # There is no target, so env should be empty

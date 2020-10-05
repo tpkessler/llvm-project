@@ -19,33 +19,48 @@ static bool isQuantizablePrimitiveType(Type inputType) {
 
 const ExpressedToQuantizedConverter
 ExpressedToQuantizedConverter::forInputType(Type inputType) {
-  if (inputType.isa<TensorType, VectorType>()) {
+  switch (inputType.getKind()) {
+  default:
+    if (isQuantizablePrimitiveType(inputType)) {
+      // Supported primitive type (which just is the expressed type).
+      return ExpressedToQuantizedConverter{inputType, inputType};
+    }
+    // Unsupported.
+    return ExpressedToQuantizedConverter{inputType, nullptr};
+  case StandardTypes::RankedTensor:
+  case StandardTypes::UnrankedTensor:
+  case StandardTypes::Vector: {
     Type elementType = inputType.cast<ShapedType>().getElementType();
-    if (!isQuantizablePrimitiveType(elementType))
+    if (!isQuantizablePrimitiveType(elementType)) {
+      // Unsupported.
       return ExpressedToQuantizedConverter{inputType, nullptr};
-    return ExpressedToQuantizedConverter{inputType, elementType};
+    }
+    return ExpressedToQuantizedConverter{
+        inputType, inputType.cast<ShapedType>().getElementType()};
   }
-  // Supported primitive type (which just is the expressed type).
-  if (isQuantizablePrimitiveType(inputType))
-    return ExpressedToQuantizedConverter{inputType, inputType};
-  // Unsupported.
-  return ExpressedToQuantizedConverter{inputType, nullptr};
+  }
 }
 
 Type ExpressedToQuantizedConverter::convert(QuantizedType elementalType) const {
   assert(expressedType && "convert() on unsupported conversion");
-  if (auto tensorType = inputType.dyn_cast<RankedTensorType>())
-    return RankedTensorType::get(tensorType.getShape(), elementalType);
-  if (auto tensorType = inputType.dyn_cast<UnrankedTensorType>())
-    return UnrankedTensorType::get(elementalType);
-  if (auto vectorType = inputType.dyn_cast<VectorType>())
-    return VectorType::get(vectorType.getShape(), elementalType);
 
-  // If the expressed types match, just use the new elemental type.
-  if (elementalType.getExpressedType() == expressedType)
-    return elementalType;
-  // Unsupported.
-  return nullptr;
+  switch (inputType.getKind()) {
+  default:
+    if (elementalType.getExpressedType() == expressedType) {
+      // If the expressed types match, just use the new elemental type.
+      return elementalType;
+    }
+    // Unsupported.
+    return nullptr;
+  case StandardTypes::RankedTensor:
+    return RankedTensorType::get(inputType.cast<RankedTensorType>().getShape(),
+                                 elementalType);
+  case StandardTypes::UnrankedTensor:
+    return UnrankedTensorType::get(elementalType);
+  case StandardTypes::Vector:
+    return VectorType::get(inputType.cast<VectorType>().getShape(),
+                           elementalType);
+  }
 }
 
 ElementsAttr

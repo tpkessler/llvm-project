@@ -372,9 +372,6 @@ class DwarfDebug : public DebugHandlerBase {
   /// Generate DWARF v4 type units.
   bool GenerateTypeUnits;
 
-  /// Emit a .debug_macro section instead of .debug_macinfo.
-  bool UseDebugMacroSection;
-
   /// DWARF5 Experimental Options
   /// @{
   AccelTableKind TheAccelTableKind;
@@ -651,7 +648,6 @@ public:
   class NonTypeUnitContext {
     DwarfDebug *DD;
     decltype(DwarfDebug::TypeUnitsUnderConstruction) TypeUnitsUnderConstruction;
-    bool AddrPoolUsed;
     friend class DwarfDebug;
     NonTypeUnitContext(DwarfDebug *DD);
   public:

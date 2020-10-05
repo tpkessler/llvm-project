@@ -154,9 +154,7 @@ void DAGTypeLegalizer::PromoteIntegerResult(SDNode *N, unsigned ResNo) {
   case ISD::SADDSAT:
   case ISD::UADDSAT:
   case ISD::SSUBSAT:
-  case ISD::USUBSAT:
-  case ISD::SSHLSAT:
-  case ISD::USHLSAT:     Res = PromoteIntRes_ADDSUBSHLSAT(N); break;
+  case ISD::USUBSAT:     Res = PromoteIntRes_ADDSUBSAT(N); break;
 
   case ISD::SMULFIX:
   case ISD::SMULFIXSAT:
@@ -702,11 +700,11 @@ SDValue DAGTypeLegalizer::PromoteIntRes_Overflow(SDNode *N) {
   return DAG.getBoolExtOrTrunc(Res.getValue(1), dl, NVT, VT);
 }
 
-SDValue DAGTypeLegalizer::PromoteIntRes_ADDSUBSHLSAT(SDNode *N) {
+SDValue DAGTypeLegalizer::PromoteIntRes_ADDSUBSAT(SDNode *N) {
   // If the promoted type is legal, we can convert this to:
   //   1. ANY_EXTEND iN to iM
   //   2. SHL by M-N
-  //   3. [US][ADD|SUB|SHL]SAT
+  //   3. [US][ADD|SUB]SAT
   //   4. L/ASHR by M-N
   // Else it is more efficient to convert this to a min and a max
   // operation in the higher precision arithmetic.
@@ -716,13 +714,9 @@ SDValue DAGTypeLegalizer::PromoteIntRes_ADDSUBSHLSAT(SDNode *N) {
   unsigned OldBits = Op1.getScalarValueSizeInBits();
 
   unsigned Opcode = N->getOpcode();
-  bool IsShift = Opcode == ISD::USHLSAT || Opcode == ISD::SSHLSAT;
 
   SDValue Op1Promoted, Op2Promoted;
-  if (IsShift) {
-    Op1Promoted = GetPromotedInteger(Op1);
-    Op2Promoted = ZExtPromotedInteger(Op2);
-  } else if (Opcode == ISD::UADDSAT || Opcode == ISD::USUBSAT) {
+  if (Opcode == ISD::UADDSAT || Opcode == ISD::USUBSAT) {
     Op1Promoted = ZExtPromotedInteger(Op1);
     Op2Promoted = ZExtPromotedInteger(Op2);
   } else {
@@ -732,24 +726,20 @@ SDValue DAGTypeLegalizer::PromoteIntRes_ADDSUBSHLSAT(SDNode *N) {
   EVT PromotedType = Op1Promoted.getValueType();
   unsigned NewBits = PromotedType.getScalarSizeInBits();
 
-  // Shift cannot use a min/max expansion, we can't detect overflow if all of
-  // the bits have been shifted out.
-  if (IsShift || TLI.isOperationLegalOrCustom(Opcode, PromotedType)) {
+  if (TLI.isOperationLegalOrCustom(Opcode, PromotedType)) {
     unsigned ShiftOp;
     switch (Opcode) {
     case ISD::SADDSAT:
     case ISD::SSUBSAT:
-    case ISD::SSHLSAT:
       ShiftOp = ISD::SRA;
       break;
     case ISD::UADDSAT:
     case ISD::USUBSAT:
-    case ISD::USHLSAT:
       ShiftOp = ISD::SRL;
       break;
     default:
       llvm_unreachable("Expected opcode to be signed or unsigned saturation "
-                       "addition, subtraction or left shift");
+                       "addition or subtraction");
     }
 
     unsigned SHLAmount = NewBits - OldBits;
@@ -757,9 +747,8 @@ SDValue DAGTypeLegalizer::PromoteIntRes_ADDSUBSHLSAT(SDNode *N) {
     SDValue ShiftAmount = DAG.getConstant(SHLAmount, dl, SHVT);
     Op1Promoted =
         DAG.getNode(ISD::SHL, dl, PromotedType, Op1Promoted, ShiftAmount);
-    if (!IsShift)
-      Op2Promoted =
-          DAG.getNode(ISD::SHL, dl, PromotedType, Op2Promoted, ShiftAmount);
+    Op2Promoted =
+        DAG.getNode(ISD::SHL, dl, PromotedType, Op2Promoted, ShiftAmount);
 
     SDValue Result =
         DAG.getNode(Opcode, dl, PromotedType, Op1Promoted, Op2Promoted);
@@ -1631,9 +1620,8 @@ SDValue DAGTypeLegalizer::PromoteIntOp_SELECT(SDNode *N, unsigned OpNo) {
   EVT OpTy = N->getOperand(1).getValueType();
 
   if (N->getOpcode() == ISD::VSELECT)
-    if (SDValue Res = WidenVSELECTMask(N))
-      return DAG.getNode(N->getOpcode(), SDLoc(N), N->getValueType(0),
-                         Res, N->getOperand(1), N->getOperand(2));
+    if (SDValue Res = WidenVSELECTAndMask(N))
+      return Res;
 
   // Promote all the way up to the canonical SetCC type.
   EVT OpVT = N->getOpcode() == ISD::SELECT ? OpTy.getScalarType() : OpTy;
@@ -2036,9 +2024,6 @@ void DAGTypeLegalizer::ExpandIntegerResult(SDNode *N, unsigned ResNo) {
   case ISD::UADDSAT:
   case ISD::SSUBSAT:
   case ISD::USUBSAT: ExpandIntRes_ADDSUBSAT(N, Lo, Hi); break;
-
-  case ISD::SSHLSAT:
-  case ISD::USHLSAT: ExpandIntRes_SHLSAT(N, Lo, Hi); break;
 
   case ISD::SMULFIX:
   case ISD::SMULFIXSAT:
@@ -2998,7 +2983,7 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
 
     // Increment the pointer to the other half.
     unsigned IncrementSize = NVT.getSizeInBits()/8;
-    Ptr = DAG.getMemBasePlusOffset(Ptr, TypeSize::Fixed(IncrementSize), dl);
+    Ptr = DAG.getMemBasePlusOffset(Ptr, IncrementSize, dl);
     Hi = DAG.getExtLoad(ExtType, dl, NVT, Ch, Ptr,
                         N->getPointerInfo().getWithOffset(IncrementSize), NEVT,
                         N->getOriginalAlign(), MMOFlags, AAInfo);
@@ -3022,7 +3007,7 @@ void DAGTypeLegalizer::ExpandIntRes_LOAD(LoadSDNode *N,
                         N->getOriginalAlign(), MMOFlags, AAInfo);
 
     // Increment the pointer to the other half.
-    Ptr = DAG.getMemBasePlusOffset(Ptr, TypeSize::Fixed(IncrementSize), dl);
+    Ptr = DAG.getMemBasePlusOffset(Ptr, IncrementSize, dl);
     // Load the rest of the low bits.
     Lo = DAG.getExtLoad(ISD::ZEXTLOAD, dl, NVT, Ch, Ptr,
                         N->getPointerInfo().getWithOffset(IncrementSize),
@@ -3159,12 +3144,6 @@ void DAGTypeLegalizer::ExpandIntRes_READCYCLECOUNTER(SDNode *N, SDValue &Lo,
 void DAGTypeLegalizer::ExpandIntRes_ADDSUBSAT(SDNode *N, SDValue &Lo,
                                               SDValue &Hi) {
   SDValue Result = TLI.expandAddSubSat(N, DAG);
-  SplitInteger(Result, Lo, Hi);
-}
-
-void DAGTypeLegalizer::ExpandIntRes_SHLSAT(SDNode *N, SDValue &Lo,
-                                           SDValue &Hi) {
-  SDValue Result = TLI.expandShlSat(N, DAG);
   SplitInteger(Result, Lo, Hi);
 }
 
@@ -4267,7 +4246,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo) {
 
     // Increment the pointer to the other half.
     unsigned IncrementSize = NVT.getSizeInBits()/8;
-    Ptr = DAG.getObjectPtrOffset(dl, Ptr, TypeSize::Fixed(IncrementSize));
+    Ptr = DAG.getObjectPtrOffset(dl, Ptr, IncrementSize);
     Hi = DAG.getTruncStore(Ch, dl, Hi, Ptr,
                            N->getPointerInfo().getWithOffset(IncrementSize),
                            NEVT, N->getOriginalAlign(), MMOFlags, AAInfo);
@@ -4302,7 +4281,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo) {
                          N->getOriginalAlign(), MMOFlags, AAInfo);
 
   // Increment the pointer to the other half.
-  Ptr = DAG.getObjectPtrOffset(dl, Ptr, TypeSize::Fixed(IncrementSize));
+  Ptr = DAG.getObjectPtrOffset(dl, Ptr, IncrementSize);
   // Store the lowest ExcessBits bits in the second half.
   Lo = DAG.getTruncStore(Ch, dl, Lo, Ptr,
                          N->getPointerInfo().getWithOffset(IncrementSize),

@@ -1,6 +1,3 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: 100format(3hKWM)
-! CHECK: if(ch.eq.'KWM')then
 * KWM NOT expanded in Hollerith in FORMAT
 #define KWM 666
 #define HKWM 667
@@ -8,8 +5,8 @@
  100  format(3HKWM)
       write(ch, 100)
       if (ch .eq. 'KWM') then
-        print *, 'pp024.F yes'
+        print *, 'pp024.F pass'
       else
-        print *, 'pp024.F no: ', ch
+        print *, 'pp024.F FAIL: ', ch
       end if
       end

@@ -346,12 +346,6 @@ bool Debugger::SetUseColor(bool b) {
   return ret;
 }
 
-bool Debugger::GetUseAutosuggestion() const {
-  const uint32_t idx = ePropertyShowAutosuggestion;
-  return m_collection_sp->GetPropertyAtIndexAsBoolean(
-      nullptr, idx, g_debugger_properties[idx].default_uint_value != 0);
-}
-
 bool Debugger::GetUseSourceCache() const {
   const uint32_t idx = ePropertyUseSourceCache;
   return m_collection_sp->GetPropertyAtIndexAsBoolean(
@@ -782,7 +776,7 @@ repro::DataRecorder *Debugger::GetInputRecorder() { return m_input_recorder; }
 void Debugger::SetInputFile(FileSP file_sp, repro::DataRecorder *recorder) {
   assert(file_sp && file_sp->IsValid());
   m_input_recorder = recorder;
-  m_input_file_sp = std::move(file_sp);
+  m_input_file_sp = file_sp;
   // Save away the terminal state if that is relevant, so that we can restore
   // it in RestoreInputState.
   SaveInputTerminalState();
@@ -1164,11 +1158,11 @@ bool Debugger::EnableLog(llvm::StringRef channel,
         flags |= File::eOpenOptionAppend;
       else
         flags |= File::eOpenOptionTruncate;
-      llvm::Expected<FileUP> file = FileSystem::Instance().Open(
+      auto file = FileSystem::Instance().Open(
           FileSpec(log_file), flags, lldb::eFilePermissionsFileDefault, false);
       if (!file) {
-        error_stream << "Unable to open log file '" << log_file
-                     << "': " << llvm::toString(file.takeError()) << "\n";
+        // FIXME: This gets garbled when called from the log command.
+        error_stream << "Unable to open log file: " << log_file;
         return false;
       }
 

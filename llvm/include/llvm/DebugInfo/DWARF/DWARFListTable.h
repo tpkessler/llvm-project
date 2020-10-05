@@ -72,6 +72,10 @@ class DWARFListTableHeader {
   };
 
   Header HeaderData;
+  /// The offset table, which contains offsets to the individual list entries.
+  /// It is used by forms such as DW_FORM_rnglistx.
+  /// FIXME: Generate the table and use the appropriate forms.
+  std::vector<uint64_t> Offsets;
   /// The table's format, either DWARF32 or DWARF64.
   dwarf::DwarfFormat Format;
   /// The offset at which the header (and hence the table) is located within
@@ -89,6 +93,7 @@ public:
 
   void clear() {
     HeaderData = {};
+    Offsets.clear();
   }
   uint64_t getHeaderOffset() const { return HeaderOffset; }
   uint8_t getAddrSize() const { return HeaderData.AddrSize; }
@@ -110,17 +115,11 @@ public:
     llvm_unreachable("Invalid DWARF format (expected DWARF32 or DWARF64");
   }
 
-  void dump(DataExtractor Data, raw_ostream &OS,
-            DIDumpOptions DumpOpts = {}) const;
-  Optional<uint64_t> getOffsetEntry(DataExtractor Data, uint32_t Index) const {
-    if (Index > HeaderData.OffsetEntryCount)
-      return None;
-
-    uint8_t OffsetByteSize = Format == dwarf::DWARF64 ? 8 : 4;
-    uint64_t Offset =
-        getHeaderOffset() + getHeaderSize(Format) + OffsetByteSize * Index;
-    auto R = Data.getUnsigned(&Offset, OffsetByteSize);
-    return R;
+  void dump(raw_ostream &OS, DIDumpOptions DumpOpts = {}) const;
+  Optional<uint64_t> getOffsetEntry(uint32_t Index) const {
+    if (Index < Offsets.size())
+      return Offsets[Index];
+    return None;
   }
 
   /// Extract the table header and the array of offsets.
@@ -170,14 +169,14 @@ public:
   uint8_t getAddrSize() const { return Header.getAddrSize(); }
   dwarf::DwarfFormat getFormat() const { return Header.getFormat(); }
 
-  void dump(DWARFDataExtractor Data, raw_ostream &OS,
+  void dump(raw_ostream &OS,
             llvm::function_ref<Optional<object::SectionedAddress>(uint32_t)>
                 LookupPooledAddress,
             DIDumpOptions DumpOpts = {}) const;
 
   /// Return the contents of the offset entry designated by a given index.
-  Optional<uint64_t> getOffsetEntry(DataExtractor Data, uint32_t Index) const {
-    return Header.getOffsetEntry(Data, Index);
+  Optional<uint64_t> getOffsetEntry(uint32_t Index) const {
+    return Header.getOffsetEntry(Index);
   }
   /// Return the size of the table header including the length but not including
   /// the offsets. This is dependent on the table format, which is unambiguously
@@ -241,11 +240,11 @@ Error DWARFListType<ListEntryType>::extract(DWARFDataExtractor Data,
 
 template <typename DWARFListType>
 void DWARFListTableBase<DWARFListType>::dump(
-    DWARFDataExtractor Data, raw_ostream &OS,
+    raw_ostream &OS,
     llvm::function_ref<Optional<object::SectionedAddress>(uint32_t)>
         LookupPooledAddress,
     DIDumpOptions DumpOpts) const {
-  Header.dump(Data, OS, DumpOpts);
+  Header.dump(OS, DumpOpts);
   OS << HeaderString << "\n";
 
   // Determine the length of the longest encoding string we have in the table,

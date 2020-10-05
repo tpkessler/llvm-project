@@ -190,9 +190,7 @@ int dumpAST() {
 }
 
 int dumpLLVMIR(mlir::ModuleOp module) {
-  // Convert the module to LLVM IR in a new LLVM IR context.
-  llvm::LLVMContext llvmContext;
-  auto llvmModule = mlir::translateModuleToLLVMIR(module, llvmContext);
+  auto llvmModule = mlir::translateModuleToLLVMIR(module);
   if (!llvmModule) {
     llvm::errs() << "Failed to emit LLVM IR\n";
     return -1;
@@ -256,10 +254,10 @@ int main(int argc, char **argv) {
 
   // If we aren't dumping the AST, then we are compiling with/to MLIR.
 
-  mlir::MLIRContext context(/*loadAllDialects=*/false);
-  // Load our Dialect in this MLIR Context.
-  context.getOrLoadDialect<mlir::toy::ToyDialect>();
+  // Register our Dialect with MLIR.
+  mlir::registerDialect<mlir::toy::ToyDialect>();
 
+  mlir::MLIRContext context;
   mlir::OwningModuleRef module;
   if (int error = loadAndProcessMLIR(context, module))
     return error;

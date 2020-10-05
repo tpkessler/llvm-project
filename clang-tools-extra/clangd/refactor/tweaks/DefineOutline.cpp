@@ -122,8 +122,9 @@ getFunctionSourceAfterReplacements(const FunctionDecl *FD,
   if (!OrigFuncRange)
     return llvm::createStringError(llvm::inconvertibleErrorCode(),
                                    "Couldn't get range for function.");
-  assert(!FD->getDescribedFunctionTemplate() &&
-         "Define out-of-line doesn't apply to function templates.");
+  // Include template parameter list.
+  if (auto *FTD = FD->getDescribedFunctionTemplate())
+    OrigFuncRange->setBegin(FTD->getBeginLoc());
 
   // Get new begin and end positions for the qualified function definition.
   unsigned FuncBegin = SM.getFileOffset(OrigFuncRange->getBegin());
@@ -384,13 +385,6 @@ public:
     // Bail out if the selection is not a in-line function definition.
     if (!Source || !Source->doesThisDeclarationHaveABody() ||
         Source->isOutOfLine())
-      return false;
-
-    // Bail out if this is a function template or specialization, as their
-    // definitions need to be visible in all including translation units.
-    if (auto *PT = Source->getDescribedFunctionTemplate())
-      return false;
-    if (auto *TSI = Source->getTemplateSpecializationInfo())
       return false;
 
     // Bail out in templated classes, as it is hard to spell the class name, i.e

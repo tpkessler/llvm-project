@@ -514,7 +514,6 @@ RegistryMaps::RegistryMaps() {
   REGISTER_MATCHER(templateArgumentCountIs);
   REGISTER_MATCHER(templateName);
   REGISTER_MATCHER(templateSpecializationType);
-  REGISTER_MATCHER(templateTemplateParmDecl);
   REGISTER_MATCHER(templateTypeParmDecl);
   REGISTER_MATCHER(templateTypeParmType);
   REGISTER_MATCHER(throughUsingDecl);

@@ -33,7 +33,7 @@ WebAssemblySubtarget::initializeSubtargetDependencies(StringRef CPU,
   if (CPU.empty())
     CPU = "generic";
 
-  ParseSubtargetFeatures(CPU, /*TuneCPU*/ CPU, FS);
+  ParseSubtargetFeatures(CPU, FS);
   return *this;
 }
 
@@ -41,10 +41,9 @@ WebAssemblySubtarget::WebAssemblySubtarget(const Triple &TT,
                                            const std::string &CPU,
                                            const std::string &FS,
                                            const TargetMachine &TM)
-    : WebAssemblyGenSubtargetInfo(TT, CPU, /*TuneCPU*/ CPU, FS),
-      TargetTriple(TT), FrameLowering(),
-      InstrInfo(initializeSubtargetDependencies(CPU, FS)), TSInfo(),
-      TLInfo(TM, *this) {}
+    : WebAssemblyGenSubtargetInfo(TT, CPU, FS), TargetTriple(TT),
+      FrameLowering(), InstrInfo(initializeSubtargetDependencies(CPU, FS)),
+      TSInfo(), TLInfo(TM, *this) {}
 
 bool WebAssemblySubtarget::enableAtomicExpand() const {
   // If atomics are disabled, atomic ops are lowered instead of expanded

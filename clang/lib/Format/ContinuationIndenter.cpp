@@ -1348,20 +1348,16 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
                    State.Stack.back().LastSpace);
     }
 
-    if (Previous &&
+    // If BreakBeforeBinaryOperators is set, un-indent a bit to account for
+    // the operator and keep the operands aligned
+    if (Style.AlignOperands == FormatStyle::OAS_AlignAfterOperator &&
+        Previous &&
         (Previous->getPrecedence() == prec::Assignment ||
          Previous->is(tok::kw_return) ||
          (*I == prec::Conditional && Previous->is(tok::question) &&
           Previous->is(TT_ConditionalExpr))) &&
-        !Newline) {
-      // If BreakBeforeBinaryOperators is set, un-indent a bit to account for
-      // the operator and keep the operands aligned
-      if (Style.AlignOperands == FormatStyle::OAS_AlignAfterOperator)
-        NewParenState.UnindentOperator = true;
-      // Mark indentation as alignment if the expression is aligned.
-      if (Style.AlignOperands != FormatStyle::OAS_DontAlign)
-        NewParenState.IsAligned = true;
-    }
+        !Newline)
+      NewParenState.UnindentOperator = true;
 
     // Do not indent relative to the fake parentheses inserted for "." or "->".
     // This is a special case to make the following to statements consistent:

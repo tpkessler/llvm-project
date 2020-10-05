@@ -245,9 +245,9 @@ public:
       m_decls_already_completed.insert(decl);
 
       // We should only complete decls coming from the source context.
-      assert(to_context_md->getOrigin(decl).ctx == m_src_ctx);
+      assert(to_context_md->m_origins[decl].ctx == m_src_ctx);
 
-      Decl *original_decl = to_context_md->getOrigin(decl).decl;
+      Decl *original_decl = to_context_md->m_origins[decl].decl;
 
       // Complete the decl now.
       TypeSystemClang::GetCompleteDecl(m_src_ctx, original_decl);
@@ -266,7 +266,7 @@ public:
         container_decl->setHasExternalVisibleStorage(false);
       }
 
-      to_context_md->removeOrigin(decl);
+      to_context_md->m_origins.erase(decl);
     }
 
     // Stop listening to imported decls. We do this after clearing the
@@ -581,7 +581,10 @@ bool ClangASTImporter::CompleteTagDeclWithOrigin(clang::TagDecl *decl,
 
   ASTContextMetadataSP context_md = GetContextMetadata(&decl->getASTContext());
 
-  context_md->setOrigin(decl, DeclOrigin(origin_ast_ctx, origin_decl));
+  OriginMap &origins = context_md->m_origins;
+
+  origins[decl] = DeclOrigin(origin_ast_ctx, origin_decl);
+
   return true;
 }
 
@@ -718,14 +721,29 @@ ClangASTImporter::DeclOrigin
 ClangASTImporter::GetDeclOrigin(const clang::Decl *decl) {
   ASTContextMetadataSP context_md = GetContextMetadata(&decl->getASTContext());
 
-  return context_md->getOrigin(decl);
+  OriginMap &origins = context_md->m_origins;
+
+  OriginMap::iterator iter = origins.find(decl);
+
+  if (iter != origins.end())
+    return iter->second;
+  return DeclOrigin();
 }
 
 void ClangASTImporter::SetDeclOrigin(const clang::Decl *decl,
                                      clang::Decl *original_decl) {
   ASTContextMetadataSP context_md = GetContextMetadata(&decl->getASTContext());
-  context_md->setOrigin(
-      decl, DeclOrigin(&original_decl->getASTContext(), original_decl));
+
+  OriginMap &origins = context_md->m_origins;
+
+  OriginMap::iterator iter = origins.find(decl);
+
+  if (iter != origins.end()) {
+    iter->second.decl = original_decl;
+    iter->second.ctx = &original_decl->getASTContext();
+    return;
+  }
+  origins[decl] = DeclOrigin(&original_decl->getASTContext(), original_decl);
 }
 
 void ClangASTImporter::RegisterNamespaceMap(const clang::NamespaceDecl *decl,
@@ -799,7 +817,14 @@ void ClangASTImporter::ForgetSource(clang::ASTContext *dst_ast,
     return;
 
   md->m_delegates.erase(src_ast);
-  md->removeOriginsWithContext(src_ast);
+
+  for (OriginMap::iterator iter = md->m_origins.begin();
+       iter != md->m_origins.end();) {
+    if (iter->second.ctx == src_ast)
+      md->m_origins.erase(iter++);
+    else
+      ++iter;
+  }
 }
 
 ClangASTImporter::MapCompleter::~MapCompleter() { return; }
@@ -870,14 +895,13 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
       return dn_or_err.takeError();
     DeclContext *dc = *dc_or_err;
     DeclContext::lookup_result lr = dc->lookup(*dn_or_err);
-    for (clang::Decl *candidate : lr) {
-      if (candidate->getKind() == From->getKind()) {
-        RegisterImportedDecl(From, candidate);
-        m_decls_to_ignore.insert(candidate);
-        return candidate;
-      }
-    }
-    LLDB_LOG(log, "[ClangASTImporter] Complete definition not found");
+    if (lr.size()) {
+      clang::Decl *lookup_found = lr.front();
+      RegisterImportedDecl(From, lookup_found);
+      m_decls_to_ignore.insert(lookup_found);
+      return lookup_found;
+    } else
+      LLDB_LOG(log, "[ClangASTImporter] Complete definition not found");
   }
 
   return ASTImporter::ImportImpl(From);
@@ -1076,31 +1100,37 @@ void ClangASTImporter::ASTImporterDelegate::Imported(clang::Decl *from,
       m_master.MaybeGetContextMetadata(m_source_ctx);
 
   if (from_context_md) {
-    DeclOrigin origin = from_context_md->getOrigin(from);
+    OriginMap &origins = from_context_md->m_origins;
 
-    if (origin.Valid()) {
-      if (!to_context_md->hasOrigin(to) || user_id != LLDB_INVALID_UID)
-        if (origin.ctx != &to->getASTContext())
-          to_context_md->setOrigin(to, origin);
+    OriginMap::iterator origin_iter = origins.find(from);
+
+    if (origin_iter != origins.end()) {
+      if (to_context_md->m_origins.find(to) == to_context_md->m_origins.end() ||
+          user_id != LLDB_INVALID_UID) {
+        if (origin_iter->second.ctx != &to->getASTContext())
+          to_context_md->m_origins[to] = origin_iter->second;
+      }
 
       ImporterDelegateSP direct_completer =
-          m_master.GetDelegate(&to->getASTContext(), origin.ctx);
+          m_master.GetDelegate(&to->getASTContext(), origin_iter->second.ctx);
 
       if (direct_completer.get() != this)
-        direct_completer->ASTImporter::Imported(origin.decl, to);
+        direct_completer->ASTImporter::Imported(origin_iter->second.decl, to);
 
       LLDB_LOG(log,
                "    [ClangASTImporter] Propagated origin "
                "(Decl*){0}/(ASTContext*){1} from (ASTContext*){2} to "
                "(ASTContext*){3}",
-               origin.decl, origin.ctx, &from->getASTContext(),
-               &to->getASTContext());
+               origin_iter->second.decl, origin_iter->second.ctx,
+               &from->getASTContext(), &to->getASTContext());
     } else {
       if (m_new_decl_listener)
         m_new_decl_listener->NewDeclImported(from, to);
 
-      if (!to_context_md->hasOrigin(to) || user_id != LLDB_INVALID_UID)
-        to_context_md->setOrigin(to, DeclOrigin(m_source_ctx, from));
+      if (to_context_md->m_origins.find(to) == to_context_md->m_origins.end() ||
+          user_id != LLDB_INVALID_UID) {
+        to_context_md->m_origins[to] = DeclOrigin(m_source_ctx, from);
+      }
 
       LLDB_LOG(log,
                "    [ClangASTImporter] Decl has no origin information in "
@@ -1121,7 +1151,7 @@ void ClangASTImporter::ASTImporterDelegate::Imported(clang::Decl *from,
             namespace_map_iter->second;
     }
   } else {
-    to_context_md->setOrigin(to, DeclOrigin(m_source_ctx, from));
+    to_context_md->m_origins[to] = DeclOrigin(m_source_ctx, from);
 
     LLDB_LOG(log,
              "    [ClangASTImporter] Sourced origin "

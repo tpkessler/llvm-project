@@ -43,7 +43,6 @@ module m
   end function
 
   subroutine test1 ! 15.5.2.9(5)
-    intrinsic :: sin
     procedure(realfunc), pointer :: p
     procedure(intfunc), pointer :: ip
     p => realfunc

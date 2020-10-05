@@ -1133,9 +1133,4 @@ public:
   operator()( ForwardIt2 first, ForwardIt2 last ) const;
 };
 
-template <typename> class packaged_task;
-template <typename Ret, typename... Args> class packaged_task<Ret(Args...)> {
-  // TODO: Add some actual implementation.
-};
-
-} // namespace std
+}

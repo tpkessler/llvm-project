@@ -744,7 +744,7 @@ struct EqualClangTidyError {
 std::vector<ClangTidyError> ClangTidyDiagnosticConsumer::take() {
   finalizeLastError();
 
-  llvm::stable_sort(Errors, LessClangTidyError());
+  llvm::sort(Errors, LessClangTidyError());
   Errors.erase(std::unique(Errors.begin(), Errors.end(), EqualClangTidyError()),
                Errors.end());
   if (RemoveIncompatibleErrors)

@@ -320,7 +320,6 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::FNEARBYINT, MVT::f32, Custom);
   setOperationAction(ISD::FNEARBYINT, MVT::f64, Custom);
 
-  setOperationAction(ISD::FREM, MVT::f16, Custom);
   setOperationAction(ISD::FREM, MVT::f32, Custom);
   setOperationAction(ISD::FREM, MVT::f64, Custom);
 
@@ -1544,7 +1543,7 @@ SDValue AMDGPUTargetLowering::SplitVectorLoad(const SDValue Op,
   SDValue LoLoad = DAG.getExtLoad(Load->getExtensionType(), SL, LoVT,
                                   Load->getChain(), BasePtr, SrcValue, LoMemVT,
                                   BaseAlign, Load->getMemOperand()->getFlags());
-  SDValue HiPtr = DAG.getObjectPtrOffset(SL, BasePtr, TypeSize::Fixed(Size));
+  SDValue HiPtr = DAG.getObjectPtrOffset(SL, BasePtr, Size);
   SDValue HiLoad =
       DAG.getExtLoad(Load->getExtensionType(), SL, HiVT, Load->getChain(),
                      HiPtr, SrcValue.getWithOffset(LoMemVT.getStoreSize()),
@@ -2080,19 +2079,20 @@ SDValue AMDGPUTargetLowering::LowerSDIVREM(SDValue Op,
   return DAG.getMergeValues(Res, DL);
 }
 
-// (frem x, y) -> (fma (fneg (ftrunc (fdiv x, y))), y, x)
+// (frem x, y) -> (fsub x, (fmul (ftrunc (fdiv x, y)), y))
 SDValue AMDGPUTargetLowering::LowerFREM(SDValue Op, SelectionDAG &DAG) const {
   SDLoc SL(Op);
   EVT VT = Op.getValueType();
-  auto Flags = Op->getFlags();
   SDValue X = Op.getOperand(0);
   SDValue Y = Op.getOperand(1);
 
-  SDValue Div = DAG.getNode(ISD::FDIV, SL, VT, X, Y, Flags);
-  SDValue Trunc = DAG.getNode(ISD::FTRUNC, SL, VT, Div, Flags);
-  SDValue Neg = DAG.getNode(ISD::FNEG, SL, VT, Trunc, Flags);
-  // TODO: For f32 use FMAD instead if !hasFastFMA32?
-  return DAG.getNode(ISD::FMA, SL, VT, Neg, Y, X, Flags);
+  // TODO: Should this propagate fast-math-flags?
+
+  SDValue Div = DAG.getNode(ISD::FDIV, SL, VT, X, Y);
+  SDValue Floor = DAG.getNode(ISD::FTRUNC, SL, VT, Div);
+  SDValue Mul = DAG.getNode(ISD::FMUL, SL, VT, Floor, Y);
+
+  return DAG.getNode(ISD::FSUB, SL, VT, X, Mul);
 }
 
 SDValue AMDGPUTargetLowering::LowerFCEIL(SDValue Op, SelectionDAG &DAG) const {
@@ -3940,7 +3940,7 @@ SDValue AMDGPUTargetLowering::PerformDAGCombine(SDNode *N,
       }
     }
 
-    if (DestVT.getSizeInBits() != 64 || !DestVT.isVector())
+    if (DestVT.getSizeInBits() != 64 && !DestVT.isVector())
       break;
 
     // Fold bitcasts of constants.
@@ -3949,12 +3949,14 @@ SDValue AMDGPUTargetLowering::PerformDAGCombine(SDNode *N,
     // TODO: Generalize and move to DAGCombiner
     SDValue Src = N->getOperand(0);
     if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Src)) {
-      SDLoc SL(N);
-      uint64_t CVal = C->getZExtValue();
-      SDValue BV = DAG.getNode(ISD::BUILD_VECTOR, SL, MVT::v2i32,
-                               DAG.getConstant(Lo_32(CVal), SL, MVT::i32),
-                               DAG.getConstant(Hi_32(CVal), SL, MVT::i32));
-      return DAG.getNode(ISD::BITCAST, SL, DestVT, BV);
+      if (Src.getValueType() == MVT::i64) {
+        SDLoc SL(N);
+        uint64_t CVal = C->getZExtValue();
+        SDValue BV = DAG.getNode(ISD::BUILD_VECTOR, SL, MVT::v2i32,
+                                 DAG.getConstant(Lo_32(CVal), SL, MVT::i32),
+                                 DAG.getConstant(Hi_32(CVal), SL, MVT::i32));
+        return DAG.getNode(ISD::BITCAST, SL, DestVT, BV);
+      }
     }
 
     if (ConstantFPSDNode *C = dyn_cast<ConstantFPSDNode>(Src)) {
@@ -4369,6 +4371,8 @@ const char* AMDGPUTargetLowering::getTargetNodeName(unsigned Opcode) const {
   NODE_NAME_CASE(BUFFER_ATOMIC_CMPSWAP)
   NODE_NAME_CASE(BUFFER_ATOMIC_CSUB)
   NODE_NAME_CASE(BUFFER_ATOMIC_FADD)
+  NODE_NAME_CASE(BUFFER_ATOMIC_PK_FADD)
+  NODE_NAME_CASE(ATOMIC_PK_FADD)
 
   case AMDGPUISD::LAST_AMDGPU_ISD_NUMBER: break;
   }

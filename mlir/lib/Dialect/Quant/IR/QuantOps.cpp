@@ -23,7 +23,8 @@ using namespace mlir;
 using namespace mlir::quant;
 using namespace mlir::quant::detail;
 
-void QuantizationDialect::initialize() {
+QuantizationDialect::QuantizationDialect(MLIRContext *context)
+    : Dialect(/*name=*/"quant", context) {
   addTypes<AnyQuantizedType, UniformQuantizedType,
            UniformQuantizedPerAxisType>();
   addOperations<

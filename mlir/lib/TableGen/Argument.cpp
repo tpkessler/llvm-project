@@ -10,12 +10,15 @@
 #include "llvm/TableGen/Record.h"
 
 using namespace mlir;
-using namespace mlir::tblgen;
 
-bool NamedTypeConstraint::hasPredicate() const {
+bool tblgen::NamedTypeConstraint::hasPredicate() const {
   return !constraint.getPredicate().isNull();
 }
 
-bool NamedTypeConstraint::isOptional() const { return constraint.isOptional(); }
+bool tblgen::NamedTypeConstraint::isOptional() const {
+  return constraint.isOptional();
+}
 
-bool NamedTypeConstraint::isVariadic() const { return constraint.isVariadic(); }
+bool tblgen::NamedTypeConstraint::isVariadic() const {
+  return constraint.isVariadic();
+}

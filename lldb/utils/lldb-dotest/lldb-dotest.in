@@ -1,4 +1,4 @@
-#!@Python3_EXECUTABLE@
+#!@PYTHON_EXECUTABLE@
 import subprocess
 import sys
 

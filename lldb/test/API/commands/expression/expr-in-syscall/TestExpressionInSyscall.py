@@ -31,7 +31,6 @@ class ExprSyscallTestCase(TestBase):
         # launch the inferior and don't wait for it to stop
         self.dbg.SetAsync(True)
         error = lldb.SBError()
-        flags = target.GetLaunchInfo().GetLaunchFlags()
         process = target.Launch(listener,
                                 None,      # argv
                                 None,      # envp
@@ -39,7 +38,7 @@ class ExprSyscallTestCase(TestBase):
                                 None,      # stdout_path
                                 None,      # stderr_path
                                 None,      # working directory
-                                flags,     # launch flags
+                                0,         # launch flags
                                 False,     # Stop at entry
                                 error)     # error
 
@@ -74,8 +73,9 @@ class ExprSyscallTestCase(TestBase):
         thread = process.GetSelectedThread()
 
         # try evaluating a couple of expressions in this state
-        self.expect_expr("release_flag = 1", result_value="1")
-        self.expect_expr("(int)getpid()", result_value=str(process.GetProcessID()))
+        self.expect("expr release_flag = 1", substrs=[" = 1"])
+        self.expect("print (int)getpid()",
+                    substrs=[str(process.GetProcessID())])
 
         # and run the process to completion
         process.Continue()

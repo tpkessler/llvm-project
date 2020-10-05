@@ -322,8 +322,7 @@ StaticLibraryDefinitionGenerator::Load(ObjectLayer &L, const char *FileName,
       auto ObjTT = Obj.getTriple();
       if (ObjTT.getArch() == TT.getArch() &&
           ObjTT.getSubArch() == TT.getSubArch() &&
-          (TT.getVendor() == Triple::UnknownVendor ||
-           ObjTT.getVendor() == TT.getVendor())) {
+          ObjTT.getVendor() == TT.getVendor()) {
         // We found a match. Create an instance from a buffer covering this
         // slice.
         auto SliceBuffer = MemoryBuffer::getFileSlice(FileName, Obj.getSize(),

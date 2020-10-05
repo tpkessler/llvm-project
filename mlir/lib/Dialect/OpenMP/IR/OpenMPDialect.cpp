@@ -26,7 +26,8 @@
 using namespace mlir;
 using namespace mlir::omp;
 
-void OpenMPDialect::initialize() {
+OpenMPDialect::OpenMPDialect(MLIRContext *context)
+    : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/OpenMP/OpenMPOps.cpp.inc"
@@ -69,7 +70,7 @@ static void printParallelOp(OpAsmPrinter &p, ParallelOp op) {
   p << "omp.parallel";
 
   if (auto ifCond = op.if_expr_var())
-    p << " if(" << ifCond << " : " << ifCond.getType() << ")";
+    p << " if(" << ifCond << ")";
 
   if (auto threads = op.num_threads_var())
     p << " num_threads(" << threads << " : " << threads.getType() << ")";
@@ -124,7 +125,7 @@ static ParseResult allowedOnce(OpAsmParser &parser, llvm::StringRef clause,
 /// Note that each clause can only appear once in the clase-list.
 static ParseResult parseParallelOp(OpAsmParser &parser,
                                    OperationState &result) {
-  std::pair<OpAsmParser::OperandType, Type> ifCond;
+  OpAsmParser::OperandType ifCond;
   std::pair<OpAsmParser::OperandType, Type> numThreads;
   llvm::SmallVector<OpAsmParser::OperandType, 4> privates;
   llvm::SmallVector<Type, 4> privateTypes;
@@ -152,8 +153,8 @@ static ParseResult parseParallelOp(OpAsmParser &parser,
       // Fail if there was already another if condition
       if (segments[ifClausePos])
         return allowedOnce(parser, "if", opName);
-      if (parser.parseLParen() || parser.parseOperand(ifCond.first) ||
-          parser.parseColonType(ifCond.second) || parser.parseRParen())
+      if (parser.parseLParen() || parser.parseOperand(ifCond) ||
+          parser.parseRParen())
         return failure();
       segments[ifClausePos] = 1;
     } else if (keyword == "num_threads") {
@@ -209,7 +210,7 @@ static ParseResult parseParallelOp(OpAsmParser &parser,
       auto attr = parser.getBuilder().getStringAttr(attrval);
       result.addAttribute("default_val", attr);
     } else if (keyword == "proc_bind") {
-      // fail if there was already another proc_bind clause
+      // fail if there was already another default clause
       if (procBind)
         return allowedOnce(parser, "proc_bind", opName);
       procBind = true;
@@ -228,7 +229,8 @@ static ParseResult parseParallelOp(OpAsmParser &parser,
 
   // Add if parameter
   if (segments[ifClausePos]) {
-    parser.resolveOperand(ifCond.first, ifCond.second, result.operands);
+    parser.resolveOperand(ifCond, parser.getBuilder().getI1Type(),
+                          result.operands);
   }
 
   // Add num_threads parameter

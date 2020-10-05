@@ -1,5 +1,3 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: res=((666)+111)
 * FLM call name split across continuation
       integer function IFLM(x)
         integer :: x
@@ -11,8 +9,8 @@
       res = IFL
      +M(666)
       if (res .eq. 777) then
-        print *, 'pp012.F yes'
+        print *, 'pp012.F pass'
       else
-        print *, 'pp012.F no: ', res
+        print *, 'pp012.F FAIL: ', res
       end if
       end

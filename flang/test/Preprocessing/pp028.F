@@ -1,5 +1,3 @@
-! RUN: %f18 -E %s 2>&1 | FileCheck %s
-! CHECK: res=kw
 * fixed-form clipping done before KWM expansion on source line
       integer, parameter :: KW = 777
 #define KWM 666
@@ -9,8 +7,8 @@
 *234567890123456789012345678901234567890123456789012345678901234567890123
       res =                                                           KWM
       if (res .eq. 777) then
-        print *, 'pp028.F yes'
+        print *, 'pp028.F pass'
       else
-        print *, 'pp028.F no: ', res
+        print *, 'pp028.F FAIL: ', res
       end if
       end

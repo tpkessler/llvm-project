@@ -77,7 +77,6 @@ if(NOT LLDB_BUILT_STANDALONE)
     dsymutil
     llvm-strip
     not
-    split-file
     yaml2obj
   )
 endif()
@@ -219,7 +218,7 @@ if(LLDB_BUILT_STANDALONE)
   if (EXISTS ${LLVM_MAIN_SRC_DIR}/utils/llvm-lit)
     # LLVM's make_paths_relative uses Python3_EXECUTABLE which isn't set in a
     # standalone LLDB build.
-    set(Python3_EXECUTABLE ${Python3_EXECUTABLE})
+    set(Python3_EXECUTABLE ${PYTHON_EXECUTABLE})
     add_subdirectory(${LLVM_MAIN_SRC_DIR}/utils/llvm-lit ${CMAKE_CURRENT_BINARY_DIR}/llvm-lit)
   endif()
 endif()

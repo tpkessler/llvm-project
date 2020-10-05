@@ -30,12 +30,10 @@ llvm::cl::opt<std::string> IndexLocation(
     llvm::cl::Positional);
 
 llvm::cl::opt<std::string>
-    ExecCommand("c", llvm::cl::desc("Command to execute and then exit."));
+    ExecCommand("c", llvm::cl::desc("Command to execute and then exit"));
 
-llvm::cl::opt<std::string> ProjectRoot(
-    "project-root",
-    llvm::cl::desc(
-        "Path to the project. Required when connecting using remote index."));
+llvm::cl::opt<std::string> ProjectRoot("project-root",
+                                       llvm::cl::desc("Path to the project"));
 
 static constexpr char Overview[] = R"(
 This is an **experimental** interactive tool to process user-provided search
@@ -375,14 +373,10 @@ int main(int argc, const char *argv[]) {
   llvm::cl::ResetCommandLineParser(); // We reuse it for REPL commands.
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
 
-  bool RemoteMode = llvm::StringRef(IndexLocation).startswith("remote:");
-  if (RemoteMode && ProjectRoot.empty()) {
-    llvm::errs() << "--project-root is required in remote mode\n";
-    return -1;
-  }
-
   std::unique_ptr<SymbolIndex> Index;
-  reportTime(RemoteMode ? "Remote index client creation" : "Dex build",
+  reportTime(llvm::StringRef(IndexLocation).startswith("remote:")
+                 ? "Remote index client creation"
+                 : "Dex build",
              [&]() { Index = openIndex(IndexLocation); });
 
   if (!Index) {

@@ -548,13 +548,17 @@ Error DWARFUnit::tryExtractDIEsIfNeeded(bool CUDieOnly) {
 
       uint64_t HeaderSize = DWARFListTableHeader::getHeaderSize(Header.getFormat());
       uint64_t Offset = getLocSectionBase();
-      const DWARFDataExtractor &Data = LocTable->getData();
+      DWARFDataExtractor Data(Context.getDWARFObj(), *LocSection,
+                              isLittleEndian, getAddressByteSize());
       if (Offset < HeaderSize)
         return createStringError(errc::invalid_argument,
                                  "did not detect a valid"
                                  " list table with base = 0x%" PRIx64 "\n",
                                  Offset);
       Offset -= HeaderSize;
+      if (auto *IndexEntry = Header.getIndexEntry())
+        if (const auto *Contrib = IndexEntry->getContribution(DW_SECT_LOCLISTS))
+          Offset += Contrib->Offset;
       if (Error E = LoclistTableHeader->extract(Data, &Offset))
         return createStringError(errc::invalid_argument,
                                  "parsing a loclist table: " +
@@ -991,27 +995,11 @@ DWARFUnit::determineStringOffsetsTableContributionDWO(DWARFDataExtractor & DA) {
   // Prior to DWARF v5, we derive the contribution size from the
   // index table (in a package file). In a .dwo file it is simply
   // the length of the string offsets section.
-  StrOffsetsContributionDescriptor Desc;
+  if (!IndexEntry)
+    return {Optional<StrOffsetsContributionDescriptor>(
+        {0, StringOffsetSection.Data.size(), 4, Header.getFormat()})};
   if (C)
-    Desc = StrOffsetsContributionDescriptor(C->Offset, C->Length, 4,
-                                            Header.getFormat());
-  else if (!IndexEntry && !StringOffsetSection.Data.empty())
-    Desc = StrOffsetsContributionDescriptor(0, StringOffsetSection.Data.size(),
-                                            4, Header.getFormat());
-  else
-    return None;
-  auto DescOrError = Desc.validateContributionSize(DA);
-  if (!DescOrError)
-    return DescOrError.takeError();
-  return *DescOrError;
-}
-
-Optional<uint64_t> DWARFUnit::getRnglistOffset(uint32_t Index) {
-  if (!RngListTable)
-    return None;
-  DataExtractor RangesData(RangeSection->Data, isLittleEndian,
-                           getAddressByteSize());
-  if (Optional<uint64_t> Off = RngListTable->getOffsetEntry(RangesData, Index))
-    return *Off + RangeSectionBase;
+    return {Optional<StrOffsetsContributionDescriptor>(
+        {C->Offset, C->Length, 4, Header.getFormat()})};
   return None;
 }

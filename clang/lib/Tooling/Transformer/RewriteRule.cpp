@@ -30,8 +30,6 @@ using ast_matchers::internal::DynTypedMatcher;
 
 using MatchResult = MatchFinder::MatchResult;
 
-const char transformer::RootID[] = "___root___";
-
 static Expected<SmallVector<transformer::Edit, 1>>
 translateEdits(const MatchResult &Result, ArrayRef<ASTEdit> ASTEdits) {
   SmallVector<transformer::Edit, 1> Edits;
@@ -52,7 +50,6 @@ translateEdits(const MatchResult &Result, ArrayRef<ASTEdit> ASTEdits) {
     if (!Metadata)
       return Metadata.takeError();
     transformer::Edit T;
-    T.Kind = E.Kind;
     T.Range = *EditRange;
     T.Replacement = std::move(*Replacement);
     T.Metadata = std::move(*Metadata);
@@ -116,37 +113,14 @@ public:
 };
 } // namespace
 
-static TextGenerator makeText(std::string S) {
-  return std::make_shared<SimpleTextGenerator>(std::move(S));
-}
-
 ASTEdit transformer::remove(RangeSelector S) {
-  return change(std::move(S), makeText(""));
-}
-
-static std::string formatHeaderPath(StringRef Header, IncludeFormat Format) {
-  switch (Format) {
-  case transformer::IncludeFormat::Quoted:
-    return Header.str();
-  case transformer::IncludeFormat::Angled:
-    return ("<" + Header + ">").str();
-  }
-  llvm_unreachable("Unknown transformer::IncludeFormat enum");
-}
-
-ASTEdit transformer::addInclude(RangeSelector Target, StringRef Header,
-                                IncludeFormat Format) {
-  ASTEdit E;
-  E.Kind = EditKind::AddInclude;
-  E.TargetRange = Target;
-  E.Replacement = makeText(formatHeaderPath(Header, Format));
-  return E;
+  return change(std::move(S), std::make_shared<SimpleTextGenerator>(""));
 }
 
 RewriteRule transformer::makeRule(DynTypedMatcher M, EditGenerator Edits,
                                   TextGenerator Explanation) {
-  return RewriteRule{{RewriteRule::Case{std::move(M), std::move(Edits),
-                                        std::move(Explanation)}}};
+  return RewriteRule{{RewriteRule::Case{
+      std::move(M), std::move(Edits), std::move(Explanation), {}}}};
 }
 
 namespace {
@@ -282,7 +256,7 @@ EditGenerator transformer::rewriteDescendants(std::string NodeId,
 void transformer::addInclude(RewriteRule &Rule, StringRef Header,
                              IncludeFormat Format) {
   for (auto &Case : Rule.Cases)
-    Case.Edits = flatten(std::move(Case.Edits), addInclude(Header, Format));
+    Case.AddedIncludes.emplace_back(Header.str(), Format);
 }
 
 #ifndef NDEBUG
@@ -355,7 +329,8 @@ transformer::detail::buildMatchers(const RewriteRule &Rule) {
         taggedMatchers("Tag", Bucket.second, TK_IgnoreUnlessSpelledInSource));
     M.setAllowBind(true);
     // `tryBind` is guaranteed to succeed, because `AllowBind` was set to true.
-    Matchers.push_back(M.tryBind(RootID)->withTraversalKind(TK_AsIs));
+    Matchers.push_back(
+        M.tryBind(RewriteRule::RootID)->withTraversalKind(TK_AsIs));
   }
   return Matchers;
 }
@@ -368,7 +343,7 @@ DynTypedMatcher transformer::detail::buildMatcher(const RewriteRule &Rule) {
 
 SourceLocation transformer::detail::getRuleMatchLoc(const MatchResult &Result) {
   auto &NodesMap = Result.Nodes.getMap();
-  auto Root = NodesMap.find(RootID);
+  auto Root = NodesMap.find(RewriteRule::RootID);
   assert(Root != NodesMap.end() && "Transformation failed: missing root node.");
   llvm::Optional<CharSourceRange> RootRange = tooling::getRangeForEdit(
       CharSourceRange::getTokenRange(Root->second.getSourceRange()),
@@ -398,7 +373,7 @@ transformer::detail::findSelectedCase(const MatchResult &Result,
   llvm_unreachable("No tag found for this rule.");
 }
 
-const llvm::StringRef RewriteRule::RootID = ::clang::transformer::RootID;
+constexpr llvm::StringLiteral RewriteRule::RootID;
 
 TextGenerator tooling::text(std::string M) {
   return std::make_shared<SimpleTextGenerator>(std::move(M));

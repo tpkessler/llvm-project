@@ -14,12 +14,10 @@
 
 namespace mlir {
 
-class LLVMTypeConverter;
 class Location;
 struct LogicalResult;
 class ModuleOp;
 class Operation;
-class OwningRewritePatternList;
 
 template <typename T>
 class OperationPass;
@@ -35,8 +33,8 @@ class LLVMDialect;
 using OwnedBlob = std::unique_ptr<std::vector<char>>;
 using BlobGenerator =
     std::function<OwnedBlob(const std::string &, Location, StringRef)>;
-using LoweringCallback = std::function<std::unique_ptr<llvm::Module>(
-    Operation *, llvm::LLVMContext &, StringRef)>;
+using LoweringCallback =
+    std::function<std::unique_ptr<llvm::Module>(Operation *)>;
 
 /// Creates a pass to convert a gpu.launch_func operation into a sequence of
 /// GPU runtime calls.
@@ -45,12 +43,8 @@ using LoweringCallback = std::function<std::unique_ptr<llvm::Module>(
 /// instead uses a small wrapper library that exports a stable and conveniently
 /// typed ABI on top of GPU runtimes such as CUDA or ROCm (HIP).
 std::unique_ptr<OperationPass<ModuleOp>>
-createGpuToLLVMConversionPass(StringRef gpuBinaryAnnotation = "");
-
-/// Collect a set of patterns to convert from the GPU dialect to LLVM.
-void populateGpuToLLVMConversionPatterns(LLVMTypeConverter &converter,
-                                         OwningRewritePatternList &patterns,
-                                         StringRef gpuBinaryAnnotation);
+createConvertGpuLaunchFuncToGpuRuntimeCallsPass(
+    StringRef gpuBinaryAnnotation = "");
 
 /// Creates a pass to convert kernel functions into GPU target object blobs.
 ///

@@ -26,9 +26,7 @@ class IOHandlerCompletionTest(PExpectTest):
 
         # Try tab completing regi to register.
         self.child.send("regi\t")
-        # editline might move the cursor back to the start of the line and
-        # then back to its original position.
-        self.child.expect(re.compile(b"regi(\r" + self.cursor_forward_escape_seq(len(self.PROMPT + "regi")) + b")?ster"))
+        self.child.expect_exact(self.PROMPT + "register")
         self.child.send("\n")
         self.expect_prompt()
 
@@ -41,11 +39,7 @@ class IOHandlerCompletionTest(PExpectTest):
         # If we get a correct partial completion without a trailing space, then this
         # should complete the current test file.
         self.child.send("TestIOHandler\t")
-        # As above, editline might move the cursor to the start of the line and
-        # then back to its original position. We only care about the fact
-        # that this is completing a partial completion, so skip the exact cursor
-        # position calculation.
-        self.child.expect(re.compile(b"TestIOHandler(\r" + self.cursor_forward_escape_seq("\d+") + b")?Completion.py"))
+        self.child.expect_exact("TestIOHandlerCompletion.py")
         self.child.send("\n")
         self.expect_prompt()
 

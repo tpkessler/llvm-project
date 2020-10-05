@@ -184,9 +184,6 @@ protected:
     else
       m_options.launch_info.GetFlags().Clear(eLaunchFlagDisableASLR);
 
-    if (target->GetInheritTCC())
-      m_options.launch_info.GetFlags().Set(eLaunchFlagInheritTCCFromParent);
-
     if (target->GetDetachOnError())
       m_options.launch_info.GetFlags().Set(eLaunchFlagDetachOnError);
 

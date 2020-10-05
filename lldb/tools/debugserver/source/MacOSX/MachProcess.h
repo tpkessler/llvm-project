@@ -241,8 +241,7 @@ public:
     uint32_t patch_version = 0;
   };
   DeploymentInfo GetDeploymentInfo(const struct load_command &,
-                                   uint64_t load_command_address,
-                                   bool is_executable);
+                                   uint64_t load_command_address);
   static const char *GetPlatformString(unsigned char platform);
   bool GetMachOInformationFromMemory(uint32_t platform,
                                      nub_addr_t mach_o_header_addr,
@@ -250,15 +249,7 @@ public:
                                      struct mach_o_information &inf);
   JSONGenerator::ObjectSP FormatDynamicLibrariesIntoJSON(
       const std::vector<struct binary_image_information> &image_infos);
-  /// Get the runtime platform from DYLD via SPI.
-  uint32_t GetProcessPlatformViaDYLDSPI();
-  /// Use the dyld SPI present in macOS 10.12, iOS 10, tvOS 10,
-  /// watchOS 3 and newer to get the load address, uuid, and filenames
-  /// of all the libraries.  This only fills in those three fields in
-  /// the 'struct binary_image_information' - call
-  /// GetMachOInformationFromMemory to fill in the mach-o header/load
-  /// command details.
-  void GetAllLoadedBinariesViaDYLDSPI(
+  uint32_t GetAllLoadedBinariesViaDYLDSPI(
       std::vector<struct binary_image_information> &image_infos);
   JSONGenerator::ObjectSP GetLoadedDynamicLibrariesInfos(
       nub_process_t pid, nub_addr_t image_list_address, nub_addr_t image_count);

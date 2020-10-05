@@ -159,8 +159,6 @@ public:
                   MatchCallback *Action);
   void addMatcher(const CXXCtorInitializerMatcher &NodeMatch,
                   MatchCallback *Action);
-  void addMatcher(const TemplateArgumentLocMatcher &NodeMatch,
-                  MatchCallback *Action);
   /// @}
 
   /// Adds a matcher to execute when running over the AST.
@@ -211,8 +209,6 @@ public:
         NestedNameSpecifierLoc;
     std::vector<std::pair<TypeLocMatcher, MatchCallback *>> TypeLoc;
     std::vector<std::pair<CXXCtorInitializerMatcher, MatchCallback *>> CtorInit;
-    std::vector<std::pair<TemplateArgumentLocMatcher, MatchCallback *>>
-        TemplateArgumentLoc;
     /// All the callbacks in one container to simplify iteration.
     llvm::SmallPtrSet<MatchCallback *, 16> AllCallbacks;
   };

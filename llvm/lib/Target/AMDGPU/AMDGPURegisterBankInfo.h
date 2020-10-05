@@ -149,9 +149,6 @@ public:
   getInstrAlternativeMappingsIntrinsicWSideEffects(
       const MachineInstr &MI, const MachineRegisterInfo &MRI) const;
 
-  unsigned getMappingType(const MachineRegisterInfo &MRI,
-                          const MachineInstr &MI) const;
-
   bool isSALUMapping(const MachineInstr &MI) const;
 
   const InstructionMapping &getDefaultMappingSOP(const MachineInstr &MI) const;

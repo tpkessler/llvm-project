@@ -20,7 +20,8 @@
 
 using namespace mlir;
 
-void LLVM::LLVMAVX512Dialect::initialize() {
+LLVM::LLVMAVX512Dialect::LLVMAVX512Dialect(MLIRContext *context)
+    : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/LLVMIR/LLVMAVX512.cpp.inc"

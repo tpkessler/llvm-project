@@ -64,9 +64,6 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   endif()
   option(LLVM_ENABLE_WARNINGS "Enable compiler warnings." ON)
   option(LLVM_ENABLE_PEDANTIC "Compile with pedantic enabled." ON)
-  if(CMAKE_COMPILER_IS_GNUCXX)
-    set(USE_NO_MAYBE_UNINITIALIZED 1)
-  endif()
 
   include(CMakeParseArguments)
   include(AddLLVM)
@@ -183,12 +180,7 @@ else()
          ${LLVM_INCLUDE_TESTS})
   set(FLANG_GTEST_AVAIL 1)
 
-  if(FLANG_STANDALONE_BUILD)
-    set(FLANG_BINARY_DIR ${CMAKE_BINARY_DIR}/tools/flang)
-  else()
-    set(FLANG_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-  endif()
-
+  set(FLANG_BINARY_DIR ${CMAKE_BINARY_DIR}/tools/flang)
   set(BACKEND_PACKAGE_STRING "${PACKAGE_STRING}")
   if (LINK_WITH_FIR)
     set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir/include ) # --src-root
@@ -202,10 +194,8 @@ endif()
 
 if(LINK_WITH_FIR)
   # tco tool and FIR lib output directories
-  if(FLANG_STANDALONE_BUILD)
-    set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
-    set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
-  endif()
+  set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
+  set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
   # Always build tco tool
   set(LLVM_BUILD_TOOLS ON)
   message(STATUS "Linking driver with FIR and LLVM")

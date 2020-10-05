@@ -35,7 +35,6 @@ class ExternalFileUnit : public ConnectionState,
 public:
   explicit ExternalFileUnit(int unitNumber) : unitNumber_{unitNumber} {}
   int unitNumber() const { return unitNumber_; }
-  bool swapEndianness() const { return swapEndianness_; }
 
   static ExternalFileUnit *LookUp(int unit);
   static ExternalFileUnit &LookUpOrCrash(int unit, const Terminator &);
@@ -43,7 +42,6 @@ public:
       int unit, const Terminator &, bool &wasExtant);
   static ExternalFileUnit &LookUpOrCreateAnonymous(
       int unit, Direction, bool isUnformatted, const Terminator &);
-  static ExternalFileUnit *LookUp(const char *path);
   static ExternalFileUnit &CreateNew(int unit, const Terminator &);
   static ExternalFileUnit *LookUpForClose(int unit);
   static int NewUnit(const Terminator &);
@@ -53,15 +51,13 @@ public:
   void OpenUnit(OpenStatus, std::optional<Action>, Position,
       OwningPtr<char> &&path, std::size_t pathLength, Convert,
       IoErrorHandler &);
-  void OpenAnonymousUnit(
-      OpenStatus, std::optional<Action>, Position, Convert, IoErrorHandler &);
   void CloseUnit(CloseStatus, IoErrorHandler &);
   void DestroyClosed();
 
   bool SetDirection(Direction, IoErrorHandler &);
 
   template <typename A, typename... X>
-  IoStatementState &BeginIoStatement(X &&...xs) {
+  IoStatementState &BeginIoStatement(X &&... xs) {
     // TODO: Child data transfer statements vs. locking
     lock_.Take(); // dropped in EndIoStatement()
     A &state{u_.emplace<A>(std::forward<X>(xs)...)};
@@ -115,7 +111,7 @@ private:
       ExternalListIoStatementState<Direction::Output>,
       ExternalListIoStatementState<Direction::Input>,
       UnformattedIoStatementState<Direction::Output>,
-      UnformattedIoStatementState<Direction::Input>, InquireUnitState,
+      UnformattedIoStatementState<Direction::Input>,
       ExternalMiscIoStatementState>
       u_;
 

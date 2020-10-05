@@ -3174,12 +3174,8 @@ static llvm::Value *castValueToType(CodeGenFunction &CGF, llvm::Value *Val,
   Address CastItem = CGF.CreateMemTemp(CastTy);
   Address ValCastItem = CGF.Builder.CreatePointerBitCastOrAddrSpaceCast(
       CastItem, Val->getType()->getPointerTo(CastItem.getAddressSpace()));
-  CGF.EmitStoreOfScalar(Val, ValCastItem, /*Volatile=*/false, ValTy,
-                        LValueBaseInfo(AlignmentSource::Type),
-                        TBAAAccessInfo());
-  return CGF.EmitLoadOfScalar(CastItem, /*Volatile=*/false, CastTy, Loc,
-                              LValueBaseInfo(AlignmentSource::Type),
-                              TBAAAccessInfo());
+  CGF.EmitStoreOfScalar(Val, ValCastItem, /*Volatile=*/false, ValTy);
+  return CGF.EmitLoadOfScalar(CastItem, /*Volatile=*/false, CastTy, Loc);
 }
 
 /// This function creates calls to one of two shuffle functions to copy
@@ -3266,14 +3262,9 @@ static void shuffleAndStore(CodeGenFunction &CGF, Address SrcAddr,
                        ThenBB, ExitBB);
       CGF.EmitBlock(ThenBB);
       llvm::Value *Res = createRuntimeShuffleFunction(
-          CGF,
-          CGF.EmitLoadOfScalar(Ptr, /*Volatile=*/false, IntType, Loc,
-                               LValueBaseInfo(AlignmentSource::Type),
-                               TBAAAccessInfo()),
+          CGF, CGF.EmitLoadOfScalar(Ptr, /*Volatile=*/false, IntType, Loc),
           IntType, Offset, Loc);
-      CGF.EmitStoreOfScalar(Res, ElemPtr, /*Volatile=*/false, IntType,
-                            LValueBaseInfo(AlignmentSource::Type),
-                            TBAAAccessInfo());
+      CGF.EmitStoreOfScalar(Res, ElemPtr, /*Volatile=*/false, IntType);
       Address LocalPtr = Bld.CreateConstGEP(Ptr, 1);
       Address LocalElemPtr = Bld.CreateConstGEP(ElemPtr, 1);
       PhiSrc->addIncoming(LocalPtr.getPointer(), ThenBB);
@@ -3282,14 +3273,9 @@ static void shuffleAndStore(CodeGenFunction &CGF, Address SrcAddr,
       CGF.EmitBlock(ExitBB);
     } else {
       llvm::Value *Res = createRuntimeShuffleFunction(
-          CGF,
-          CGF.EmitLoadOfScalar(Ptr, /*Volatile=*/false, IntType, Loc,
-                               LValueBaseInfo(AlignmentSource::Type),
-                               TBAAAccessInfo()),
+          CGF, CGF.EmitLoadOfScalar(Ptr, /*Volatile=*/false, IntType, Loc),
           IntType, Offset, Loc);
-      CGF.EmitStoreOfScalar(Res, ElemPtr, /*Volatile=*/false, IntType,
-                            LValueBaseInfo(AlignmentSource::Type),
-                            TBAAAccessInfo());
+      CGF.EmitStoreOfScalar(Res, ElemPtr, /*Volatile=*/false, IntType);
       Ptr = Bld.CreateConstGEP(Ptr, 1);
       ElemPtr = Bld.CreateConstGEP(ElemPtr, 1);
     }
@@ -3443,14 +3429,12 @@ static void emitReductionListCopy(
     } else {
       switch (CGF.getEvaluationKind(Private->getType())) {
       case TEK_Scalar: {
-        llvm::Value *Elem = CGF.EmitLoadOfScalar(
-            SrcElementAddr, /*Volatile=*/false, Private->getType(),
-            Private->getExprLoc(), LValueBaseInfo(AlignmentSource::Type),
-            TBAAAccessInfo());
+        llvm::Value *Elem =
+            CGF.EmitLoadOfScalar(SrcElementAddr, /*Volatile=*/false,
+                                 Private->getType(), Private->getExprLoc());
         // Store the source element value to the dest element address.
-        CGF.EmitStoreOfScalar(
-            Elem, DestElementAddr, /*Volatile=*/false, Private->getType(),
-            LValueBaseInfo(AlignmentSource::Type), TBAAAccessInfo());
+        CGF.EmitStoreOfScalar(Elem, DestElementAddr, /*Volatile=*/false,
+                              Private->getType());
         break;
       }
       case TEK_Complex: {
@@ -3606,9 +3590,8 @@ static llvm::Value *emitInterWarpCopyFunction(CodeGenModule &CGM,
   Address AddrReduceListArg = CGF.GetAddrOfLocalVar(&ReduceListArg);
   Address LocalReduceList(
       Bld.CreatePointerBitCastOrAddrSpaceCast(
-          CGF.EmitLoadOfScalar(
-              AddrReduceListArg, /*Volatile=*/false, C.VoidPtrTy, Loc,
-              LValueBaseInfo(AlignmentSource::Type), TBAAAccessInfo()),
+          CGF.EmitLoadOfScalar(AddrReduceListArg, /*Volatile=*/false,
+                               C.VoidPtrTy, Loc),
           CGF.ConvertTypeForMem(ReductionArrayTy)->getPointerTo()),
       CGF.getPointerAlign());
 
@@ -3686,13 +3669,10 @@ static llvm::Value *emitInterWarpCopyFunction(CodeGenModule &CGM,
 
       // elem = *elemptr
       //*MediumPtr = elem
-      llvm::Value *Elem = CGF.EmitLoadOfScalar(
-          ElemPtr, /*Volatile=*/false, CType, Loc,
-          LValueBaseInfo(AlignmentSource::Type), TBAAAccessInfo());
+      llvm::Value *Elem =
+          CGF.EmitLoadOfScalar(ElemPtr, /*Volatile=*/false, CType, Loc);
       // Store the source element value to the dest element address.
-      CGF.EmitStoreOfScalar(Elem, MediumPtr, /*Volatile=*/true, CType,
-                            LValueBaseInfo(AlignmentSource::Type),
-                            TBAAAccessInfo());
+      CGF.EmitStoreOfScalar(Elem, MediumPtr, /*Volatile=*/true, CType);
 
       Bld.CreateBr(MergeBB);
 
@@ -4072,9 +4052,8 @@ static llvm::Value *emitListToGlobalCopyFunction(
     GlobLVal.setAddress(Address(BufferPtr, GlobLVal.getAlignment()));
     switch (CGF.getEvaluationKind(Private->getType())) {
     case TEK_Scalar: {
-      llvm::Value *V = CGF.EmitLoadOfScalar(
-          ElemPtr, /*Volatile=*/false, Private->getType(), Loc,
-          LValueBaseInfo(AlignmentSource::Type), TBAAAccessInfo());
+      llvm::Value *V = CGF.EmitLoadOfScalar(ElemPtr, /*Volatile=*/false,
+                                            Private->getType(), Loc);
       CGF.EmitStoreOfScalar(V, GlobLVal);
       break;
     }
@@ -4277,9 +4256,7 @@ static llvm::Value *emitGlobalToListCopyFunction(
     switch (CGF.getEvaluationKind(Private->getType())) {
     case TEK_Scalar: {
       llvm::Value *V = CGF.EmitLoadOfScalar(GlobLVal, Loc);
-      CGF.EmitStoreOfScalar(V, ElemPtr, /*Volatile=*/false, Private->getType(),
-                            LValueBaseInfo(AlignmentSource::Type),
-                            TBAAAccessInfo());
+      CGF.EmitStoreOfScalar(V, ElemPtr, /*Volatile=*/false, Private->getType());
       break;
     }
     case TEK_Complex: {
@@ -5342,7 +5319,7 @@ static CudaArch getCudaArch(CodeGenModule &CGM) {
   CGM.getTarget().initFeatureMap(Features, CGM.getDiags(),
                                  CGM.getTarget().getTargetOpts().CPU,
                                  CGM.getTarget().getTargetOpts().Features);
-  for (const auto &Feature : CGM.getTarget().getTargetOpts().FeatureMap) {
+  for (const auto &Feature : Features) {
     if (Feature.getValue()) {
       CudaArch Arch = StringToCudaArch(Feature.getKey());
       if (Arch != CudaArch::UNKNOWN)
@@ -5404,7 +5381,6 @@ void CGOpenMPRuntimeGPU::processRequiresDirective(
       case CudaArch::GFX1011:
       case CudaArch::GFX1012:
       case CudaArch::GFX1030:
-      case CudaArch::GFX1031:
       case CudaArch::UNKNOWN:
         break;
       case CudaArch::LAST:
@@ -5469,7 +5445,6 @@ static std::pair<unsigned, unsigned> getSMsBlocksPerSM(CodeGenModule &CGM) {
   case CudaArch::GFX1011:
   case CudaArch::GFX1012:
   case CudaArch::GFX1030:
-  case CudaArch::GFX1031:
     // New GFX* need to be verified for the correct # SM's
     return {120, 64};
   case CudaArch::UNKNOWN:

@@ -44,8 +44,7 @@ CoverageMappingModuleGen::setUpCoverageCallbacks(Preprocessor &PP) {
   PP.setTokenWatcher([CoverageInfo](clang::Token Tok) {
     // Update previous token location.
     CoverageInfo->PrevTokLoc = Tok.getLocation();
-    if (Tok.getKind() != clang::tok::eod)
-      CoverageInfo->updateNextTokLoc(Tok.getLocation());
+    CoverageInfo->updateNextTokLoc(Tok.getLocation());
   });
   return CoverageInfo;
 }
@@ -306,24 +305,20 @@ public:
   /// non-comment token. If shrinking the skipped range would make it empty,
   /// this returns None.
   Optional<SpellingRegion> adjustSkippedRange(SourceManager &SM,
-                                              SourceLocation LocStart,
-                                              SourceLocation LocEnd,
+                                              SpellingRegion SR,
                                               SourceLocation PrevTokLoc,
                                               SourceLocation NextTokLoc) {
-    SpellingRegion SR{SM, LocStart, LocEnd};
     // If Range begin location is invalid, it's not a comment region.
     if (PrevTokLoc.isInvalid())
       return SR;
     unsigned PrevTokLine = SM.getSpellingLineNumber(PrevTokLoc);
     unsigned NextTokLine = SM.getSpellingLineNumber(NextTokLoc);
     SpellingRegion newSR(SR);
-    if (SM.isWrittenInSameFile(LocStart, PrevTokLoc) &&
-        SR.LineStart == PrevTokLine) {
+    if (SR.LineStart == PrevTokLine) {
       newSR.LineStart = SR.LineStart + 1;
       newSR.ColumnStart = 1;
     }
-    if (SM.isWrittenInSameFile(LocEnd, NextTokLoc) &&
-        SR.LineEnd == NextTokLine) {
+    if (SR.LineEnd == NextTokLine) {
       newSR.LineEnd = SR.LineEnd - 1;
       newSR.ColumnEnd = SR.ColumnStart + 1;
     }
@@ -359,13 +354,14 @@ public:
       auto CovFileID = getCoverageFileID(LocStart);
       if (!CovFileID)
         continue;
-      Optional<SpellingRegion> SR =
-          adjustSkippedRange(SM, LocStart, LocEnd, I.PrevTokLoc, I.NextTokLoc);
-      if (!SR.hasValue())
+      SpellingRegion SR{SM, LocStart, LocEnd};
+      if (Optional<SpellingRegion> res =
+              adjustSkippedRange(SM, SR, I.PrevTokLoc, I.NextTokLoc))
+        SR = res.getValue();
+      else
         continue;
       auto Region = CounterMappingRegion::makeSkipped(
-          *CovFileID, SR->LineStart, SR->ColumnStart, SR->LineEnd,
-          SR->ColumnEnd);
+          *CovFileID, SR.LineStart, SR.ColumnStart, SR.LineEnd, SR.ColumnEnd);
       // Make sure that we only collect the regions that are inside
       // the source code of this function.
       if (Region.LineStart >= FileLineRanges[*CovFileID].first &&
@@ -868,11 +864,20 @@ struct CounterCoverageMappingBuilder
   /// Find a valid gap range between \p AfterLoc and \p BeforeLoc.
   Optional<SourceRange> findGapAreaBetween(SourceLocation AfterLoc,
                                            SourceLocation BeforeLoc) {
-    AfterLoc = SM.getExpansionLoc(AfterLoc);
-    BeforeLoc = SM.getExpansionLoc(BeforeLoc);
+    // If the start and end locations of the gap are both within the same macro
+    // file, the range may not be in source order.
+    if (AfterLoc.isMacroID() || BeforeLoc.isMacroID())
+      return None;
     if (!SM.isWrittenInSameFile(AfterLoc, BeforeLoc))
       return None;
     return {{AfterLoc, BeforeLoc}};
+  }
+
+  /// Find the source range after \p AfterStmt and before \p BeforeStmt.
+  Optional<SourceRange> findGapAreaBetween(const Stmt *AfterStmt,
+                                           const Stmt *BeforeStmt) {
+    return findGapAreaBetween(getPreciseTokenLocEnd(getEnd(AfterStmt)),
+                              getStart(BeforeStmt));
   }
 
   /// Emit a gap region between \p StartLoc and \p EndLoc with the given count.
@@ -1039,8 +1044,7 @@ struct CounterCoverageMappingBuilder
     adjustForOutOfOrderTraversal(getEnd(S));
 
     // The body count applies to the area immediately after the increment.
-    auto Gap = findGapAreaBetween(getPreciseTokenLocEnd(S->getRParenLoc()),
-                                  getStart(S->getBody()));
+    auto Gap = findGapAreaBetween(S->getCond(), S->getBody());
     if (Gap)
       fillGapAreaWithCount(Gap->getBegin(), Gap->getEnd(), BodyCount);
 
@@ -1257,8 +1261,7 @@ struct CounterCoverageMappingBuilder
     propagateCounts(ParentCount, S->getCond());
 
     // The 'then' count applies to the area immediately after the condition.
-    auto Gap = findGapAreaBetween(getPreciseTokenLocEnd(S->getRParenLoc()),
-                                  getStart(S->getThen()));
+    auto Gap = findGapAreaBetween(S->getCond(), S->getThen());
     if (Gap)
       fillGapAreaWithCount(Gap->getBegin(), Gap->getEnd(), ThenCount);
 
@@ -1268,8 +1271,7 @@ struct CounterCoverageMappingBuilder
     Counter ElseCount = subtractCounters(ParentCount, ThenCount);
     if (const Stmt *Else = S->getElse()) {
       // The 'else' count applies to the area immediately after the 'then'.
-      Gap = findGapAreaBetween(getPreciseTokenLocEnd(getEnd(S->getThen())),
-                               getStart(Else));
+      Gap = findGapAreaBetween(S->getThen(), Else);
       if (Gap)
         fillGapAreaWithCount(Gap->getBegin(), Gap->getEnd(), ElseCount);
       extendRegion(Else);

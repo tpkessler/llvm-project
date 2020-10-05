@@ -376,8 +376,7 @@ bool FixupLEAPass::optTwoAddrLEA(MachineBasicBlock::iterator &I,
   const MachineOperand &Segment = MI.getOperand(1 + X86::AddrSegmentReg);
 
   if (Segment.getReg() != 0 || !Disp.isImm() || Scale.getImm() > 1 ||
-      MBB.computeRegisterLiveness(TRI, X86::EFLAGS, I) !=
-          MachineBasicBlock::LQR_Dead)
+      !TII->isSafeToClobberEFLAGS(MBB, I))
     return false;
 
   Register DestReg = MI.getOperand(0).getReg();
@@ -506,8 +505,7 @@ void FixupLEAPass::processInstructionForSlowLEA(MachineBasicBlock::iterator &I,
   const MachineOperand &Segment = MI.getOperand(1 + X86::AddrSegmentReg);
 
   if (Segment.getReg() != 0 || !Offset.isImm() ||
-      MBB.computeRegisterLiveness(TRI, X86::EFLAGS, I, 4) !=
-          MachineBasicBlock::LQR_Dead)
+      !TII->isSafeToClobberEFLAGS(MBB, I))
     return;
   const Register DstR = Dst.getReg();
   const Register SrcR1 = Base.getReg();
@@ -557,8 +555,7 @@ void FixupLEAPass::processInstrForSlow3OpLEA(MachineBasicBlock::iterator &I,
   const MachineOperand &Segment = MI.getOperand(1 + X86::AddrSegmentReg);
 
   if (!(TII->isThreeOperandsLEA(MI) || hasInefficientLEABaseReg(Base, Index)) ||
-      MBB.computeRegisterLiveness(TRI, X86::EFLAGS, I, 4) !=
-          MachineBasicBlock::LQR_Dead ||
+      !TII->isSafeToClobberEFLAGS(MBB, MI) ||
       Segment.getReg() != X86::NoRegister)
     return;
 

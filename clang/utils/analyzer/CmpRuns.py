@@ -35,16 +35,14 @@ from math import log
 from collections import defaultdict
 from copy import copy
 from enum import Enum
-from typing import (Any, DefaultDict, Dict, List, NamedTuple, Optional,
-                    Sequence, TextIO, TypeVar, Tuple, Union)
+from typing import (Any, cast, Dict, List, NamedTuple, Optional, Sequence,
+                    TextIO, TypeVar, Tuple, Union)
 
 
 Number = Union[int, float]
 Stats = Dict[str, Dict[str, Number]]
 Plist = Dict[str, Any]
 JSON = Dict[str, Any]
-# Diff in a form: field -> (before, after)
-JSONDiff = Dict[str, Tuple[str, str]]
 # Type for generics
 T = TypeVar('T')
 
@@ -138,9 +136,6 @@ class AnalysisDiagnostic:
     def get_description(self) -> str:
         return self._data['description']
 
-    def get_location(self) -> str:
-        return f"{self.get_file_name()}:{self.get_line()}:{self.get_column()}"
-
     def get_issue_identifier(self) -> str:
         id = self.get_file_name() + "+"
 
@@ -177,31 +172,10 @@ class AnalysisDiagnostic:
         return f"{file_prefix}{funcname_postfix}:{line}:{col}" \
             f", {self.get_category()}: {self.get_description()}"
 
-    KEY_FIELDS = ["check_name", "category", "description"]
-
-    def is_similar_to(self, other: "AnalysisDiagnostic") -> bool:
-        # We consider two diagnostics similar only if at least one
-        # of the key fields is the same in both diagnostics.
-        return len(self.get_diffs(other)) != len(self.KEY_FIELDS)
-
-    def get_diffs(self, other: "AnalysisDiagnostic") -> JSONDiff:
-        return {field: (self._data[field], other._data[field])
-                for field in self.KEY_FIELDS
-                if self._data[field] != other._data[field]}
-
     # Note, the data format is not an API and may change from one analyzer
     # version to another.
     def get_raw_data(self) -> Plist:
         return self._data
-
-    def __eq__(self, other: object) -> bool:
-        return hash(self) == hash(other)
-
-    def __ne__(self, other: object) -> bool:
-        return hash(self) != hash(other)
-
-    def __hash__(self) -> int:
-        return hash(self.get_issue_identifier())
 
 
 class AnalysisRun:
@@ -309,39 +283,12 @@ def cmp_analysis_diagnostic(d):
     return d.get_issue_identifier()
 
 
-AnalysisDiagnosticPair = Tuple[AnalysisDiagnostic, AnalysisDiagnostic]
-
-
-class ComparisonResult:
-    def __init__(self):
-        self.present_in_both: List[AnalysisDiagnostic] = []
-        self.present_only_in_old: List[AnalysisDiagnostic] = []
-        self.present_only_in_new: List[AnalysisDiagnostic] = []
-        self.changed_between_new_and_old: List[AnalysisDiagnosticPair] = []
-
-    def add_common(self, issue: AnalysisDiagnostic):
-        self.present_in_both.append(issue)
-
-    def add_removed(self, issue: AnalysisDiagnostic):
-        self.present_only_in_old.append(issue)
-
-    def add_added(self, issue: AnalysisDiagnostic):
-        self.present_only_in_new.append(issue)
-
-    def add_changed(self, old_issue: AnalysisDiagnostic,
-                    new_issue: AnalysisDiagnostic):
-        self.changed_between_new_and_old.append((old_issue, new_issue))
-
-
-GroupedDiagnostics = DefaultDict[str, List[AnalysisDiagnostic]]
-
-
-def get_grouped_diagnostics(diagnostics: List[AnalysisDiagnostic]
-                            ) -> GroupedDiagnostics:
-    result: GroupedDiagnostics = defaultdict(list)
-    for diagnostic in diagnostics:
-        result[diagnostic.get_location()].append(diagnostic)
-    return result
+PresentInBoth = Tuple[AnalysisDiagnostic, AnalysisDiagnostic]
+PresentOnlyInOld = Tuple[AnalysisDiagnostic, None]
+PresentOnlyInNew = Tuple[None, AnalysisDiagnostic]
+ComparisonResult = List[Union[PresentInBoth,
+                              PresentOnlyInOld,
+                              PresentOnlyInNew]]
 
 
 def compare_results(results_old: AnalysisRun, results_new: AnalysisRun,
@@ -355,85 +302,63 @@ def compare_results(results_old: AnalysisRun, results_new: AnalysisRun,
     each element {a,b} is None or a matching element from the respective run
     """
 
-    res = ComparisonResult()
+    res: ComparisonResult = []
 
     # Map size_before -> size_after
     path_difference_data: List[float] = []
 
-    diags_old = get_grouped_diagnostics(results_old.diagnostics)
-    diags_new = get_grouped_diagnostics(results_new.diagnostics)
+    # Quickly eliminate equal elements.
+    neq_old: List[AnalysisDiagnostic] = []
+    neq_new: List[AnalysisDiagnostic] = []
 
-    locations_old = set(diags_old.keys())
-    locations_new = set(diags_new.keys())
+    diags_old = copy(results_old.diagnostics)
+    diags_new = copy(results_new.diagnostics)
 
-    common_locations = locations_old & locations_new
+    diags_old.sort(key=cmp_analysis_diagnostic)
+    diags_new.sort(key=cmp_analysis_diagnostic)
 
-    for location in common_locations:
-        old = diags_old[location]
-        new = diags_new[location]
+    while diags_old and diags_new:
+        a = diags_old.pop()
+        b = diags_new.pop()
 
-        # Quadratic algorithms in this part are fine because 'old' and 'new'
-        # are most commonly of size 1.
-        for a in copy(old):
-            for b in copy(new):
-                if a.get_issue_identifier() == b.get_issue_identifier():
-                    a_path_len = a.get_path_length()
-                    b_path_len = b.get_path_length()
+        if a.get_issue_identifier() == b.get_issue_identifier():
+            if a.get_path_length() != b.get_path_length():
 
-                    if a_path_len != b_path_len:
+                if histogram == HistogramType.RELATIVE:
+                    path_difference_data.append(
+                        float(a.get_path_length()) / b.get_path_length())
 
-                        if histogram == HistogramType.RELATIVE:
-                            path_difference_data.append(
-                                float(a_path_len) / b_path_len)
+                elif histogram == HistogramType.LOG_RELATIVE:
+                    path_difference_data.append(
+                        log(float(a.get_path_length()) / b.get_path_length()))
 
-                        elif histogram == HistogramType.LOG_RELATIVE:
-                            path_difference_data.append(
-                                log(float(a_path_len) / b_path_len))
+                elif histogram == HistogramType.ABSOLUTE:
+                    path_difference_data.append(
+                        a.get_path_length() - b.get_path_length())
 
-                        elif histogram == HistogramType.ABSOLUTE:
-                            path_difference_data.append(
-                                a_path_len - b_path_len)
+            res.append((a, b))
 
-                    res.add_common(a)
-                    old.remove(a)
-                    new.remove(b)
+        elif a.get_issue_identifier() > b.get_issue_identifier():
+            diags_new.append(b)
+            neq_old.append(a)
 
-        for a in copy(old):
-            for b in copy(new):
-                if a.is_similar_to(b):
-                    res.add_changed(a, b)
-                    old.remove(a)
-                    new.remove(b)
+        else:
+            diags_old.append(a)
+            neq_new.append(b)
 
-        # Whatever is left in 'old' doesn't have a corresponding diagnostic
-        # in 'new', so we need to mark it as 'removed'.
-        for a in old:
-            res.add_removed(a)
-
-        # Whatever is left in 'new' doesn't have a corresponding diagnostic
-        # in 'old', so we need to mark it as 'added'.
-        for b in new:
-            res.add_added(b)
-
-    only_old_locations = locations_old - common_locations
-    for location in only_old_locations:
-        for a in diags_old[location]:
-            # These locations have been found only in the old build, so we
-            # need to mark all of therm as 'removed'
-            res.add_removed(a)
-
-    only_new_locations = locations_new - common_locations
-    for location in only_new_locations:
-        for b in diags_new[location]:
-            # These locations have been found only in the new build, so we
-            # need to mark all of therm as 'added'
-            res.add_added(b)
+    neq_old.extend(diags_old)
+    neq_new.extend(diags_new)
 
     # FIXME: Add fuzzy matching. One simple and possible effective idea would
     # be to bin the diagnostics, print them in a normalized form (based solely
     # on the structure of the diagnostic), compute the diff, then use that as
     # the basis for matching. This has the nice property that we don't depend
     # in any way on the diagnostic format.
+
+    for a in neq_old:
+        res.append((a, None))
+    for b in neq_new:
+        res.append((None, b))
 
     if histogram:
         from matplotlib import pyplot
@@ -551,55 +476,47 @@ def dump_scan_build_results_diff(dir_old: ResultsDirectory,
 
     # Open the verbose log, if given.
     if verbose_log:
-        aux_log: Optional[TextIO] = open(verbose_log, "w")
+        auxLog: Optional[TextIO] = open(verbose_log, "w")
     else:
-        aux_log = None
+        auxLog = None
 
     diff = compare_results(results_old, results_new, histogram)
     found_diffs = 0
     total_added = 0
     total_removed = 0
-    total_modified = 0
 
-    for new in diff.present_only_in_new:
-        out.write(f"ADDED: {new.get_readable_name()}\n\n")
-        found_diffs += 1
-        total_added += 1
-        if aux_log:
-            aux_log.write(f"('ADDED', {new.get_readable_name()}, "
-                          f"{new.get_html_report()})\n")
+    for res in diff:
+        old, new = res
+        if old is None:
+            # TODO: mypy still doesn't understand that old and new can't be
+            #       both Nones, we should introduce a better type solution
+            new = cast(AnalysisDiagnostic, new)
+            out.write(f"ADDED: {new.get_readable_name()}\n")
+            found_diffs += 1
+            total_added += 1
+            if auxLog:
+                auxLog.write(f"('ADDED', {new.get_readable_name()}, "
+                             f"{new.get_html_report()})\n")
 
-    for old in diff.present_only_in_old:
-        out.write(f"REMOVED: {old.get_readable_name()}\n\n")
-        found_diffs += 1
-        total_removed += 1
-        if aux_log:
-            aux_log.write(f"('REMOVED', {old.get_readable_name()}, "
-                          f"{old.get_html_report()})\n")
-
-    for old, new in diff.changed_between_new_and_old:
-        out.write(f"MODIFIED: {old.get_readable_name()}\n")
-        found_diffs += 1
-        total_modified += 1
-        diffs = old.get_diffs(new)
-        str_diffs = [f"          '{key}' changed: "
-                     f"'{old_value}' -> '{new_value}'"
-                     for key, (old_value, new_value) in diffs.items()]
-        out.write(",\n".join(str_diffs) + "\n\n")
-        if aux_log:
-            aux_log.write(f"('MODIFIED', {old.get_readable_name()}, "
-                          f"{old.get_html_report()})\n")
+        elif new is None:
+            out.write(f"REMOVED: {old.get_readable_name()}\n")
+            found_diffs += 1
+            total_removed += 1
+            if auxLog:
+                auxLog.write(f"('REMOVED', {old.get_readable_name()}, "
+                             f"{old.get_html_report()})\n")
+        else:
+            pass
 
     total_reports = len(results_new.diagnostics)
     out.write(f"TOTAL REPORTS: {total_reports}\n")
     out.write(f"TOTAL ADDED: {total_added}\n")
     out.write(f"TOTAL REMOVED: {total_removed}\n")
-    out.write(f"TOTAL MODIFIED: {total_modified}\n")
 
-    if aux_log:
-        aux_log.write(f"('TOTAL NEW REPORTS', {total_reports})\n")
-        aux_log.write(f"('TOTAL DIFFERENCES', {found_diffs})\n")
-        aux_log.close()
+    if auxLog:
+        auxLog.write(f"('TOTAL NEW REPORTS', {total_reports})\n")
+        auxLog.write(f"('TOTAL DIFFERENCES', {found_diffs})\n")
+        auxLog.close()
 
     # TODO: change to NamedTuple
     return found_diffs, len(results_old.diagnostics), \

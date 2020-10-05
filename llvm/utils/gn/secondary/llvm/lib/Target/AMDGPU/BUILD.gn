@@ -195,6 +195,7 @@ static_library("LLVMAMDGPUCodeGen") {
     "SIAnnotateControlFlow.cpp",
     "SIFixSGPRCopies.cpp",
     "SIFixVGPRCopies.cpp",
+    "SIFixupVectorISel.cpp",
     "SIFoldOperands.cpp",
     "SIFormMemoryClauses.cpp",
     "SIFrameLowering.cpp",

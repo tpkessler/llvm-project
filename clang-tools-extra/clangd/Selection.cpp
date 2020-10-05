@@ -479,10 +479,6 @@ public:
   bool TraverseTypeLoc(TypeLoc X) {
     return traverseNode(&X, [&] { return Base::TraverseTypeLoc(X); });
   }
-  bool TraverseTemplateArgumentLoc(const TemplateArgumentLoc &X) {
-    return traverseNode(&X,
-                        [&] { return Base::TraverseTemplateArgumentLoc(X); });
-  }
   bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc X) {
     return traverseNode(
         &X, [&] { return Base::TraverseNestedNameSpecifierLoc(X); });

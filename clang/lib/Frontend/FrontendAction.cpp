@@ -121,7 +121,7 @@ public:
           = Ctx.getDiagnostics().getCustomDiagID(DiagnosticsEngine::Error,
                                                  "%0 was deserialized");
         Ctx.getDiagnostics().Report(Ctx.getFullLoc(D->getLocation()), DiagID)
-            << ND;
+            << ND->getNameAsString();
       }
 
     DelegatingDeserializationListener::DeclRead(ID, D);

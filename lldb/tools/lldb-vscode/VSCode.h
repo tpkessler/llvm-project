@@ -146,8 +146,9 @@ struct VSCode {
   ///
   /// \return
   ///     An SBTarget object.
-  lldb::SBTarget CreateTargetFromArguments(const llvm::json::Object &arguments,
-                                           lldb::SBError &error);
+  lldb::SBTarget CreateTargetFromArguments(
+      const llvm::json::Object &arguments,
+      lldb::SBError &error);
 
   /// Set given target object as a current target for lldb-vscode and start
   /// listeing for its breakpoint events.

@@ -26,10 +26,10 @@ LLVM_DUMP_METHOD void Function::dump() const { dump(llvm::errs()); }
 LLVM_DUMP_METHOD void Function::dump(llvm::raw_ostream &OS) const {
   if (F) {
     if (auto *Cons = dyn_cast<CXXConstructorDecl>(F)) {
-      DeclarationName Name = Cons->getParent()->getDeclName();
+      const std::string &Name = Cons->getParent()->getNameAsString();
       OS << Name << "::" << Name << ":\n";
     } else {
-      OS << F->getDeclName() << ":\n";
+      OS << F->getNameAsString() << ":\n";
     }
   } else {
     OS << "<<expr>>\n";

@@ -67,7 +67,6 @@ public:
 
   void Define(std::string macro, std::string value);
   void Undefine(std::string macro);
-  bool IsNameDefined(const CharBlock &);
 
   std::optional<TokenSequence> MacroReplacement(
       const TokenSequence &, const Prescanner &);
@@ -80,6 +79,7 @@ private:
   enum class CanDeadElseAppear { No, Yes };
 
   CharBlock SaveTokenAsName(const CharBlock &);
+  bool IsNameDefined(const CharBlock &);
   TokenSequence ReplaceMacros(const TokenSequence &, const Prescanner &);
   void SkipDisabledConditionalCode(
       const std::string &, IsElseActive, Prescanner *, ProvenanceRange);

@@ -31,12 +31,9 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/RWMutex.h"
 #include "llvm/Support/raw_ostream.h"
 #include <memory>
-
-#define DEBUG_TYPE "mlircontext"
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -88,12 +85,7 @@ namespace {
 /// A builtin dialect to define types/etc that are necessary for the validity of
 /// the IR.
 struct BuiltinDialect : public Dialect {
-  BuiltinDialect(MLIRContext *context)
-      : Dialect(/*name=*/"", context, TypeID::get<BuiltinDialect>()) {
-    addTypes<ComplexType, BFloat16Type, Float16Type, Float32Type, Float64Type,
-             FunctionType, IndexType, IntegerType, MemRefType,
-             UnrankedMemRefType, NoneType, OpaqueType, RankedTensorType,
-             TupleType, UnrankedTensorType, VectorType>();
+  BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
     addAttributes<AffineMapAttr, ArrayAttr, DenseIntOrFPElementsAttr,
                   DenseStringElementsAttr, DictionaryAttr, FloatAttr,
                   SymbolRefAttr, IntegerAttr, IntegerSetAttr, OpaqueAttr,
@@ -102,11 +94,14 @@ struct BuiltinDialect : public Dialect {
     addAttributes<CallSiteLoc, FileLineColLoc, FusedLoc, NameLoc, OpaqueLoc,
                   UnknownLoc>();
 
+    addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
+             MemRefType, UnrankedMemRefType, NoneType, OpaqueType,
+             RankedTensorType, TupleType, UnrankedTensorType, VectorType>();
+
     // TODO: These operations should be moved to a different dialect when they
     // have been fully decoupled from the core.
     addOperations<FuncOp, ModuleOp, ModuleTerminatorOp>();
   }
-  static StringRef getDialectNamespace() { return ""; }
 };
 } // end anonymous namespace.
 
@@ -277,8 +272,7 @@ public:
 
   /// This is a list of dialects that are created referring to this context.
   /// The MLIRContext owns the objects.
-  DenseMap<StringRef, std::unique_ptr<Dialect>> loadedDialects;
-  DialectRegistry dialectsRegistry;
+  std::vector<std::unique_ptr<Dialect>> dialects;
 
   /// This is a mapping from operation name to AbstractOperation for registered
   /// operations.
@@ -317,10 +311,7 @@ public:
   StorageUniquer typeUniquer;
 
   /// Cached Type Instances.
-  BFloat16Type bf16Ty;
-  Float16Type f16Ty;
-  Float32Type f32Ty;
-  Float64Type f64Ty;
+  FloatType bf16Ty, f16Ty, f32Ty, f64Ty;
   IndexType indexTy;
   IntegerType int1Ty, int8Ty, int16Ty, int32Ty, int64Ty, int128Ty;
   NoneType noneType;
@@ -349,7 +340,7 @@ public:
 };
 } // end namespace mlir
 
-MLIRContext::MLIRContext(bool loadAllDialects) : impl(new MLIRContextImpl()) {
+MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
   // Initialize values based on the command line flags if they were provided.
   if (clOptions.isConstructed()) {
     disableMultithreading(clOptions->disableThreading);
@@ -358,59 +349,57 @@ MLIRContext::MLIRContext(bool loadAllDialects) : impl(new MLIRContextImpl()) {
   }
 
   // Register dialects with this context.
-  getOrLoadDialect<BuiltinDialect>();
-  if (loadAllDialects)
-    loadAllGloballyRegisteredDialects();
+  new BuiltinDialect(this);
+  registerAllDialects(this);
 
   // Initialize several common attributes and types to avoid the need to lock
   // the context when accessing them.
 
   //// Types.
   /// Floating-point Types.
-  impl->bf16Ty = TypeUniquer::get<BFloat16Type>(this);
-  impl->f16Ty = TypeUniquer::get<Float16Type>(this);
-  impl->f32Ty = TypeUniquer::get<Float32Type>(this);
-  impl->f64Ty = TypeUniquer::get<Float64Type>(this);
+  impl->bf16Ty = TypeUniquer::get<FloatType>(this, StandardTypes::BF16);
+  impl->f16Ty = TypeUniquer::get<FloatType>(this, StandardTypes::F16);
+  impl->f32Ty = TypeUniquer::get<FloatType>(this, StandardTypes::F32);
+  impl->f64Ty = TypeUniquer::get<FloatType>(this, StandardTypes::F64);
   /// Index Type.
-  impl->indexTy = TypeUniquer::get<IndexType>(this);
+  impl->indexTy = TypeUniquer::get<IndexType>(this, StandardTypes::Index);
   /// Integer Types.
-  impl->int1Ty = TypeUniquer::get<IntegerType>(this, 1, IntegerType::Signless);
-  impl->int8Ty = TypeUniquer::get<IntegerType>(this, 8, IntegerType::Signless);
-  impl->int16Ty =
-      TypeUniquer::get<IntegerType>(this, 16, IntegerType::Signless);
-  impl->int32Ty =
-      TypeUniquer::get<IntegerType>(this, 32, IntegerType::Signless);
-  impl->int64Ty =
-      TypeUniquer::get<IntegerType>(this, 64, IntegerType::Signless);
-  impl->int128Ty =
-      TypeUniquer::get<IntegerType>(this, 128, IntegerType::Signless);
+  impl->int1Ty = TypeUniquer::get<IntegerType>(this, StandardTypes::Integer, 1,
+                                               IntegerType::Signless);
+  impl->int8Ty = TypeUniquer::get<IntegerType>(this, StandardTypes::Integer, 8,
+                                               IntegerType::Signless);
+  impl->int16Ty = TypeUniquer::get<IntegerType>(this, StandardTypes::Integer,
+                                                16, IntegerType::Signless);
+  impl->int32Ty = TypeUniquer::get<IntegerType>(this, StandardTypes::Integer,
+                                                32, IntegerType::Signless);
+  impl->int64Ty = TypeUniquer::get<IntegerType>(this, StandardTypes::Integer,
+                                                64, IntegerType::Signless);
+  impl->int128Ty = TypeUniquer::get<IntegerType>(this, StandardTypes::Integer,
+                                                 128, IntegerType::Signless);
   /// None Type.
-  impl->noneType = TypeUniquer::get<NoneType>(this);
+  impl->noneType = TypeUniquer::get<NoneType>(this, StandardTypes::None);
 
   //// Attributes.
   //// Note: These must be registered after the types as they may generate one
   //// of the above types internally.
   /// Bool Attributes.
   impl->falseAttr = AttributeUniquer::get<IntegerAttr>(
-                        this, impl->int1Ty, APInt(/*numBits=*/1, false))
+                        this, StandardAttributes::Integer, impl->int1Ty,
+                        APInt(/*numBits=*/1, false))
                         .cast<BoolAttr>();
   impl->trueAttr = AttributeUniquer::get<IntegerAttr>(
-                       this, impl->int1Ty, APInt(/*numBits=*/1, true))
+                       this, StandardAttributes::Integer, impl->int1Ty,
+                       APInt(/*numBits=*/1, true))
                        .cast<BoolAttr>();
   /// Unit Attribute.
-  impl->unitAttr = AttributeUniquer::get<UnitAttr>(this);
+  impl->unitAttr =
+      AttributeUniquer::get<UnitAttr>(this, StandardAttributes::Unit);
   /// Unknown Location Attribute.
-  impl->unknownLocAttr = AttributeUniquer::get<UnknownLoc>(this);
+  impl->unknownLocAttr = AttributeUniquer::get<UnknownLoc>(
+      this, StandardAttributes::UnknownLocation);
   /// The empty dictionary attribute.
-  impl->emptyDictionaryAttr =
-      AttributeUniquer::get<DictionaryAttr>(this, ArrayRef<NamedAttribute>());
-
-  // Register the affine storage objects with the uniquer.
-  impl->affineUniquer
-      .registerParametricStorageType<AffineBinaryOpExprStorage>();
-  impl->affineUniquer
-      .registerParametricStorageType<AffineConstantExprStorage>();
-  impl->affineUniquer.registerParametricStorageType<AffineDimExprStorage>();
+  impl->emptyDictionaryAttr = AttributeUniquer::get<DictionaryAttr>(
+      this, StandardAttributes::Dictionary, ArrayRef<NamedAttribute>());
 }
 
 MLIRContext::~MLIRContext() {}
@@ -436,72 +425,46 @@ DiagnosticEngine &MLIRContext::getDiagEngine() { return getImpl().diagEngine; }
 // Dialect and Operation Registration
 //===----------------------------------------------------------------------===//
 
-DialectRegistry &MLIRContext::getDialectRegistry() {
-  return impl->dialectsRegistry;
-}
-
 /// Return information about all registered IR dialects.
-std::vector<Dialect *> MLIRContext::getLoadedDialects() {
+std::vector<Dialect *> MLIRContext::getRegisteredDialects() {
   std::vector<Dialect *> result;
-  result.reserve(impl->loadedDialects.size());
-  for (auto &dialect : impl->loadedDialects)
-    result.push_back(dialect.second.get());
-  llvm::array_pod_sort(result.begin(), result.end(),
-                       [](Dialect *const *lhs, Dialect *const *rhs) -> int {
-                         return (*lhs)->getNamespace() < (*rhs)->getNamespace();
-                       });
-  return result;
-}
-std::vector<StringRef> MLIRContext::getAvailableDialects() {
-  std::vector<StringRef> result;
-  for (auto &dialect : impl->dialectsRegistry)
-    result.push_back(dialect.first);
+  result.reserve(impl->dialects.size());
+  for (auto &dialect : impl->dialects)
+    result.push_back(dialect.get());
   return result;
 }
 
 /// Get a registered IR dialect with the given namespace. If none is found,
 /// then return nullptr.
-Dialect *MLIRContext::getLoadedDialect(StringRef name) {
+Dialect *MLIRContext::getRegisteredDialect(StringRef name) {
   // Dialects are sorted by name, so we can use binary search for lookup.
-  auto it = impl->loadedDialects.find(name);
-  return (it != impl->loadedDialects.end()) ? it->second.get() : nullptr;
+  auto it = llvm::lower_bound(
+      impl->dialects, name,
+      [](const auto &lhs, StringRef rhs) { return lhs->getNamespace() < rhs; });
+  return (it != impl->dialects.end() && (*it)->getNamespace() == name)
+             ? (*it).get()
+             : nullptr;
 }
 
-Dialect *MLIRContext::getOrLoadDialect(StringRef name) {
-  Dialect *dialect = getLoadedDialect(name);
-  if (dialect)
-    return dialect;
-  return impl->dialectsRegistry.loadByName(name, this);
-}
+/// Register this dialect object with the specified context.  The context
+/// takes ownership of the heap allocated dialect.
+void Dialect::registerDialect(MLIRContext *context) {
+  auto &impl = context->getImpl();
+  std::unique_ptr<Dialect> dialect(this);
 
-/// Get a dialect for the provided namespace and TypeID: abort the program if a
-/// dialect exist for this namespace with different TypeID. Returns a pointer to
-/// the dialect owned by the context.
-Dialect *
-MLIRContext::getOrLoadDialect(StringRef dialectNamespace, TypeID dialectID,
-                              function_ref<std::unique_ptr<Dialect>()> ctor) {
-  auto &impl = getImpl();
   // Get the correct insertion position sorted by namespace.
-  std::unique_ptr<Dialect> &dialect = impl.loadedDialects[dialectNamespace];
-
-  if (!dialect) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Load new dialect in Context" << dialectNamespace);
-    dialect = ctor();
-    assert(dialect && "dialect ctor failed");
-    return dialect.get();
-  }
+  auto insertPt = llvm::lower_bound(
+      impl.dialects, dialect, [](const auto &lhs, const auto &rhs) {
+        return lhs->getNamespace() < rhs->getNamespace();
+      });
 
   // Abort if dialect with namespace has already been registered.
-  if (dialect->getTypeID() != dialectID)
-    llvm::report_fatal_error("a dialect with namespace '" + dialectNamespace +
+  if (insertPt != impl.dialects.end() &&
+      (*insertPt)->getNamespace() == getNamespace()) {
+    llvm::report_fatal_error("a dialect with namespace '" + getNamespace() +
                              "' has already been registered");
-
-  return dialect.get();
-}
-
-void MLIRContext::loadAllGloballyRegisteredDialects() {
-  getGlobalDialectRegistry().loadAll(this);
+  }
+  impl.dialects.insert(insertPt, std::move(dialect));
 }
 
 bool MLIRContext::allowsUnregisteredDialects() {
@@ -678,17 +641,20 @@ Identifier Identifier::get(StringRef str, MLIRContext *context) {
 /// This should not be used directly.
 StorageUniquer &MLIRContext::getTypeUniquer() { return getImpl().typeUniquer; }
 
-BFloat16Type BFloat16Type::get(MLIRContext *context) {
-  return context->getImpl().bf16Ty;
-}
-Float16Type Float16Type::get(MLIRContext *context) {
-  return context->getImpl().f16Ty;
-}
-Float32Type Float32Type::get(MLIRContext *context) {
-  return context->getImpl().f32Ty;
-}
-Float64Type Float64Type::get(MLIRContext *context) {
-  return context->getImpl().f64Ty;
+FloatType FloatType::get(StandardTypes::Kind kind, MLIRContext *context) {
+  assert(kindof(kind) && "Not a FP kind.");
+  switch (kind) {
+  case StandardTypes::BF16:
+    return context->getImpl().bf16Ty;
+  case StandardTypes::F16:
+    return context->getImpl().f16Ty;
+  case StandardTypes::F32:
+    return context->getImpl().f32Ty;
+  case StandardTypes::F64:
+    return context->getImpl().f64Ty;
+  default:
+    llvm_unreachable("unexpected floating-point kind");
+  }
 }
 
 /// Get an instance of the IndexType.
@@ -732,7 +698,7 @@ IntegerType IntegerType::get(unsigned width,
                              MLIRContext *context) {
   if (auto cached = getCachedIntegerType(width, signedness, context))
     return cached;
-  return Base::get(context, width, signedness);
+  return Base::get(context, StandardTypes::Integer, width, signedness);
 }
 
 IntegerType IntegerType::getChecked(unsigned width, Location location) {
@@ -745,16 +711,12 @@ IntegerType IntegerType::getChecked(unsigned width,
   if (auto cached =
           getCachedIntegerType(width, signedness, location->getContext()))
     return cached;
-  return Base::getChecked(location, width, signedness);
+  return Base::getChecked(location, StandardTypes::Integer, width, signedness);
 }
 
 /// Get an instance of the NoneType.
 NoneType NoneType::get(MLIRContext *context) {
-  if (NoneType cachedInst = context->getImpl().noneType)
-    return cachedInst;
-  // Note: May happen when initializing the singleton attributes of the builtin
-  // dialect.
-  return Base::get(context);
+  return context->getImpl().noneType;
 }
 
 //===----------------------------------------------------------------------===//

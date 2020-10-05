@@ -528,8 +528,7 @@ void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
 
   prettyPrintAttributes(D);
 
-  if (D->getDeclName())
-    Out << ' ' << D->getDeclName();
+  Out << ' ' << *D;
 
   if (D->isFixed())
     Out << " : " << D->getIntegerType().stream(Policy);
@@ -934,12 +933,7 @@ void DeclPrinter::VisitStaticAssertDecl(StaticAssertDecl *D) {
 void DeclPrinter::VisitNamespaceDecl(NamespaceDecl *D) {
   if (D->isInline())
     Out << "inline ";
-
-  Out << "namespace ";
-  if (D->getDeclName())
-    Out << D->getDeclName() << ' ';
-  Out << "{\n";
-
+  Out << "namespace " << *D << " {\n";
   VisitDeclContext(D);
   Indent() << "}";
 }
@@ -1097,15 +1091,10 @@ void DeclPrinter::VisitTemplateDecl(const TemplateDecl *D) {
 
   if (const TemplateTemplateParmDecl *TTP =
         dyn_cast<TemplateTemplateParmDecl>(D)) {
-    Out << "class";
-
+    Out << "class ";
     if (TTP->isParameterPack())
-      Out << " ...";
-    else if (TTP->getDeclName())
-      Out << ' ';
-
-    if (TTP->getDeclName())
-      Out << TTP->getDeclName();
+      Out << "...";
+    Out << D->getName();
   } else if (auto *TD = D->getTemplatedDecl())
     Visit(TD);
   else if (const auto *Concept = dyn_cast<ConceptDecl>(D)) {
@@ -1227,7 +1216,7 @@ void DeclPrinter::PrintObjCTypeParams(ObjCTypeParamList *Params) {
       break;
     }
 
-    Out << Param->getDeclName();
+    Out << Param->getDeclName().getAsString();
 
     if (Param->hasExplicitBound()) {
       Out << " : " << Param->getUnderlyingType().getAsString(Policy);
@@ -1706,11 +1695,10 @@ void DeclPrinter::VisitTemplateTypeParmDecl(const TemplateTypeParmDecl *TTP) {
 
   if (TTP->isParameterPack())
     Out << " ...";
-  else if (TTP->getDeclName())
+  else if (!TTP->getName().empty())
     Out << ' ';
 
-  if (TTP->getDeclName())
-    Out << TTP->getDeclName();
+  Out << *TTP;
 
   if (TTP->hasDefaultArgument()) {
     Out << " = ";

@@ -76,9 +76,7 @@ public:
       : Stub(remote::SymbolIndex::NewStub(Channel)),
         ProtobufMarshaller(new Marshaller(/*RemoteIndexRoot=*/"",
                                           /*LocalIndexRoot=*/ProjectRoot)),
-        DeadlineWaitingTime(DeadlineTime) {
-    assert(!ProjectRoot.empty());
-  }
+        DeadlineWaitingTime(DeadlineTime) {}
 
   void lookup(const clangd::LookupRequest &Request,
               llvm::function_ref<void(const clangd::Symbol &)> Callback) const {

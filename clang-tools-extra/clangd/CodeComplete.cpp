@@ -1617,10 +1617,8 @@ private:
 
   llvm::Optional<float> fuzzyScore(const CompletionCandidate &C) {
     // Macros can be very spammy, so we only support prefix completion.
-    if (((C.SemaResult &&
-          C.SemaResult->Kind == CodeCompletionResult::RK_Macro) ||
-         (C.IndexResult &&
-          C.IndexResult->SymInfo.Kind == index::SymbolKind::Macro)) &&
+    // We won't end up with underfull index results, as macros are sema-only.
+    if (C.SemaResult && C.SemaResult->Kind == CodeCompletionResult::RK_Macro &&
         !C.Name.startswith_lower(Filter->pattern()))
       return None;
     return Filter->match(C.Name);

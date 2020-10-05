@@ -54,6 +54,14 @@ struct SparseElementsAttributeStorage;
 /// passed by value.
 class Attribute {
 public:
+  /// Integer identifier for all the concrete attribute kinds.
+  enum Kind {
+  // Reserve attribute kinds for dialect specific extensions.
+#define DEFINE_SYM_KIND_RANGE(Dialect)                                         \
+  FIRST_##Dialect##_ATTR, LAST_##Dialect##_ATTR = FIRST_##Dialect##_ATTR + 0xff,
+#include "DialectSymbolRegistry.def"
+  };
+
   /// Utility class for implementing attributes.
   template <typename ConcreteType, typename BaseType, typename StorageType,
             template <typename T> class... Traits>
@@ -86,9 +94,8 @@ public:
   // Support dyn_cast'ing Attribute to itself.
   static bool classof(Attribute) { return true; }
 
-  /// Return a unique identifier for the concrete attribute type. This is used
-  /// to support dynamic type casting.
-  TypeID getTypeID() { return impl->getAbstractAttribute().getTypeID(); }
+  /// Return the classification for this attribute.
+  unsigned getKind() const { return impl->getKind(); }
 
   /// Return the type of this attribute.
   Type getType() const;
@@ -163,6 +170,54 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
+// StandardAttributes
+//===----------------------------------------------------------------------===//
+
+namespace StandardAttributes {
+enum Kind {
+  AffineMap = Attribute::FIRST_STANDARD_ATTR,
+  Array,
+  Dictionary,
+  Float,
+  Integer,
+  IntegerSet,
+  Opaque,
+  String,
+  SymbolRef,
+  Type,
+  Unit,
+
+  /// Elements Attributes.
+  DenseIntOrFPElements,
+  DenseStringElements,
+  OpaqueElements,
+  SparseElements,
+  FIRST_ELEMENTS_ATTR = DenseIntOrFPElements,
+  LAST_ELEMENTS_ATTR = SparseElements,
+
+  /// Locations.
+  CallSiteLocation,
+  FileLineColLocation,
+  FusedLocation,
+  NameLocation,
+  OpaqueLocation,
+  UnknownLocation,
+
+  // Represents a location as a 'void*' pointer to a front-end's opaque
+  // location information, which must live longer than the MLIR objects that
+  // refer to it.  OpaqueLocation's are never serialized.
+  //
+  // TODO: OpaqueLocation,
+
+  // Represents a value inlined through a function call.
+  // TODO: InlinedLocation,
+
+  FIRST_LOCATION_ATTR = CallSiteLocation,
+  LAST_LOCATION_ATTR = UnknownLocation,
+};
+} // namespace StandardAttributes
+
+//===----------------------------------------------------------------------===//
 // AffineMapAttr
 //===----------------------------------------------------------------------===//
 
@@ -176,6 +231,11 @@ public:
   static AffineMapAttr get(AffineMap value);
 
   AffineMap getValue() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::AffineMap;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -201,6 +261,11 @@ public:
   iterator end() const { return getValue().end(); }
   size_t size() const { return getValue().size(); }
   bool empty() const { return size() == 0; }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Array;
+  }
 
 private:
   /// Class for underlying value iterator support.
@@ -292,6 +357,11 @@ public:
   /// Requires: uniquely named attributes.
   static bool sortInPlace(SmallVectorImpl<NamedAttribute> &array);
 
+  /// Methods for supporting type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Dictionary;
+  }
+
 private:
   /// Return empty dictionary.
   static DictionaryAttr getEmpty(MLIRContext *context);
@@ -323,6 +393,11 @@ public:
   /// precision.
   double getValueAsDouble() const;
   static double getValueAsDouble(APFloat val);
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Float;
+  }
 
   /// Verify the construction invariants for a double value.
   static LogicalResult verifyConstructionInvariants(Location loc, Type type,
@@ -356,6 +431,11 @@ public:
   /// Return the integer value as a unsigned 64-bit int. The attribute must be
   /// an unsigned integer.
   uint64_t getUInt() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Integer;
+  }
 
   static LogicalResult verifyConstructionInvariants(Location loc, Type type,
                                                     int64_t value);
@@ -400,6 +480,11 @@ public:
   static IntegerSetAttr get(IntegerSet value);
 
   IntegerSet getValue() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::IntegerSet;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -435,6 +520,10 @@ public:
                                                     Identifier dialect,
                                                     StringRef attrData,
                                                     Type type);
+
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Opaque;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -454,6 +543,11 @@ public:
   static StringAttr get(StringRef bytes, Type type);
 
   StringRef getValue() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::String;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -490,6 +584,11 @@ public:
   /// Returns the set of nested references representing the path to the symbol
   /// nested under the root reference.
   ArrayRef<FlatSymbolRefAttr> getNestedReferences() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::SymbolRef;
+  }
 };
 
 /// A symbol reference with a reference path containing a single element. This
@@ -531,6 +630,9 @@ public:
   static TypeAttr get(Type value);
 
   Type getValue() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) { return kind == StandardAttributes::Type; }
 };
 
 //===----------------------------------------------------------------------===//
@@ -545,6 +647,8 @@ public:
   using Base::Base;
 
   static UnitAttr get(MLIRContext *context);
+
+  static bool kindof(unsigned kind) { return kind == StandardAttributes::Unit; }
 };
 
 //===----------------------------------------------------------------------===//
@@ -602,7 +706,10 @@ public:
                          function_ref<APInt(const APFloat &)> mapping) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(Attribute attr);
+  static bool classof(Attribute attr) {
+    return attr.getKind() >= StandardAttributes::FIRST_ELEMENTS_ATTR &&
+           attr.getKind() <= StandardAttributes::LAST_ELEMENTS_ATTR;
+  }
 
 protected:
   /// Returns the 1 dimensional flattened row-major index from the given
@@ -667,7 +774,10 @@ public:
   using ElementsAttr::ElementsAttr;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(Attribute attr);
+  static bool classof(Attribute attr) {
+    return attr.getKind() == StandardAttributes::DenseIntOrFPElements ||
+           attr.getKind() == StandardAttributes::DenseStringElements;
+  }
 
   /// Constructs a dense elements attribute from an array of element values.
   /// Each element attribute value is expected to be an element of 'type'.
@@ -1119,6 +1229,11 @@ class DenseStringElementsAttr
 public:
   using Base::Base;
 
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::DenseStringElements;
+  }
+
   /// Overload of the raw 'get' method that asserts that the given type is of
   /// integer or floating-point type. This method is used to verify type
   /// invariants that the templatized 'get' method cannot.
@@ -1136,6 +1251,11 @@ class DenseIntOrFPElementsAttr
 
 public:
   using Base::Base;
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::DenseIntOrFPElements;
+  }
 
 protected:
   friend DenseElementsAttr;
@@ -1274,6 +1394,11 @@ public:
 
   /// Returns dialect associated with this opaque constant.
   Dialect *getDialect() const;
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::OpaqueElements;
+  }
 };
 
 /// An attribute that represents a reference to a sparse vector or tensor
@@ -1334,6 +1459,11 @@ public:
   /// Return the value of the element at the given index. The 'index' is
   /// expected to refer to a valid element.
   Attribute getValue(ArrayRef<uint64_t> index) const;
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::SparseElements;
+  }
 
 private:
   /// Get a zero APFloat for the given sparse attribute.
@@ -1448,10 +1578,12 @@ class ElementsAttrIterator
   template <typename RetT, template <typename> class ProcessFn,
             typename... Args>
   RetT process(Args &... args) const {
-    if (attr.isa<DenseElementsAttr>())
+    switch (attrKind) {
+    case StandardAttributes::DenseIntOrFPElements:
       return ProcessFn<DenseIteratorT>()(args...);
-    if (attr.isa<SparseElementsAttr>())
+    case StandardAttributes::SparseElements:
       return ProcessFn<SparseIteratorT>()(args...);
+    }
     llvm_unreachable("unexpected attribute kind");
   }
 
@@ -1476,21 +1608,22 @@ class ElementsAttrIterator
   };
 
 public:
-  ElementsAttrIterator(const ElementsAttrIterator<T> &rhs) : attr(rhs.attr) {
+  ElementsAttrIterator(const ElementsAttrIterator<T> &rhs)
+      : attrKind(rhs.attrKind) {
     process<void, ConstructIter>(it, rhs.it);
   }
   ~ElementsAttrIterator() { process<void, DestructIter>(it); }
 
   /// Methods necessary to support random access iteration.
   ptrdiff_t operator-(const ElementsAttrIterator<T> &rhs) const {
-    assert(attr == rhs.attr && "incompatible iterators");
+    assert(attrKind == rhs.attrKind && "incompatible iterators");
     return process<ptrdiff_t, Minus>(it, rhs.it);
   }
   bool operator==(const ElementsAttrIterator<T> &rhs) const {
-    return rhs.attr == attr && process<bool, std::equal_to>(it, rhs.it);
+    return rhs.attrKind == attrKind && process<bool, std::equal_to>(it, rhs.it);
   }
   bool operator<(const ElementsAttrIterator<T> &rhs) const {
-    assert(attr == rhs.attr && "incompatible iterators");
+    assert(attrKind == rhs.attrKind && "incompatible iterators");
     return process<bool, std::less>(it, rhs.it);
   }
   ElementsAttrIterator<T> &operator+=(ptrdiff_t offset) {
@@ -1507,14 +1640,14 @@ public:
 
 private:
   template <typename IteratorT>
-  ElementsAttrIterator(Attribute attr, IteratorT &&it)
-      : attr(attr), it(std::forward<IteratorT>(it)) {}
+  ElementsAttrIterator(unsigned attrKind, IteratorT &&it)
+      : attrKind(attrKind), it(std::forward<IteratorT>(it)) {}
 
   /// Allow accessing the constructor.
   friend ElementsAttr;
 
-  /// The parent elements attribute.
-  Attribute attr;
+  /// The kind of derived elements attribute.
+  unsigned attrKind;
 
   /// A union containing the specific iterators for each derived kind.
   Iterator it;
@@ -1531,13 +1664,13 @@ template <typename T>
 auto ElementsAttr::getValues() const -> iterator_range<T> {
   if (DenseElementsAttr denseAttr = dyn_cast<DenseElementsAttr>()) {
     auto values = denseAttr.getValues<T>();
-    return {iterator<T>(*this, values.begin()),
-            iterator<T>(*this, values.end())};
+    return {iterator<T>(getKind(), values.begin()),
+            iterator<T>(getKind(), values.end())};
   }
   if (SparseElementsAttr sparseAttr = dyn_cast<SparseElementsAttr>()) {
     auto values = sparseAttr.getValues<T>();
-    return {iterator<T>(*this, values.begin()),
-            iterator<T>(*this, values.end())};
+    return {iterator<T>(getKind(), values.begin()),
+            iterator<T>(getKind(), values.end())};
   }
   llvm_unreachable("unexpected attribute kind");
 }

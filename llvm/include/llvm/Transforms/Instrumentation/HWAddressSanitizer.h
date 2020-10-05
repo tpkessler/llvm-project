@@ -27,7 +27,6 @@ public:
   explicit HWAddressSanitizerPass(bool CompileKernel = false,
                                   bool Recover = false);
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM);
-  static bool isRequired() { return true; }
 
 private:
   bool CompileKernel;

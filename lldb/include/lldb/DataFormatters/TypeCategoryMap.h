@@ -84,8 +84,7 @@ private:
     lldb::TypeCategoryImplSP ptr;
 
   public:
-    delete_matching_categories(lldb::TypeCategoryImplSP p)
-        : ptr(std::move(p)) {}
+    delete_matching_categories(lldb::TypeCategoryImplSP p) : ptr(p) {}
 
     bool operator()(const lldb::TypeCategoryImplSP &other) {
       return ptr.get() == other.get();

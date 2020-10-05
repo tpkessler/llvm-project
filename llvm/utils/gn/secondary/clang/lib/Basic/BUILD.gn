@@ -69,7 +69,6 @@ static_library("Basic") {
     "SourceLocation.cpp",
     "SourceManager.cpp",
     "Stack.cpp",
-    "TargetID.cpp",
     "TargetInfo.cpp",
     "Targets.cpp",
     "Targets/AArch64.cpp",

@@ -17,7 +17,7 @@ class MLIRContext;
 
 class SDBMDialect : public Dialect {
 public:
-  SDBMDialect(MLIRContext *context);
+  SDBMDialect(MLIRContext *context) : Dialect(getDialectNamespace(), context) {}
 
   /// Since there are no other virtual methods in this derived class, override
   /// the destructor so that key methods get defined in the corresponding

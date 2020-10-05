@@ -12,13 +12,6 @@
 
 namespace Fortran::runtime {
 
-std::size_t TrimTrailingSpaces(const char *s, std::size_t n) {
-  while (n > 0 && s[n - 1] == ' ') {
-    --n;
-  }
-  return n;
-}
-
 OwningPtr<char> SaveDefaultCharacter(
     const char *s, std::size_t length, const Terminator &terminator) {
   if (s) {

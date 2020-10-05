@@ -75,8 +75,7 @@ struct ToyInlinerInterface : public DialectInlinerInterface {
 
 /// Dialect creation, the instance will be owned by the context. This is the
 /// point of registration of custom types and operations for the dialect.
-ToyDialect::ToyDialect(mlir::MLIRContext *ctx)
-    : mlir::Dialect(getDialectNamespace(), ctx, TypeID::get<ToyDialect>()) {
+ToyDialect::ToyDialect(mlir::MLIRContext *ctx) : mlir::Dialect("toy", ctx) {
   addOperations<
 #define GET_OP_LIST
 #include "toy/Ops.cpp.inc"
