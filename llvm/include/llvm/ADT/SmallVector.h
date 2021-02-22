@@ -564,6 +564,8 @@ public:
     append(IL.begin(), IL.end());
   }
 
+  void append(const SmallVectorImpl &RHS) { append(RHS.begin(), RHS.end()); }
+
   // FIXME: Consider assigning over existing elements, rather than clearing &
   // re-initializing them - for all assign(...) variants.
 
