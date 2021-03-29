@@ -674,38 +674,6 @@ defm : DSReadPat_mc <DS_READ_B32, vt, "load_local">;
 defm : DSReadPat_mc <DS_READ_B32, i32, "atomic_load_32_local">;
 defm : DSReadPat_mc <DS_READ_B64, i64, "atomic_load_64_local">;
 
-let AddedComplexity = 100 in {
-
-foreach vt = VReg_64.RegTypes in {
-defm : DSReadPat_mc <DS_READ_B64, vt, "load_align8_local">;
-}
-
-let SubtargetPredicate = isGFX7Plus in {
-
-foreach vt = VReg_96.RegTypes in {
-defm : DSReadPat_mc <DS_READ_B96, vt, "load_align16_local">;
-}
-
-foreach vt = VReg_128.RegTypes in {
-defm : DSReadPat_mc <DS_READ_B128, vt, "load_align16_local">;
-}
-
-let SubtargetPredicate = HasUnalignedAccessMode in {
-
-foreach vt = VReg_96.RegTypes in {
-defm : DSReadPat_mc <DS_READ_B96, vt, "load_local">;
-}
-
-foreach vt = VReg_128.RegTypes in {
-defm : DSReadPat_mc <DS_READ_B128, vt, "load_local">;
-}
-
-} // End SubtargetPredicate = HasUnalignedAccessMode
-
-} // End SubtargetPredicate = isGFX7Plus
-
-} // End AddedComplexity = 100
-
 let OtherPredicates = [D16PreservesUnusedBits] in {
 def : DSReadPat_D16<DS_READ_U16_D16_HI, load_d16_hi_local, v2i16>;
 def : DSReadPat_D16<DS_READ_U16_D16_HI, load_d16_hi_local, v2f16>;
@@ -832,30 +800,30 @@ defm : DS128Bit8ByteAlignedPat_mc<vt>;
 let AddedComplexity = 100 in {
 
 foreach vt = VReg_64.RegTypes in {
+defm : DSReadPat_mc <DS_READ_B64, vt, "load_align8_local">;
+}
+
+foreach vt = VReg_64.RegTypes in {
 defm : DSWritePat_mc <DS_WRITE_B64, vt, "store_align8_local">;
 }
 
 let SubtargetPredicate = isGFX7Plus in {
 
 foreach vt = VReg_96.RegTypes in {
+defm : DSReadPat_mc <DS_READ_B96, vt, "load_align16_local">;
+}
+
+foreach vt = VReg_96.RegTypes in {
 defm : DSWritePat_mc <DS_WRITE_B96, vt, "store_align16_local">;
+}
+
+foreach vt = VReg_128.RegTypes in {
+defm : DSReadPat_mc <DS_READ_B128, vt, "load_align16_local">;
 }
 
 foreach vt = VReg_128.RegTypes in {
 defm : DSWritePat_mc <DS_WRITE_B128, vt, "store_align16_local">;
 }
-
-let SubtargetPredicate = HasUnalignedAccessMode in {
-
-foreach vt = VReg_96.RegTypes in {
-defm : DSWritePat_mc <DS_WRITE_B96, vt, "store_local">;
-}
-
-foreach vt = VReg_128.RegTypes in {
-defm : DSWritePat_mc <DS_WRITE_B128, vt, "store_local">;
-}
-
-} // End SubtargetPredicate = HasUnalignedAccessMode
 
 } // End SubtargetPredicate = isGFX7Plus
 

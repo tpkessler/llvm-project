@@ -1431,42 +1431,32 @@ bool SITargetLowering::allowsMisalignedMemoryAccessesImpl(
 
   if (AddrSpace == AMDGPUAS::LOCAL_ADDRESS ||
       AddrSpace == AMDGPUAS::REGION_ADDRESS) {
-    // Check if alignment requirements for ds_read/write instructions are
-    // disabled.
-    if (Subtarget->hasUnalignedDSAccessEnabled() &&
-        !Subtarget->hasLDSMisalignedBug()) {
-      if (IsFast)
-        *IsFast = Alignment != Align(2);
-      return true;
-    }
-
     if (Size == 64) {
-      // ds_read/write_b64 require 8-byte alignment, but we can do a 4 byte
-      // aligned, 8 byte access in a single operation using ds_read2/write2_b32
-      // with adjacent offsets.
-      bool AlignedBy4 = Alignment >= Align(4);
+      // ds_read/write_b64 always require 8-byte alignment for performance
+      // reasons.
+      bool AlignedBy8 = Alignment >= Align(8);
       if (IsFast)
-        *IsFast = AlignedBy4;
+        *IsFast = AlignedBy8;
 
-      return AlignedBy4;
+      return AlignedBy8;
     }
     if (Size == 96) {
-      // ds_read/write_b96 require 16-byte alignment on gfx8 and older.
-      bool Aligned = Alignment >= Align(16);
+      // ds_read/write_b96 always require 16-byte alignment for performance
+      // reasons.
+      bool AlignedBy16 = Alignment >= Align(16);
       if (IsFast)
-        *IsFast = Aligned;
+        *IsFast = AlignedBy16;
 
-      return Aligned;
+      return AlignedBy16;
     }
     if (Size == 128) {
-      // ds_read/write_b128 require 16-byte alignment on gfx8 and older, but we
-      // can do a 8 byte aligned, 16 byte access in a single operation using
-      // ds_read2/write2_b64.
-      bool Aligned = Alignment >= Align(8);
+      // ds_read/write_b128 always require 16-byte alignment for performance
+      // reasons.
+      bool AlignedBy16 = Alignment >= Align(16);
       if (IsFast)
-        *IsFast = Aligned;
+        *IsFast = AlignedBy16;
 
-      return Aligned;
+      return AlignedBy16;
     }
   }
 
