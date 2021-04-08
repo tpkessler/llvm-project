@@ -69,7 +69,6 @@ endif()
 endmacro()
 
 add_subdirectory(aarch64)
-add_subdirectory(cuda)
 if (OPENMP_ENABLE_LIBOMPTARGET_HSA)
   add_subdirectory(amdgpu)
 endif()
