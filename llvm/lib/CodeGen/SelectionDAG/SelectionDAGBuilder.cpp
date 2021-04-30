@@ -5540,7 +5540,6 @@ bool SelectionDAGBuilder::EmitFuncArgumentDbgValue(
           DAG.AddDbgValue(SDV, nullptr, false);
           continue;
         }
-        assert(!IsDbgDeclare && "DbgDeclare operand is not in memory?");
         FuncInfo.ArgDbgValues.push_back(
           BuildMI(MF, DL, TII->get(TargetOpcode::DBG_VALUE), IsDbgDeclare,
                   RegAndSize.first, Variable, *FragmentExpr));
