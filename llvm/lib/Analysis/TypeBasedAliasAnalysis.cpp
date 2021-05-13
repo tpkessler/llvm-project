@@ -538,6 +538,14 @@ void Instruction::getAAMetadata(AAMDNodes &N, bool Merge) const {
   }
 }
 
+AAMDNodes AAMDNodes::concat(const AAMDNodes &Other) const {
+  AAMDNodes Result;
+  Result.TBAA = Result.TBAAStruct = nullptr;
+  Result.Scope = MDNode::getMostGenericAliasScope(Scope, Other.Scope);
+  Result.NoAlias = MDNode::intersect(NoAlias, Other.NoAlias);
+  return Result;
+}
+
 static const MDNode *createAccessTag(const MDNode *AccessType) {
   // If there is no access type or the access type is the root node, then
   // we don't have any useful access tag to return.

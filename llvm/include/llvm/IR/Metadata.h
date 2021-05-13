@@ -707,6 +707,11 @@ struct AAMDNodes {
     Result.NoAlias = NoAlias;
     return Result;
   }
+
+  /// Determine the best AAMDNodes after concatenating two different locations
+  /// together. Different from `merge`, where different locations should
+  /// overlap each other, `concat` puts non-overlapping locations together.
+  AAMDNodes concat(const AAMDNodes &Other) const;
 };
 
 // Specialize DenseMapInfo for AAMDNodes.
