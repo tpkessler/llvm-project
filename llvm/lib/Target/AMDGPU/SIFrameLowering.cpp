@@ -1587,7 +1587,8 @@ void SIFrameLowering::processFunctionBeforeFrameFinalized(
   }
 }
 
-static void allocateCFISave(MachineFunction &MF, int &FI, Register Reg) {
+static void allocateCFISave(MachineFunction &MF, Optional<int> &FI,
+                            Register Reg) {
   SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
   const GCNSubtarget &ST = MF.getSubtarget<GCNSubtarget>();
   const SIRegisterInfo *TRI = ST.getRegisterInfo();
