@@ -60,6 +60,9 @@
 ; GCN-O0-NEXT:     Call Graph SCC Pass Manager
 ; GCN-O0-NEXT:       AMDGPU Annotate Kernel Features
 ; GCN-O0-NEXT:       FunctionPass Manager
+; GCN-O0-NEXT:         Dominator Tree Construction
+; GCN-O0-NEXT:         Basic Alias Analysis (stateless AA impl)
+; GCN-O0-NEXT:         Function Alias Analysis Results
 ; GCN-O0-NEXT:         AMDGPU Lower Kernel Arguments
 ; GCN-O0-NEXT:       Analysis if a function is memory bound
 ; GCN-O0-NEXT:     Rewrite Symbols
@@ -262,6 +265,9 @@
 ; GCN-O1-NEXT:     Call Graph SCC Pass Manager
 ; GCN-O1-NEXT:       AMDGPU Annotate Kernel Features
 ; GCN-O1-NEXT:       FunctionPass Manager
+; GCN-O1-NEXT:         Dominator Tree Construction
+; GCN-O1-NEXT:         Basic Alias Analysis (stateless AA impl)
+; GCN-O1-NEXT:         Function Alias Analysis Results
 ; GCN-O1-NEXT:         AMDGPU Lower Kernel Arguments
 ; GCN-O1-NEXT:       Analysis if a function is memory bound
 ; GCN-O1-NEXT:       FunctionPass Manager
@@ -548,6 +554,9 @@
 ; GCN-O1-OPTS-NEXT:     Call Graph SCC Pass Manager
 ; GCN-O1-OPTS-NEXT:       AMDGPU Annotate Kernel Features
 ; GCN-O1-OPTS-NEXT:       FunctionPass Manager
+; GCN-O1-OPTS-NEXT:         Dominator Tree Construction
+; GCN-O1-OPTS-NEXT:         Basic Alias Analysis (stateless AA impl)
+; GCN-O1-OPTS-NEXT:         Function Alias Analysis Results
 ; GCN-O1-OPTS-NEXT:         AMDGPU Lower Kernel Arguments
 ; GCN-O1-OPTS-NEXT:       Analysis if a function is memory bound
 ; GCN-O1-OPTS-NEXT:       FunctionPass Manager
@@ -835,6 +844,9 @@
 ; GCN-O2-NEXT:     Call Graph SCC Pass Manager
 ; GCN-O2-NEXT:       AMDGPU Annotate Kernel Features
 ; GCN-O2-NEXT:       FunctionPass Manager
+; GCN-O2-NEXT:         Dominator Tree Construction
+; GCN-O2-NEXT:         Basic Alias Analysis (stateless AA impl)
+; GCN-O2-NEXT:         Function Alias Analysis Results
 ; GCN-O2-NEXT:         AMDGPU Lower Kernel Arguments
 ; GCN-O2-NEXT:       Analysis if a function is memory bound
 ; GCN-O2-NEXT:       FunctionPass Manager
@@ -1135,6 +1147,9 @@
 ; GCN-O3-NEXT:     Call Graph SCC Pass Manager
 ; GCN-O3-NEXT:       AMDGPU Annotate Kernel Features
 ; GCN-O3-NEXT:       FunctionPass Manager
+; GCN-O3-NEXT:         Dominator Tree Construction
+; GCN-O3-NEXT:         Basic Alias Analysis (stateless AA impl)
+; GCN-O3-NEXT:         Function Alias Analysis Results
 ; GCN-O3-NEXT:         AMDGPU Lower Kernel Arguments
 ; GCN-O3-NEXT:       Analysis if a function is memory bound
 ; GCN-O3-NEXT:       FunctionPass Manager

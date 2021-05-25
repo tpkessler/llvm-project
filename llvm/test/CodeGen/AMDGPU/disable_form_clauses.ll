@@ -1,9 +1,8 @@
 ; RUN: llc -march=amdgcn -mcpu=gfx902 -verify-machineinstrs -stop-after=si-form-memory-clauses < %s | FileCheck -check-prefix=GCN %s
 
 ; GCN-LABEL: {{^}}name:{{[ 	]*}}vector_clause
-; GCN: LOAD_DWORDX2
-; GCN-NEXT: LOAD_DWORDX2
-; GCN-NEXT: KILL
+; GCN: LOAD_DWORDX4
+; FIXME: As there won't be two S_LOAD for clustering, we need a valid test case here.
 define amdgpu_kernel void @vector_clause(<4 x i32> addrspace(1)* noalias nocapture readonly %arg, <4 x i32> addrspace(1)* noalias nocapture %arg1) {
 bb:
   %tmp = tail call i32 @llvm.amdgcn.workitem.id.x()

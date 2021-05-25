@@ -1232,12 +1232,18 @@ define amdgpu_kernel void @kern_align32_global_ptr(i8 addrspace(1)* align 1024 %
 define amdgpu_kernel void @kern_noalias_global_ptr(i8 addrspace(1)* noalias %ptr) #0 {
 ; HSA-LABEL: @kern_noalias_global_ptr(
 ; HSA-NEXT:    [[KERN_NOALIAS_GLOBAL_PTR_KERNARG_SEGMENT:%.*]] = call nonnull align 16 dereferenceable(8) i8 addrspace(4)* @llvm.amdgcn.kernarg.segment.ptr()
-; HSA-NEXT:    store volatile i8 addrspace(1)* [[PTR:%.*]], i8 addrspace(1)* addrspace(1)* undef, align 8
+; HSA-NEXT:    [[PTR_KERNARG_OFFSET:%.*]] = getelementptr inbounds i8, i8 addrspace(4)* [[KERN_NOALIAS_GLOBAL_PTR_KERNARG_SEGMENT]], i64 0
+; HSA-NEXT:    [[PTR_KERNARG_OFFSET_CAST:%.*]] = bitcast i8 addrspace(4)* [[PTR_KERNARG_OFFSET]] to i8 addrspace(1)* addrspace(4)*
+; HSA-NEXT:    [[PTR_LOAD:%.*]] = load i8 addrspace(1)*, i8 addrspace(1)* addrspace(4)* [[PTR_KERNARG_OFFSET_CAST]], align 16, !invariant.load !0
+; HSA-NEXT:    store volatile i8 addrspace(1)* [[PTR_LOAD]], i8 addrspace(1)* addrspace(1)* undef, align 8, !noalias !4
 ; HSA-NEXT:    ret void
 ;
 ; MESA-LABEL: @kern_noalias_global_ptr(
 ; MESA-NEXT:    [[KERN_NOALIAS_GLOBAL_PTR_KERNARG_SEGMENT:%.*]] = call nonnull align 16 dereferenceable(44) i8 addrspace(4)* @llvm.amdgcn.kernarg.segment.ptr()
-; MESA-NEXT:    store volatile i8 addrspace(1)* [[PTR:%.*]], i8 addrspace(1)* addrspace(1)* undef, align 8
+; MESA-NEXT:    [[PTR_KERNARG_OFFSET:%.*]] = getelementptr inbounds i8, i8 addrspace(4)* [[KERN_NOALIAS_GLOBAL_PTR_KERNARG_SEGMENT]], i64 36
+; MESA-NEXT:    [[PTR_KERNARG_OFFSET_CAST:%.*]] = bitcast i8 addrspace(4)* [[PTR_KERNARG_OFFSET]] to i8 addrspace(1)* addrspace(4)*
+; MESA-NEXT:    [[PTR_LOAD:%.*]] = load i8 addrspace(1)*, i8 addrspace(1)* addrspace(4)* [[PTR_KERNARG_OFFSET_CAST]], align 4, !invariant.load !0
+; MESA-NEXT:    store volatile i8 addrspace(1)* [[PTR_LOAD]], i8 addrspace(1)* addrspace(1)* undef, align 8, !noalias !4
 ; MESA-NEXT:    ret void
 ;
   store volatile i8 addrspace(1)* %ptr, i8 addrspace(1)* addrspace(1)* undef
@@ -1247,14 +1253,26 @@ define amdgpu_kernel void @kern_noalias_global_ptr(i8 addrspace(1)* noalias %ptr
 define amdgpu_kernel void @kern_noalias_global_ptr_x2(i8 addrspace(1)* noalias %ptr0, i8 addrspace(1)* noalias %ptr1) #0 {
 ; HSA-LABEL: @kern_noalias_global_ptr_x2(
 ; HSA-NEXT:    [[KERN_NOALIAS_GLOBAL_PTR_X2_KERNARG_SEGMENT:%.*]] = call nonnull align 16 dereferenceable(16) i8 addrspace(4)* @llvm.amdgcn.kernarg.segment.ptr()
-; HSA-NEXT:    store volatile i8 addrspace(1)* [[PTR0:%.*]], i8 addrspace(1)* addrspace(1)* undef, align 8
-; HSA-NEXT:    store volatile i8 addrspace(1)* [[PTR1:%.*]], i8 addrspace(1)* addrspace(1)* undef, align 8
+; HSA-NEXT:    [[PTR0_KERNARG_OFFSET:%.*]] = getelementptr inbounds i8, i8 addrspace(4)* [[KERN_NOALIAS_GLOBAL_PTR_X2_KERNARG_SEGMENT]], i64 0
+; HSA-NEXT:    [[PTR0_KERNARG_OFFSET_CAST:%.*]] = bitcast i8 addrspace(4)* [[PTR0_KERNARG_OFFSET]] to i8 addrspace(1)* addrspace(4)*
+; HSA-NEXT:    [[PTR0_LOAD:%.*]] = load i8 addrspace(1)*, i8 addrspace(1)* addrspace(4)* [[PTR0_KERNARG_OFFSET_CAST]], align 16, !invariant.load !0
+; HSA-NEXT:    [[PTR1_KERNARG_OFFSET:%.*]] = getelementptr inbounds i8, i8 addrspace(4)* [[KERN_NOALIAS_GLOBAL_PTR_X2_KERNARG_SEGMENT]], i64 8
+; HSA-NEXT:    [[PTR1_KERNARG_OFFSET_CAST:%.*]] = bitcast i8 addrspace(4)* [[PTR1_KERNARG_OFFSET]] to i8 addrspace(1)* addrspace(4)*
+; HSA-NEXT:    [[PTR1_LOAD:%.*]] = load i8 addrspace(1)*, i8 addrspace(1)* addrspace(4)* [[PTR1_KERNARG_OFFSET_CAST]], align 8, !invariant.load !0
+; HSA-NEXT:    store volatile i8 addrspace(1)* [[PTR0_LOAD]], i8 addrspace(1)* addrspace(1)* undef, align 8, !noalias !7
+; HSA-NEXT:    store volatile i8 addrspace(1)* [[PTR1_LOAD]], i8 addrspace(1)* addrspace(1)* undef, align 8, !noalias !7
 ; HSA-NEXT:    ret void
 ;
 ; MESA-LABEL: @kern_noalias_global_ptr_x2(
 ; MESA-NEXT:    [[KERN_NOALIAS_GLOBAL_PTR_X2_KERNARG_SEGMENT:%.*]] = call nonnull align 16 dereferenceable(52) i8 addrspace(4)* @llvm.amdgcn.kernarg.segment.ptr()
-; MESA-NEXT:    store volatile i8 addrspace(1)* [[PTR0:%.*]], i8 addrspace(1)* addrspace(1)* undef, align 8
-; MESA-NEXT:    store volatile i8 addrspace(1)* [[PTR1:%.*]], i8 addrspace(1)* addrspace(1)* undef, align 8
+; MESA-NEXT:    [[PTR0_KERNARG_OFFSET:%.*]] = getelementptr inbounds i8, i8 addrspace(4)* [[KERN_NOALIAS_GLOBAL_PTR_X2_KERNARG_SEGMENT]], i64 36
+; MESA-NEXT:    [[PTR0_KERNARG_OFFSET_CAST:%.*]] = bitcast i8 addrspace(4)* [[PTR0_KERNARG_OFFSET]] to i8 addrspace(1)* addrspace(4)*
+; MESA-NEXT:    [[PTR0_LOAD:%.*]] = load i8 addrspace(1)*, i8 addrspace(1)* addrspace(4)* [[PTR0_KERNARG_OFFSET_CAST]], align 4, !invariant.load !0
+; MESA-NEXT:    [[PTR1_KERNARG_OFFSET:%.*]] = getelementptr inbounds i8, i8 addrspace(4)* [[KERN_NOALIAS_GLOBAL_PTR_X2_KERNARG_SEGMENT]], i64 44
+; MESA-NEXT:    [[PTR1_KERNARG_OFFSET_CAST:%.*]] = bitcast i8 addrspace(4)* [[PTR1_KERNARG_OFFSET]] to i8 addrspace(1)* addrspace(4)*
+; MESA-NEXT:    [[PTR1_LOAD:%.*]] = load i8 addrspace(1)*, i8 addrspace(1)* addrspace(4)* [[PTR1_KERNARG_OFFSET_CAST]], align 4, !invariant.load !0
+; MESA-NEXT:    store volatile i8 addrspace(1)* [[PTR0_LOAD]], i8 addrspace(1)* addrspace(1)* undef, align 8, !noalias !7
+; MESA-NEXT:    store volatile i8 addrspace(1)* [[PTR1_LOAD]], i8 addrspace(1)* addrspace(1)* undef, align 8, !noalias !7
 ; MESA-NEXT:    ret void
 ;
   store volatile i8 addrspace(1)* %ptr0, i8 addrspace(1)* addrspace(1)* undef
