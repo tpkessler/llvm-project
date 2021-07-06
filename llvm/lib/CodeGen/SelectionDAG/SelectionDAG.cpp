@@ -52,6 +52,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
@@ -96,6 +97,10 @@ void SelectionDAG::DAGUpdateListener::NodeInserted(SDNode *) {}
 void SelectionDAG::DAGNodeDeletedListener::anchor() {}
 
 #define DEBUG_TYPE "selectiondag"
+
+static cl::opt<bool> EnableMemCpyScopedNoAlias(
+    "enable-memcpy-scoped-noalias", cl::Hidden, cl::init(true),
+    cl::desc("Enable scoped no-alias support during memcpy lowering"));
 
 static cl::opt<bool> EnableMemCpyDAGOpt("enable-memcpy-dag-opt",
        cl::Hidden, cl::init(true),
@@ -6294,6 +6299,30 @@ static SDValue getMemcpyLoadsAndStores(SelectionDAG &DAG, const SDLoc &dl,
   AAMDNodes NewAAInfo = AAInfo;
   NewAAInfo.TBAA = NewAAInfo.TBAAStruct = nullptr;
 
+  AAMDNodes DstAAInfo, SrcAAInfo;
+  DstAAInfo = SrcAAInfo = NewAAInfo;
+  // Generate new scoped AA metadata for this memcpy instance if enabled.
+  if (EnableMemCpyScopedNoAlias) {
+    MDBuilder MDB(*DAG.getContext());
+    MDNode *Domain =
+        MDB.createAnonymousAliasScopeDomain("MemcpyLoweringDomain");
+    MDNode *DstScope = MDB.createAnonymousAliasScope(Domain, "Dst");
+    MDNode *SrcScope = MDB.createAnonymousAliasScope(Domain, "Src");
+    MDNode *DstAliasScope = MDNode::concatenate(
+        NewAAInfo.Scope, MDNode::get(*DAG.getContext(), {DstScope}));
+    MDNode *DstNoAliase = MDNode::concatenate(
+        NewAAInfo.NoAlias, MDNode::get(*DAG.getContext(), {SrcScope}));
+    MDNode *SrcAliasScope = MDNode::concatenate(
+        NewAAInfo.Scope, MDNode::get(*DAG.getContext(), {SrcScope}));
+    MDNode *SrcNoAliase = MDNode::concatenate(
+        NewAAInfo.NoAlias, MDNode::get(*DAG.getContext(), {DstScope}));
+
+    DstAAInfo.Scope = DstAliasScope;
+    DstAAInfo.NoAlias = DstNoAliase;
+    SrcAAInfo.Scope = SrcAliasScope;
+    SrcAAInfo.NoAlias = SrcNoAliase;
+  }
+
   MachineMemOperand::Flags MMOFlags =
       isVol ? MachineMemOperand::MOVolatile : MachineMemOperand::MONone;
   SmallVector<SDValue, 16> OutLoadChains;
@@ -6336,7 +6365,7 @@ static SDValue getMemcpyLoadsAndStores(SelectionDAG &DAG, const SDLoc &dl,
         Store = DAG.getStore(
             Chain, dl, Value,
             DAG.getMemBasePlusOffset(Dst, TypeSize::Fixed(DstOff), dl),
-            DstPtrInfo.getWithOffset(DstOff), Alignment, MMOFlags, NewAAInfo);
+            DstPtrInfo.getWithOffset(DstOff), Alignment, MMOFlags, DstAAInfo);
         OutChains.push_back(Store);
       }
     }
@@ -6360,13 +6389,13 @@ static SDValue getMemcpyLoadsAndStores(SelectionDAG &DAG, const SDLoc &dl,
           ISD::EXTLOAD, dl, NVT, Chain,
           DAG.getMemBasePlusOffset(Src, TypeSize::Fixed(SrcOff), dl),
           SrcPtrInfo.getWithOffset(SrcOff), VT,
-          commonAlignment(*SrcAlign, SrcOff), SrcMMOFlags, NewAAInfo);
+          commonAlignment(*SrcAlign, SrcOff), SrcMMOFlags, SrcAAInfo);
       OutLoadChains.push_back(Value.getValue(1));
 
       Store = DAG.getTruncStore(
           Chain, dl, Value,
           DAG.getMemBasePlusOffset(Dst, TypeSize::Fixed(DstOff), dl),
-          DstPtrInfo.getWithOffset(DstOff), VT, Alignment, MMOFlags, NewAAInfo);
+          DstPtrInfo.getWithOffset(DstOff), VT, Alignment, MMOFlags, DstAAInfo);
       OutStoreChains.push_back(Store);
     }
     SrcOff += VTSize;

@@ -12,8 +12,9 @@
 ; MIR-DAG: ![[SET1:[0-9]+]] = !{![[SCOPE1]]}
 
 ; MIR-LABEL: name: test_memcpy
-; MIR: %8:vreg_128 = GLOBAL_LOAD_DWORDX4 %9, 16, 0, implicit $exec :: (load 16 from %ir.p1, align 4, !alias.scope ![[SET0]], !noalias ![[SET1]], addrspace 1)
-; MIR: GLOBAL_STORE_DWORDX4 %10, killed %8, 0, 0, implicit $exec :: (store 16 into %ir.p0, align 4, !alias.scope ![[SET0]], !noalias ![[SET1]], addrspace 1)
+; MIR: body:
+; MIR: %8:vreg_128 = GLOBAL_LOAD_DWORDX4 %9, 16, 0, implicit $exec :: (load 16 from %ir.p1, align 4, !alias.scope <0x{{[0-9a-f]+}}>, !noalias <0x{{[0-9a-f]+}}>, addrspace 1)
+; MIR: GLOBAL_STORE_DWORDX4 %10, killed %8, 0, 0, implicit $exec :: (store 16 into %ir.p0, align 4, !alias.scope <0x{{[0-9a-f]+}}>, !noalias <0x{{[0-9a-f]+}}>, addrspace 1)
 define i32 @test_memcpy(i32 addrspace(1)* nocapture %p, i32 addrspace(1)* nocapture readonly %q) {
 ; Check loads of %q are scheduled ahead of that store of the memcpy on %p.
 ; CHECK-LABEL: test_memcpy:
@@ -34,8 +35,9 @@ define i32 @test_memcpy(i32 addrspace(1)* nocapture %p, i32 addrspace(1)* nocapt
 }
 
 ; MIR-LABEL: name: test_memcpy_inline
-; MIR: %8:vreg_128 = GLOBAL_LOAD_DWORDX4 %9, 16, 0, implicit $exec :: (load 16 from %ir.p1, align 4, !alias.scope ![[SET0]], !noalias ![[SET1]], addrspace 1)
-; MIR: GLOBAL_STORE_DWORDX4 %10, killed %8, 0, 0, implicit $exec :: (store 16 into %ir.p0, align 4, !alias.scope ![[SET0]], !noalias ![[SET1]], addrspace 1)
+; MIR: body:
+; MIR: %8:vreg_128 = GLOBAL_LOAD_DWORDX4 %9, 16, 0, implicit $exec :: (load 16 from %ir.p1, align 4, !alias.scope <0x{{[0-9a-f]+}}>, !noalias <0x{{[0-9a-f]+}}>, addrspace 1)
+; MIR: GLOBAL_STORE_DWORDX4 %10, killed %8, 0, 0, implicit $exec :: (store 16 into %ir.p0, align 4, !alias.scope <0x{{[0-9a-f]+}}>, !noalias <0x{{[0-9a-f]+}}>, addrspace 1)
 define i32 @test_memcpy_inline(i32 addrspace(1)* nocapture %p, i32 addrspace(1)* nocapture readonly %q) {
 ; Check loads of %q are scheduled ahead of that store of the memcpy on %p.
 ; CHECK-LABEL: test_memcpy_inline:
