@@ -1,5 +1,4 @@
 ; RUN: opt -mtriple=amdgcn-- -O3 -S %s | FileCheck %s
-; XFAIL: *
 
 ; Check that loop unswitch happened and condition hoisted out of the loop.
 ; Condition is uniform so even targets with divergence should perform unswitching.
