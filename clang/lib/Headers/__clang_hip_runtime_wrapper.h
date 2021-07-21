@@ -29,6 +29,10 @@
   #define nullptr NULL;
 #endif
 
+#include <cmath>
+#include <cstdlib>
+#include <stdlib.h>
+
 typedef __SIZE_TYPE__ __hip_size_t;
 
 #ifdef __cplusplus
@@ -58,10 +62,6 @@ __attribute__((weak)) inline __device__ void *free(void *__ptr) {
 #ifdef __cplusplus
 } // extern "C"
 #endif //__cplusplus
-
-#include <cmath>
-#include <cstdlib>
-#include <stdlib.h>
 
 #include <__clang_hip_libdevice_declares.h>
 #include <__clang_hip_math.h>
