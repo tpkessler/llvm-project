@@ -10,31 +10,31 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK: bb.0..expVert:
   ; CHECK:   liveins: $sgpr3, $sgpr4, $sgpr5, $sgpr8, $sgpr9, $sgpr10, $sgpr18, $sgpr19, $sgpr20, $sgpr21, $sgpr22, $sgpr23, $sgpr25, $sgpr27, $sgpr31
   ; CHECK:   undef %56.sub0:sgpr_64 = COPY $sgpr31
-  ; CHECK:   SI_SPILL_S32_SAVE $sgpr27, %stack.2, implicit $exec, implicit $sgpr32 :: (store 4 into %stack.2, addrspace 5)
-  ; CHECK:   [[COPY:%[0-9]+]]:sgpr_32 = COPY $sgpr25
-  ; CHECK:   [[COPY1:%[0-9]+]]:sgpr_32 = COPY $sgpr5
-  ; CHECK:   [[COPY2:%[0-9]+]]:sgpr_32 = COPY $sgpr4
-  ; CHECK:   [[COPY3:%[0-9]+]]:sgpr_32 = COPY $sgpr3
-  ; CHECK:   [[COPY4:%[0-9]+]]:sgpr_32 = COPY $sgpr18
+  ; CHECK:   [[COPY:%[0-9]+]]:sgpr_32 = COPY $sgpr27
+  ; CHECK:   [[COPY1:%[0-9]+]]:sgpr_32 = COPY $sgpr25
+  ; CHECK:   [[COPY2:%[0-9]+]]:sgpr_32 = COPY $sgpr5
+  ; CHECK:   [[COPY3:%[0-9]+]]:sgpr_32 = COPY $sgpr4
+  ; CHECK:   [[COPY4:%[0-9]+]]:sgpr_32 = COPY $sgpr3
+  ; CHECK:   [[COPY5:%[0-9]+]]:sgpr_32 = COPY $sgpr18
   ; CHECK:   undef %50.sub0:sgpr_64 = COPY $sgpr19
-  ; CHECK:   [[COPY5:%[0-9]+]]:sgpr_32 = COPY $sgpr20
-  ; CHECK:   [[COPY6:%[0-9]+]]:sgpr_32 = COPY $sgpr21
-  ; CHECK:   [[COPY7:%[0-9]+]]:sgpr_32 = COPY $sgpr22
-  ; CHECK:   [[COPY8:%[0-9]+]]:sgpr_32 = COPY $sgpr23
-  ; CHECK:   [[COPY9:%[0-9]+]]:sgpr_32 = COPY $sgpr9
-  ; CHECK:   [[COPY10:%[0-9]+]]:sgpr_32 = COPY $sgpr10
-  ; CHECK:   [[COPY11:%[0-9]+]]:sgpr_32 = COPY $sgpr8
+  ; CHECK:   [[COPY6:%[0-9]+]]:sgpr_32 = COPY $sgpr20
+  ; CHECK:   [[COPY7:%[0-9]+]]:sgpr_32 = COPY $sgpr21
+  ; CHECK:   [[COPY8:%[0-9]+]]:sgpr_32 = COPY $sgpr22
+  ; CHECK:   [[COPY9:%[0-9]+]]:sgpr_32 = COPY $sgpr23
+  ; CHECK:   [[COPY10:%[0-9]+]]:sgpr_32 = COPY $sgpr9
+  ; CHECK:   [[COPY11:%[0-9]+]]:sgpr_32 = COPY $sgpr10
+  ; CHECK:   [[COPY12:%[0-9]+]]:sgpr_32 = COPY $sgpr8
   ; CHECK:   undef %71.sub0_sub1:sgpr_128 = S_LOAD_DWORDX2_IMM %56, 232, 0 :: (load 8 from %ir.40, addrspace 4)
   ; CHECK:   [[S_MOV_B32_:%[0-9]+]]:sreg_32 = S_MOV_B32 65535
-  ; CHECK:   [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY3]], 4, implicit-def dead $scc
-  ; CHECK:   [[S_LSHL_B32_1:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY2]], 4, implicit-def dead $scc
-  ; CHECK:   [[S_LSHL_B32_2:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY1]], 4, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY4]], 4, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_1:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY3]], 4, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_2:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY2]], 4, implicit-def dead $scc
   ; CHECK:   [[S_ASHR_I32_:%[0-9]+]]:sreg_32_xm0 = S_ASHR_I32 [[S_LSHL_B32_]], 31, implicit-def dead $scc
   ; CHECK:   [[S_ASHR_I32_1:%[0-9]+]]:sreg_32_xm0 = S_ASHR_I32 [[S_LSHL_B32_1]], 31, implicit-def dead $scc
   ; CHECK:   [[S_AND_B32_:%[0-9]+]]:sreg_32_xm0_xexec = S_AND_B32 %71.sub1, [[S_MOV_B32_]], implicit-def dead $scc
   ; CHECK:   SI_SPILL_S32_SAVE [[S_AND_B32_]], %stack.0, implicit $exec, implicit $sgpr32 :: (store 4 into %stack.0, addrspace 5)
   ; CHECK:   [[S_ASHR_I32_2:%[0-9]+]]:sreg_32_xm0 = S_ASHR_I32 [[S_LSHL_B32_2]], 31, implicit-def dead $scc
-  ; CHECK:   undef %130.sub0:sreg_64 = S_ADD_U32 [[COPY4]], [[S_LSHL_B32_2]], implicit-def $scc
+  ; CHECK:   undef %130.sub0:sreg_64 = S_ADD_U32 [[COPY5]], [[S_LSHL_B32_2]], implicit-def $scc
   ; CHECK:   %130.sub1:sreg_64 = S_ADDC_U32 undef %54:sreg_32, [[S_ASHR_I32_2]], implicit-def dead $scc, implicit $scc
   ; CHECK:   [[S_LOAD_DWORDX4_IMM:%[0-9]+]]:sgpr_128 = S_LOAD_DWORDX4_IMM %130, 16, 0 :: (load 16 from %ir.84, addrspace 4)
   ; CHECK:   [[S_LOAD_DWORDX4_IMM1:%[0-9]+]]:sgpr_128 = S_LOAD_DWORDX4_IMM undef %74:sreg_64, 0, 0 :: (load 16 from `<4 x i32> addrspace(4)* undef`, addrspace 4)
@@ -51,12 +51,12 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN1:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM1]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   KILL undef %89:sgpr_128
   ; CHECK:   KILL undef %118:sgpr_128
-  ; CHECK:   SI_SPILL_S128_SAVE %71, %stack.1, implicit $exec, implicit $sgpr32 :: (store 16 into %stack.1, align 4, addrspace 5)
+  ; CHECK:   [[COPY13:%[0-9]+]]:sgpr_128 = COPY %71
   ; CHECK:   %71.sub1:sgpr_128 = S_MOV_B32 0
   ; CHECK:   [[S_SUB_I32_:%[0-9]+]]:sreg_32 = S_SUB_I32 [[S_BUFFER_LOAD_DWORD_IMM]], 29, implicit-def dead $scc
   ; CHECK:   [[S_SUB_I32_1:%[0-9]+]]:sreg_32 = S_SUB_I32 [[S_BUFFER_LOAD_DWORD_IMM]], 30, implicit-def dead $scc
   ; CHECK:   [[S_SUB_I32_2:%[0-9]+]]:sreg_32 = S_SUB_I32 [[S_BUFFER_LOAD_DWORD_IMM1]], 31, implicit-def dead $scc
-  ; CHECK:   [[S_ADD_U32_:%[0-9]+]]:sreg_32 = S_ADD_U32 [[COPY4]], 64, implicit-def $scc
+  ; CHECK:   [[S_ADD_U32_:%[0-9]+]]:sreg_32 = S_ADD_U32 [[COPY5]], 64, implicit-def $scc
   ; CHECK:   [[S_ADDC_U32_:%[0-9]+]]:sreg_32 = S_ADDC_U32 undef %54:sreg_32, 0, implicit-def dead $scc, implicit $scc
   ; CHECK:   undef %149.sub0:sreg_64 = S_ADD_U32 [[S_ADD_U32_]], [[S_LSHL_B32_]], implicit-def $scc
   ; CHECK:   %149.sub1:sreg_64 = S_ADDC_U32 [[S_ADDC_U32_]], [[S_ASHR_I32_]], implicit-def dead $scc, implicit $scc
@@ -94,11 +94,11 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   %253.sub1:sreg_64 = S_ADDC_U32 [[S_ADDC_U32_2]], [[S_ASHR_I32_2]], implicit-def dead $scc, implicit $scc
   ; CHECK:   undef %261.sub0:sreg_64 = S_ADD_U32 [[S_ADD_U32_2]], undef %171:sreg_32, implicit-def $scc
   ; CHECK:   %261.sub1:sreg_64 = S_ADDC_U32 [[S_ADDC_U32_2]], [[S_ASHR_I32_3]], implicit-def dead $scc, implicit $scc
-  ; CHECK:   undef %273.sub0:sreg_64 = S_ADD_U32 [[COPY5]], [[S_LSHL_B32_]], implicit-def $scc
+  ; CHECK:   undef %273.sub0:sreg_64 = S_ADD_U32 [[COPY6]], [[S_LSHL_B32_]], implicit-def $scc
   ; CHECK:   %273.sub1:sreg_64 = S_ADDC_U32 undef %48:sreg_32, [[S_ASHR_I32_]], implicit-def dead $scc, implicit $scc
-  ; CHECK:   undef %286.sub0:sreg_64 = S_ADD_U32 [[COPY6]], [[S_LSHL_B32_1]], implicit-def $scc
+  ; CHECK:   undef %286.sub0:sreg_64 = S_ADD_U32 [[COPY7]], [[S_LSHL_B32_1]], implicit-def $scc
   ; CHECK:   %286.sub1:sreg_64 = S_ADDC_U32 undef %45:sreg_32, [[S_ASHR_I32_1]], implicit-def dead $scc, implicit $scc
-  ; CHECK:   undef %293.sub0:sreg_64 = S_ADD_U32 [[COPY6]], [[S_LSHL_B32_2]], implicit-def $scc
+  ; CHECK:   undef %293.sub0:sreg_64 = S_ADD_U32 [[COPY7]], [[S_LSHL_B32_2]], implicit-def $scc
   ; CHECK:   %293.sub1:sreg_64 = S_ADDC_U32 undef %45:sreg_32, [[S_ASHR_I32_2]], implicit-def dead $scc, implicit $scc
   ; CHECK:   [[S_ADD_I32_:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_LSHL_B32_]], 16, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_1:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_LSHL_B32_2]], 16, implicit-def dead $scc
@@ -122,15 +122,15 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   [[S_ADD_I32_3:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_SGPR1]], -114, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_4:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_SGPR2]], -130, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_5:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_IMM2]], -178, implicit-def dead $scc
-  ; CHECK:   undef %327.sub0:sreg_64 = S_ADD_U32 [[COPY7]], [[S_LSHL_B32_]], implicit-def $scc
+  ; CHECK:   undef %327.sub0:sreg_64 = S_ADD_U32 [[COPY8]], [[S_LSHL_B32_]], implicit-def $scc
   ; CHECK:   %327.sub1:sreg_64 = S_ADDC_U32 undef %42:sreg_32, [[S_ASHR_I32_]], implicit-def dead $scc, implicit $scc
-  ; CHECK:   undef %335.sub0:sreg_64 = S_ADD_U32 [[COPY8]], [[S_LSHL_B32_]], implicit-def $scc
+  ; CHECK:   undef %335.sub0:sreg_64 = S_ADD_U32 [[COPY9]], [[S_LSHL_B32_]], implicit-def $scc
   ; CHECK:   %335.sub1:sreg_64 = S_ADDC_U32 undef %39:sreg_32, [[S_ASHR_I32_]], implicit-def dead $scc, implicit $scc
-  ; CHECK:   undef %343.sub0:sreg_64 = S_ADD_U32 [[COPY8]], [[S_LSHL_B32_1]], implicit-def $scc
+  ; CHECK:   undef %343.sub0:sreg_64 = S_ADD_U32 [[COPY9]], [[S_LSHL_B32_1]], implicit-def $scc
   ; CHECK:   %343.sub1:sreg_64 = S_ADDC_U32 undef %39:sreg_32, [[S_ASHR_I32_1]], implicit-def dead $scc, implicit $scc
-  ; CHECK:   undef %351.sub0:sreg_64 = S_ADD_U32 [[COPY8]], [[S_LSHL_B32_2]], implicit-def $scc
+  ; CHECK:   undef %351.sub0:sreg_64 = S_ADD_U32 [[COPY9]], [[S_LSHL_B32_2]], implicit-def $scc
   ; CHECK:   %351.sub1:sreg_64 = S_ADDC_U32 undef %39:sreg_32, [[S_ASHR_I32_2]], implicit-def dead $scc, implicit $scc
-  ; CHECK:   [[S_LSHL_B32_3:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY9]], 4, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_3:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY10]], 4, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_6:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_LSHL_B32_3]], 16, implicit-def dead $scc
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN5:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM5]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   [[S_BUFFER_LOAD_DWORD_SGPR6:%[0-9]+]]:sreg_32_xm0_xexec = S_BUFFER_LOAD_DWORD_SGPR undef %396:sgpr_128, [[S_ADD_I32_6]], 0 :: (dereferenceable invariant load 4)
@@ -151,18 +151,18 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   [[S_ADD_I32_12:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_SGPR3]], -329, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_13:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_SGPR3]], -345, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_14:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_SGPR6]], -441, implicit-def dead $scc
-  ; CHECK:   [[S_ADD_U32_3:%[0-9]+]]:sreg_32 = S_ADD_U32 [[COPY]], 160, implicit-def $scc
+  ; CHECK:   [[S_ADD_U32_3:%[0-9]+]]:sreg_32 = S_ADD_U32 [[COPY1]], 160, implicit-def $scc
   ; CHECK:   [[S_ADDC_U32_3:%[0-9]+]]:sreg_32 = S_ADDC_U32 undef %36:sreg_32, 0, implicit-def dead $scc, implicit $scc
   ; CHECK:   undef %411.sub0:sreg_64 = S_ADD_U32 [[S_ADD_U32_3]], [[S_LSHL_B32_2]], implicit-def $scc
   ; CHECK:   %411.sub1:sreg_64 = S_ADDC_U32 [[S_ADDC_U32_3]], [[S_ASHR_I32_2]], implicit-def dead $scc, implicit $scc
-  ; CHECK:   [[S_LSHL_B32_4:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY10]], 4, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_4:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY11]], 4, implicit-def dead $scc
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN10:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM11]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   [[S_ASHR_I32_4:%[0-9]+]]:sreg_32_xm0 = S_ASHR_I32 [[S_LSHL_B32_4]], 31, implicit-def dead $scc
   ; CHECK:   undef %425.sub0:sreg_64 = S_ADD_U32 [[S_ADD_U32_3]], [[S_LSHL_B32_4]], implicit-def $scc
   ; CHECK:   %425.sub1:sreg_64 = S_ADDC_U32 [[S_ADDC_U32_3]], [[S_ASHR_I32_4]], implicit-def dead $scc, implicit $scc
   ; CHECK:   [[S_ADD_U32_4:%[0-9]+]]:sreg_32 = S_ADD_U32 %56.sub0, 168, implicit-def $scc
   ; CHECK:   [[S_ADDC_U32_4:%[0-9]+]]:sreg_32 = S_ADDC_U32 undef %57:sreg_32, 0, implicit-def dead $scc, implicit $scc
-  ; CHECK:   [[S_LSHL_B32_5:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY3]], 3, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_5:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY4]], 3, implicit-def dead $scc
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN11:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM12]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   [[S_ASHR_I32_5:%[0-9]+]]:sreg_32_xm0 = S_ASHR_I32 [[S_LSHL_B32_5]], 31, implicit-def dead $scc
   ; CHECK:   undef %441.sub0:sreg_64 = S_ADD_U32 [[S_ADD_U32_4]], [[S_LSHL_B32_5]], implicit-def $scc
@@ -179,7 +179,7 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   [[S_LOAD_DWORDX4_IMM18:%[0-9]+]]:sgpr_128 = S_LOAD_DWORDX4_IMM %293, 0, 0 :: (load 16 from %ir.200, addrspace 4)
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN16:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM16]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   [[BUFFER_LOAD_DWORD_OFFSET1:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_DWORD_OFFSET [[S_LOAD_DWORDX4_IMM1]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
-  ; CHECK:   [[S_LSHL_B32_6:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY2]], 3, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_6:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY3]], 3, implicit-def dead $scc
   ; CHECK:   [[BUFFER_LOAD_DWORD_OFFSET2:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_DWORD_OFFSET [[S_LOAD_DWORDX4_IMM17]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   [[S_ASHR_I32_6:%[0-9]+]]:sreg_32_xm0 = S_ASHR_I32 [[S_LSHL_B32_6]], 31, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_15:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_IMM4]], -467, implicit-def dead $scc
@@ -196,7 +196,7 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN17:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM19]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN18:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM20]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN19:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM21]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
-  ; CHECK:   [[S_LSHL_B32_7:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY1]], 3, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_7:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY2]], 3, implicit-def dead $scc
   ; CHECK:   [[BUFFER_LOAD_FORMAT_X_IDXEN20:%[0-9]+]]:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN [[V_MOV_B32_e32_]], [[S_LOAD_DWORDX4_IMM22]], 0, 0, 0, 0, 0, implicit $exec :: (dereferenceable load 4 from custom "BufferResource", align 1, addrspace 4)
   ; CHECK:   [[S_ASHR_I32_7:%[0-9]+]]:sreg_32_xm0 = S_ASHR_I32 [[S_LSHL_B32_7]], 31, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_16:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_IMM5]], -468, implicit-def dead $scc
@@ -210,7 +210,7 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   KILL %411.sub0, %411.sub1
   ; CHECK:   KILL undef %488:sreg_64
   ; CHECK:   KILL %71.sub0_sub1
-  ; CHECK:   [[S_LSHL_B32_8:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY11]], 3, implicit-def dead $scc
+  ; CHECK:   [[S_LSHL_B32_8:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY12]], 3, implicit-def dead $scc
   ; CHECK:   [[S_LOAD_DWORDX4_IMM24:%[0-9]+]]:sgpr_128 = S_LOAD_DWORDX4_IMM %425, 0, 0 :: (load 16 from %ir.291, addrspace 4)
   ; CHECK:   [[S_ASHR_I32_8:%[0-9]+]]:sreg_32_xm0 = S_ASHR_I32 [[S_LSHL_B32_8]], 31, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_17:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_IMM6]], -469, implicit-def dead $scc
@@ -229,8 +229,7 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   [[S_ADD_I32_21:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_SGPR3]], -507, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_22:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_SGPR3]], -539, implicit-def dead $scc
   ; CHECK:   [[S_ADD_I32_23:%[0-9]+]]:sreg_32 = S_ADD_I32 [[S_BUFFER_LOAD_DWORD_IMM7]], -473, implicit-def dead $scc
-  ; CHECK:   [[SI_SPILL_S32_RESTORE:%[0-9]+]]:sgpr_32 = SI_SPILL_S32_RESTORE %stack.2, implicit $exec, implicit $sgpr32 :: (load 4 from %stack.2, addrspace 5)
-  ; CHECK:   [[S_ADD_U32_5:%[0-9]+]]:sreg_32 = S_ADD_U32 [[SI_SPILL_S32_RESTORE]], 96, implicit-def $scc
+  ; CHECK:   [[S_ADD_U32_5:%[0-9]+]]:sreg_32 = S_ADD_U32 [[COPY]], 96, implicit-def $scc
   ; CHECK:   [[S_ADDC_U32_5:%[0-9]+]]:sreg_32 = S_ADDC_U32 undef %33:sreg_32, 0, implicit-def dead $scc, implicit $scc
   ; CHECK:   undef %514.sub0:sreg_64 = S_ADD_U32 [[S_ADD_U32_5]], [[S_LSHL_B32_]], implicit-def $scc
   ; CHECK:   %514.sub1:sreg_64 = S_ADDC_U32 [[S_ADDC_U32_5]], [[S_ASHR_I32_]], implicit-def dead $scc, implicit $scc
@@ -352,13 +351,9 @@ define amdgpu_gs void @_amdgpu_gs_main(i32 inreg %primShaderTableAddrLow, <31 x 
   ; CHECK:   [[V_OR_B32_e32_61:%[0-9]+]]:vgpr_32 = V_OR_B32_e32 [[V_OR_B32_e32_60]], [[V_ADD_U32_e32_25]], implicit $exec
   ; CHECK:   [[V_ADD_U32_e32_27:%[0-9]+]]:vgpr_32 = V_ADD_U32_e32 -575, [[BUFFER_LOAD_FORMAT_X_IDXEN]], implicit $exec
   ; CHECK:   [[V_OR_B32_e32_62:%[0-9]+]]:vgpr_32 = V_OR_B32_e32 [[V_OR_B32_e32_61]], [[V_ADD_U32_e32_26]], implicit $exec
-  ; CHECK:   [[SI_SPILL_S32_RESTORE1:%[0-9]+]]:sreg_32_xm0_xexec = SI_SPILL_S32_RESTORE %stack.0, implicit $exec, implicit $sgpr32 :: (load 4 from %stack.0, addrspace 5)
-  ; CHECK:   [[SI_SPILL_S128_RESTORE:%[0-9]+]]:sgpr_128 = SI_SPILL_S128_RESTORE %stack.1, implicit $exec, implicit $sgpr32 :: (load 16 from %stack.1, align 4, addrspace 5)
-  ; CHECK:   undef %914.sub2_sub3:sgpr_128 = COPY [[SI_SPILL_S128_RESTORE]].sub2_sub3 {
-  ; CHECK:     internal %914.sub0:sgpr_128 = COPY [[SI_SPILL_S128_RESTORE]].sub0
-  ; CHECK:   }
-  ; CHECK:   %914.sub1:sgpr_128 = COPY [[SI_SPILL_S32_RESTORE1]]
-  ; CHECK:   [[S_BUFFER_LOAD_DWORD_IMM8:%[0-9]+]]:sreg_32_xm0_xexec = S_BUFFER_LOAD_DWORD_IMM %914, 0, 0 :: (dereferenceable invariant load 4)
+  ; CHECK:   [[SI_SPILL_S32_RESTORE:%[0-9]+]]:sreg_32_xm0_xexec = SI_SPILL_S32_RESTORE %stack.0, implicit $exec, implicit $sgpr32 :: (load 4 from %stack.0, addrspace 5)
+  ; CHECK:   [[COPY13]].sub1:sgpr_128 = COPY [[SI_SPILL_S32_RESTORE]]
+  ; CHECK:   [[S_BUFFER_LOAD_DWORD_IMM8:%[0-9]+]]:sreg_32_xm0_xexec = S_BUFFER_LOAD_DWORD_IMM [[COPY13]], 0, 0 :: (dereferenceable invariant load 4)
   ; CHECK:   [[V_ADD_U32_e32_28:%[0-9]+]]:vgpr_32 = V_ADD_U32_e32 -576, [[BUFFER_LOAD_FORMAT_X_IDXEN]], implicit $exec
   ; CHECK:   [[V_OR_B32_e32_63:%[0-9]+]]:vgpr_32 = V_OR_B32_e32 [[V_OR_B32_e32_62]], [[V_ADD_U32_e32_27]], implicit $exec
   ; CHECK:   [[V_ADD_U32_e32_29:%[0-9]+]]:vgpr_32 = V_ADD_U32_e32 -577, [[BUFFER_LOAD_FORMAT_X_IDXEN]], implicit $exec

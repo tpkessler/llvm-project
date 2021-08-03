@@ -4,89 +4,317 @@
 ; FIXME: The wide loads and bundles introduce so much spilling.
 define protected amdgpu_kernel void @excess_soft_clause_reg_pressure(float addrspace(4)* %wei_ptr, float addrspace(1)* %out_ptr) {
 ; CHECK-LABEL: excess_soft_clause_reg_pressure:
-; CHECK:  BB0_1: ; %for.cond28.preheader
+; CHECK:       ; %bb.0: ; %entry
+; CHECK-NEXT:    s_load_dword s2, s[4:5], 0x10
+; CHECK-NEXT:    s_load_dwordx4 s[84:87], s[4:5], 0x0
+; CHECK-NEXT:    s_lshl_b32 s1, s6, 8
+; CHECK-NEXT:    s_mov_b32 s0, 0x5397829d
+; CHECK-NEXT:    s_mov_b64 s[34:35], 0
+; CHECK-NEXT:    s_waitcnt lgkmcnt(0)
+; CHECK-NEXT:    s_add_i32 s2, s2, s1
+; CHECK-NEXT:    v_add_u32_e32 v0, s2, v0
+; CHECK-NEXT:    v_mul_hi_u32 v1, v0, s0
+; CHECK-NEXT:    v_mov_b32_e32 v0, 0
+; CHECK-NEXT:    v_mov_b32_e32 v27, 0
+; CHECK-NEXT:    v_mov_b32_e32 v2, 0
+; CHECK-NEXT:    v_lshrrev_b32_e32 v26, 4, v1
+; CHECK-NEXT:    v_mov_b32_e32 v1, 0
+; CHECK-NEXT:    v_mov_b32_e32 v3, 0
+; CHECK-NEXT:    v_mov_b32_e32 v4, 0
+; CHECK-NEXT:    v_mov_b32_e32 v5, 0
+; CHECK-NEXT:    v_mov_b32_e32 v6, 0
+; CHECK-NEXT:    v_mov_b32_e32 v7, 0
+; CHECK-NEXT:    v_mov_b32_e32 v8, 0
+; CHECK-NEXT:    v_mov_b32_e32 v9, 0
+; CHECK-NEXT:    v_mov_b32_e32 v14, 0
+; CHECK-NEXT:    v_mov_b32_e32 v15, 0
+; CHECK-NEXT:    v_mov_b32_e32 v16, 0
+; CHECK-NEXT:    v_mov_b32_e32 v17, 0
+; CHECK-NEXT:    v_mov_b32_e32 v18, 0
+; CHECK-NEXT:    v_mov_b32_e32 v19, 0
+; CHECK-NEXT:    v_mov_b32_e32 v20, 0
+; CHECK-NEXT:    v_mov_b32_e32 v21, 0
+; CHECK-NEXT:    v_mov_b32_e32 v22, 0
+; CHECK-NEXT:    v_mov_b32_e32 v23, 0
+; CHECK-NEXT:    v_mov_b32_e32 v24, 0
+; CHECK-NEXT:    v_mov_b32_e32 v25, 0
+; CHECK-NEXT:    v_mov_b32_e32 v28, 0
+; CHECK-NEXT:    v_mov_b32_e32 v29, 0
+; CHECK-NEXT:    v_mov_b32_e32 v30, 0
+; CHECK-NEXT:    v_mov_b32_e32 v31, 0
+; CHECK-NEXT:    v_mov_b32_e32 v32, 0
+; CHECK-NEXT:    v_mov_b32_e32 v33, 0
+; CHECK-NEXT:    v_mov_b32_e32 v10, 0
+; CHECK-NEXT:    v_mov_b32_e32 v11, 0
+; CHECK-NEXT:    v_mov_b32_e32 v12, 0
+; CHECK-NEXT:    v_mov_b32_e32 v13, 0
+; CHECK-NEXT:    ; implicit-def: $sgpr88_sgpr89
+; CHECK-NEXT:  BB0_1: ; %for.cond28.preheader
 ; CHECK-NEXT:    ; =>This Inner Loop Header: Depth=1
-; CHECK:         global_load_dword
-; CHECK-NEXT:    global_load_dword
-; CHECK-NEXT:    global_load_dword
-; CHECK-NEXT:    global_load_dword
+; CHECK-NEXT:    global_load_dword v34, v27, s[88:89]
+; CHECK-NEXT:    global_load_dword v35, v27, s[88:89] offset:196
+; CHECK-NEXT:    global_load_dword v36, v27, s[88:89] offset:392
+; CHECK-NEXT:    global_load_dword v37, v27, s[88:89] offset:588
+; CHECK-NEXT:    s_add_u32 s90, s84, s34
+; CHECK-NEXT:    s_addc_u32 s91, s85, s35
+; CHECK-NEXT:    s_load_dwordx16 s[16:31], s[90:91], 0x0
+; CHECK-NEXT:    s_load_dwordx16 s[0:15], s[90:91], 0x40
+; CHECK-NEXT:    s_load_dwordx16 s[68:83], s[90:91], 0x1000
+; CHECK-NEXT:    s_load_dwordx16 s[36:51], s[90:91], 0x1040
+; CHECK-NEXT:    s_load_dwordx16 s[52:67], s[90:91], 0x2000
+; CHECK-NEXT:    s_add_u32 s34, s34, 0x4000
+; CHECK-NEXT:    s_addc_u32 s35, s35, 0
+; CHECK-NEXT:    s_add_u32 s88, s88, 0x310
+; CHECK-NEXT:    s_addc_u32 s89, s89, 0
+; CHECK-NEXT:    s_cmp_lg_u32 s34, 0x800000
+; CHECK-NEXT:    s_waitcnt vmcnt(3) lgkmcnt(0)
+; CHECK-NEXT:    v_fmac_f32_e32 v33, s16, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v32, s17, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v31, s18, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v30, s19, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v29, s20, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v28, s21, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v25, s22, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v24, s23, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v23, s24, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v22, s25, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v21, s26, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v20, s27, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v19, s28, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v18, s29, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v17, s30, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v16, s31, v34
+; CHECK-NEXT:    s_load_dwordx16 s[16:31], s[90:91], 0x2040
+; CHECK-NEXT:    v_fmac_f32_e32 v15, s0, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v14, s1, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v9, s2, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v8, s3, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v7, s4, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v6, s5, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v5, s6, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v4, s7, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v3, s8, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v2, s9, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v1, s10, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v0, s11, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v10, s12, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v11, s13, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v12, s14, v34
+; CHECK-NEXT:    v_fmac_f32_e32 v13, s15, v34
+; CHECK-NEXT:    s_waitcnt vmcnt(2)
+; CHECK-NEXT:    v_fmac_f32_e32 v33, s68, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v32, s69, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v31, s70, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v30, s71, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v29, s72, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v28, s73, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v25, s74, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v24, s75, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v23, s76, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v22, s77, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v21, s78, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v20, s79, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v19, s80, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v18, s81, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v17, s82, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v16, s83, v35
+; CHECK-NEXT:    s_load_dwordx16 s[0:15], s[90:91], 0x3000
+; CHECK-NEXT:    s_load_dwordx16 s[68:83], s[90:91], 0x3040
+; CHECK-NEXT:    v_fmac_f32_e32 v15, s36, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v14, s37, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v9, s38, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v8, s39, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v7, s40, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v6, s41, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v5, s42, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v4, s43, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v3, s44, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v2, s45, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v1, s46, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v0, s47, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v10, s48, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v11, s49, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v12, s50, v35
+; CHECK-NEXT:    v_fmac_f32_e32 v13, s51, v35
+; CHECK-NEXT:    s_waitcnt vmcnt(1)
+; CHECK-NEXT:    v_fmac_f32_e32 v33, s52, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v32, s53, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v31, s54, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v30, s55, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v29, s56, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v28, s57, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v25, s58, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v24, s59, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v23, s60, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v22, s61, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v21, s62, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v20, s63, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v19, s64, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v18, s65, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v17, s66, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v16, s67, v36
+; CHECK-NEXT:    s_waitcnt lgkmcnt(0)
+; CHECK-NEXT:    v_fmac_f32_e32 v15, s16, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v14, s17, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v9, s18, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v8, s19, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v7, s20, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v6, s21, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v5, s22, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v4, s23, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v3, s24, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v2, s25, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v1, s26, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v0, s27, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v10, s28, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v11, s29, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v12, s30, v36
+; CHECK-NEXT:    v_fmac_f32_e32 v13, s31, v36
+; CHECK-NEXT:    s_waitcnt vmcnt(0)
+; CHECK-NEXT:    v_fmac_f32_e32 v33, s0, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v32, s1, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v31, s2, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v30, s3, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v29, s4, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v28, s5, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v25, s6, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v24, s7, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v23, s8, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v22, s9, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v21, s10, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v20, s11, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v19, s12, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v18, s13, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v17, s14, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v16, s15, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v15, s68, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v14, s69, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v9, s70, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v8, s71, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v7, s72, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v6, s73, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v5, s74, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v4, s75, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v3, s76, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v2, s77, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v1, s78, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v0, s79, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v10, s80, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v11, s81, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v12, s82, v37
+; CHECK-NEXT:    v_fmac_f32_e32 v13, s83, v37
+; CHECK-NEXT:    s_cbranch_scc1 BB0_1
+; CHECK-NEXT:  ; %bb.2: ; %for.cond.cleanup26
+; CHECK-NEXT:    s_mov_b32 s0, 0x31000
+; CHECK-NEXT:    v_mul_lo_u32 v26, v26, s0
+; CHECK-NEXT:    v_mov_b32_e32 v27, 0
+; CHECK-NEXT:    v_mov_b32_e32 v36, s87
+; CHECK-NEXT:    s_mov_b32 s0, 0
+; CHECK-NEXT:    v_lshlrev_b64 v[34:35], 2, v[26:27]
+; CHECK-NEXT:    s_movk_i32 s1, 0x310
+; CHECK-NEXT:    v_add_co_u32_e32 v34, vcc, s86, v34
+; CHECK-NEXT:    v_addc_co_u32_e32 v35, vcc, v36, v35, vcc
+; CHECK-NEXT:    global_store_dword v[34:35], v33, off
+; CHECK-NEXT:    global_store_dword v[34:35], v32, off offset:784
+; CHECK-NEXT:    global_store_dword v[34:35], v31, off offset:1568
+; CHECK-NEXT:    global_store_dword v[34:35], v30, off offset:2352
+; CHECK-NEXT:    global_store_dword v[34:35], v29, off offset:3136
+; CHECK-NEXT:    global_store_dword v[34:35], v28, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v28, vcc, s1, v34
+; CHECK-NEXT:    s_mov_b32 s1, s0
+; CHECK-NEXT:    v_mov_b32_e32 v31, s1
+; CHECK-NEXT:    v_mov_b32_e32 v30, s0
+; CHECK-NEXT:    v_addc_co_u32_e32 v29, vcc, 0, v35, vcc
+; CHECK-NEXT:    s_movk_i32 s0, 0x620
+; CHECK-NEXT:    v_add_co_u32_e32 v32, vcc, s0, v34
+; CHECK-NEXT:    v_addc_co_u32_e32 v33, vcc, 0, v35, vcc
+; CHECK-NEXT:    s_movk_i32 s0, 0x930
+; CHECK-NEXT:    v_add_co_u32_e32 v36, vcc, s0, v34
+; CHECK-NEXT:    v_addc_co_u32_e32 v37, vcc, 0, v35, vcc
+; CHECK-NEXT:    s_movk_i32 s0, 0xc40
+; CHECK-NEXT:    v_add_co_u32_e32 v38, vcc, s0, v34
+; CHECK-NEXT:    v_addc_co_u32_e32 v39, vcc, 0, v35, vcc
+; CHECK-NEXT:    s_movk_i32 s0, 0xf50
+; CHECK-NEXT:    v_add_co_u32_e32 v40, vcc, s0, v34
+; CHECK-NEXT:    v_addc_co_u32_e32 v41, vcc, 0, v35, vcc
+; CHECK-NEXT:    global_store_dwordx2 v[34:35], v[30:31], off offset:840
+; CHECK-NEXT:    global_store_dword v[34:35], v27, off offset:3924
+; CHECK-NEXT:    global_store_dword v[28:29], v27, off offset:3924
+; CHECK-NEXT:    global_store_dword v[28:29], v25, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v25, vcc, s0, v28
+; CHECK-NEXT:    v_addc_co_u32_e32 v26, vcc, 0, v29, vcc
+; CHECK-NEXT:    v_add_co_u32_e32 v27, vcc, s0, v32
+; CHECK-NEXT:    v_addc_co_u32_e32 v28, vcc, 0, v33, vcc
+; CHECK-NEXT:    global_store_dword v[32:33], v24, off offset:3920
+; CHECK-NEXT:    global_store_dwordx2 v[36:37], v[30:31], off offset:3976
+; CHECK-NEXT:    global_store_dword v[36:37], v23, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v23, vcc, s0, v36
+; CHECK-NEXT:    v_addc_co_u32_e32 v24, vcc, 0, v37, vcc
+; CHECK-NEXT:    v_add_co_u32_e32 v29, vcc, s0, v38
+; CHECK-NEXT:    v_addc_co_u32_e32 v30, vcc, 0, v39, vcc
+; CHECK-NEXT:    global_store_dword v[40:41], v21, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v21, vcc, s0, v40
+; CHECK-NEXT:    global_store_dword v[38:39], v22, off offset:3920
+; CHECK-NEXT:    v_addc_co_u32_e32 v22, vcc, 0, v41, vcc
+; CHECK-NEXT:    global_store_dword v[25:26], v20, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v25, vcc, s0, v25
+; CHECK-NEXT:    v_addc_co_u32_e32 v26, vcc, 0, v26, vcc
+; CHECK-NEXT:    global_store_dword v[27:28], v19, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v19, vcc, s0, v27
+; CHECK-NEXT:    v_addc_co_u32_e32 v20, vcc, 0, v28, vcc
+; CHECK-NEXT:    global_store_dword v[23:24], v18, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v23, vcc, s0, v23
+; CHECK-NEXT:    v_addc_co_u32_e32 v24, vcc, 0, v24, vcc
+; CHECK-NEXT:    global_store_dword v[29:30], v17, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v17, vcc, s0, v29
+; CHECK-NEXT:    v_addc_co_u32_e32 v18, vcc, 0, v30, vcc
+; CHECK-NEXT:    global_store_dword v[21:22], v16, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v21, vcc, s0, v21
+; CHECK-NEXT:    v_addc_co_u32_e32 v22, vcc, 0, v22, vcc
+; CHECK-NEXT:    global_store_dword v[25:26], v15, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v15, vcc, s0, v25
+; CHECK-NEXT:    v_addc_co_u32_e32 v16, vcc, 0, v26, vcc
+; CHECK-NEXT:    global_store_dword v[19:20], v14, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v19, vcc, s0, v19
+; CHECK-NEXT:    v_addc_co_u32_e32 v20, vcc, 0, v20, vcc
+; CHECK-NEXT:    global_store_dword v[23:24], v9, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v23, vcc, s0, v23
+; CHECK-NEXT:    v_addc_co_u32_e32 v24, vcc, 0, v24, vcc
+; CHECK-NEXT:    global_store_dword v[17:18], v8, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v8, vcc, s0, v17
+; CHECK-NEXT:    v_addc_co_u32_e32 v9, vcc, 0, v18, vcc
+; CHECK-NEXT:    v_add_co_u32_e32 v17, vcc, s0, v21
+; CHECK-NEXT:    v_addc_co_u32_e32 v18, vcc, 0, v22, vcc
+; CHECK-NEXT:    global_store_dword v[15:16], v6, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v6, vcc, s0, v15
+; CHECK-NEXT:    global_store_dword v[21:22], v7, off offset:3920
+; CHECK-NEXT:    v_addc_co_u32_e32 v7, vcc, 0, v16, vcc
+; CHECK-NEXT:    v_add_co_u32_e32 v14, vcc, s0, v19
+; CHECK-NEXT:    v_addc_co_u32_e32 v15, vcc, 0, v20, vcc
+; CHECK-NEXT:    global_store_dword v[23:24], v4, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v4, vcc, s0, v23
+; CHECK-NEXT:    global_store_dword v[19:20], v5, off offset:3920
+; CHECK-NEXT:    v_addc_co_u32_e32 v5, vcc, 0, v24, vcc
+; CHECK-NEXT:    v_add_co_u32_e32 v19, vcc, s0, v8
+; CHECK-NEXT:    v_addc_co_u32_e32 v20, vcc, 0, v9, vcc
+; CHECK-NEXT:    global_store_dword v[8:9], v3, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v8, vcc, s0, v17
+; CHECK-NEXT:    v_addc_co_u32_e32 v9, vcc, 0, v18, vcc
+; CHECK-NEXT:    global_store_dword v[17:18], v2, off offset:3920
+; CHECK-NEXT:    v_add_co_u32_e32 v2, vcc, s0, v6
+; CHECK-NEXT:    v_addc_co_u32_e32 v3, vcc, 0, v7, vcc
+; CHECK-NEXT:    global_store_dword v[6:7], v1, off offset:3920
+; CHECK-NEXT:    global_store_dword v[14:15], v0, off offset:3920
+; CHECK-NEXT:    global_store_dword v[4:5], v10, off offset:3920
+; CHECK-NEXT:    global_store_dword v[19:20], v11, off offset:3920
+; CHECK-NEXT:    global_store_dword v[8:9], v12, off offset:3920
+; CHECK-NEXT:    global_store_dword v[2:3], v13, off offset:3920
+; CHECK-NEXT:    s_endpgm
 
-; CHECK:         s_load_dwordx16
-; CHECK-NEXT:    s_load_dwordx16
-; CHECK-NEXT:    s_load_dwordx16
 
-; CHECK:         v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    s_load_dwordx16
-; CHECK-NEXT:    s_load_dwordx16
 
-; CHECK:         v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    v_writelane_b32
-; CHECK-NEXT:    s_load_dwordx16
 
-; CHECK:         v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
 
-; CHECK:         s_load_dwordx16
-; CHECK-NEXT:    s_load_dwordx16
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
-; CHECK-NEXT:    v_readlane_b32
 entry:
   %i = tail call i8 addrspace(4)* @llvm.amdgcn.implicitarg.ptr()
   %i1 = bitcast i8 addrspace(4)* %i to i64 addrspace(4)*
