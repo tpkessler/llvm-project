@@ -44,7 +44,7 @@ BUILTIN(__builtin_amdgcn_grid_size_z, "Ui", "nc")
 BUILTIN(__builtin_amdgcn_mbcnt_hi, "UiUiUi", "nc")
 BUILTIN(__builtin_amdgcn_mbcnt_lo, "UiUiUi", "nc")
 
-TARGET_BUILTIN(__builtin_amdgcn_s_memtime, "LUi", "n", "s-memtime-inst")
+TARGET_BUILTIN(__builtin_amdgcn_s_memtime, "WUi", "n", "s-memtime-inst")
 
 //===----------------------------------------------------------------------===//
 // Instruction builtins.
@@ -111,7 +111,7 @@ BUILTIN(__builtin_amdgcn_s_sleep, "vIi", "n")
 BUILTIN(__builtin_amdgcn_s_incperflevel, "vIi", "n")
 BUILTIN(__builtin_amdgcn_s_decperflevel, "vIi", "n")
 BUILTIN(__builtin_amdgcn_uicmp, "LUiUiUiIi", "nc")
-BUILTIN(__builtin_amdgcn_uicmpl, "LUiLUiLUiIi", "nc")
+BUILTIN(__builtin_amdgcn_uicmpl, "WUiWUiWUiIi", "nc")
 BUILTIN(__builtin_amdgcn_sicmp, "LUiiiIi", "nc")
 BUILTIN(__builtin_amdgcn_sicmpl, "LUiLiLiIi", "nc")
 BUILTIN(__builtin_amdgcn_fcmp, "LUiddIi", "nc")

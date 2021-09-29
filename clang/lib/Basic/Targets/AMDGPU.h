@@ -13,6 +13,7 @@
 #ifndef LLVM_CLANG_LIB_BASIC_TARGETS_AMDGPU_H
 #define LLVM_CLANG_LIB_BASIC_TARGETS_AMDGPU_H
 
+#include "clang/Basic/AddressSpaces.h"
 #include "clang/Basic/TargetID.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
@@ -346,7 +347,18 @@ public:
   }
 
   LangAS getCUDABuiltinAddressSpace(unsigned AS) const override {
-    return LangAS::Default;
+    switch (AS) {
+    case 0:
+      return LangAS::Default;
+    case 1:
+      return LangAS::cuda_device;
+    case 3:
+      return LangAS::cuda_shared;
+    case 4:
+      return LangAS::cuda_constant;
+    default:
+      return getLangASFromTargetAS(AS);
+    }
   }
 
   llvm::Optional<LangAS> getConstantAddressSpace() const override {
