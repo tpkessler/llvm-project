@@ -1833,6 +1833,7 @@ int32_t __tgt_rtl_run_target_team_region_locked(
     }
 
     KernelArgPool *ArgPool = nullptr;
+    void *kernarg = nullptr;
     {
       auto it = KernelArgPoolMap.find(std::string(KernelInfo->Name));
       if (it != KernelArgPoolMap.end()) {
@@ -1844,7 +1845,6 @@ int32_t __tgt_rtl_run_target_team_region_locked(
               KernelInfo->Name, device_id);
     }
     {
-      void *kernarg = nullptr;
       if (ArgPool) {
         assert(ArgPool->kernarg_segment_size == (arg_num * sizeof(void *)));
         kernarg = ArgPool->allocate(arg_num);
@@ -1889,15 +1889,13 @@ int32_t __tgt_rtl_run_target_team_region_locked(
       packet->kernarg_address = kernarg;
     }
 
-    {
-      hsa_signal_t s = DeviceInfo.FreeSignalPool.pop();
-      if (s.handle == 0) {
-        printf("Failed to get signal instance\n");
-        exit(1);
-      }
-      packet->completion_signal = s;
-      hsa_signal_store_relaxed(packet->completion_signal, 1);
+    hsa_signal_t s = DeviceInfo.FreeSignalPool.pop();
+    if (s.handle == 0) {
+      DP("Failed to get signal instance\n");
+      return OFFLOAD_FAIL;
     }
+    packet->completion_signal = s;
+    hsa_signal_store_relaxed(packet->completion_signal, 1);
 
     core::packet_store_release(
         reinterpret_cast<uint32_t *>(packet),
@@ -1905,16 +1903,17 @@ int32_t __tgt_rtl_run_target_team_region_locked(
                             ATMI_FENCE_SCOPE_SYSTEM, ATMI_FENCE_SCOPE_SYSTEM),
         packet->setup);
 
+    // Since the packet is already published, its contents must not be
+    // accessed any more
     hsa_signal_store_relaxed(queue->doorbell_signal, packet_id);
 
-    while (hsa_signal_wait_scacquire(packet->completion_signal,
-                                     HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX,
+    while (hsa_signal_wait_scacquire(s, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX,
                                      HSA_WAIT_STATE_BLOCKED) != 0)
       ;
 
     assert(ArgPool);
-    ArgPool->deallocate(packet->kernarg_address);
-    DeviceInfo.FreeSignalPool.push(packet->completion_signal);
+    ArgPool->deallocate(kernarg);
+    DeviceInfo.FreeSignalPool.push(s);
   }
 
   DP("Kernel completed\n");
