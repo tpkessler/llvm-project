@@ -6527,9 +6527,12 @@ ExprResult Sema::BuildCallExpr(Scope *Scope, Expr *Fn, SourceLocation LParenLoc,
         auto ArgTy = ArgExprs[Idx]->getType();
         auto ArgPtTy = ArgTy->getPointeeType();
         auto ArgAS = ArgPtTy.getAddressSpace();
-        // Only allow implicit casting from a non-default address space pointee
-        // type to a default address space pointee type
-        if (ArgAS != LangAS::Default || ParamAS == LangAS::Default)
+
+        // Add address space cast if target address spaces are different
+        if ((ArgAS != LangAS::Default &&
+             getASTContext().getTargetAddressSpace(ArgAS) !=
+                 getASTContext().getTargetAddressSpace(ParamAS)) ||
+            ParamAS == LangAS::Default)
           continue;
         // First, ensure that the Arg is an RValue.
         if (ArgExprs[Idx]->isGLValue()) {
