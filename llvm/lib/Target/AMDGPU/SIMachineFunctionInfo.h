@@ -429,6 +429,8 @@ private:
   // Current recorded maximum possible occupancy.
   unsigned Occupancy;
 
+  mutable Optional<bool> UsesAGPRs;
+
   MCPhysReg getNextUserSGPR() const;
 
   MCPhysReg getNextSystemSGPR() const;
@@ -937,6 +939,9 @@ public:
       Occupancy = Limit;
     limitOccupancy(MF);
   }
+
+  // \returns true if a function needs or may need AGPRs.
+  bool usesAGPRs(const MachineFunction &MF) const;
 };
 
 } // end namespace llvm
