@@ -264,7 +264,8 @@ public:
   ///
   MachineInstr *convertToThreeAddress(MachineFunction::iterator &MFI,
                                       MachineInstr &MI,
-                                      LiveVariables *LV) const override;
+                                      LiveVariables *LV,
+                                      LiveIntervals *LIS) const override;
 
   /// Returns true iff the routine could find two commutable operands in the
   /// given machine instruction.

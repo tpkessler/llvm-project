@@ -145,7 +145,8 @@ public:
 
   MachineInstr *convertToThreeAddress(MachineFunction::iterator &MBB,
                                       MachineInstr &MI,
-                                      LiveVariables *LV) const override;
+                                      LiveVariables *LV,
+                                      LiveIntervals *LIS) const override;
 
   Register getVLENFactoredAmount(MachineFunction &MF, MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator II,

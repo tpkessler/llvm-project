@@ -407,7 +407,8 @@ public:
   ///
   virtual MachineInstr *convertToThreeAddress(MachineFunction::iterator &MFI,
                                               MachineInstr &MI,
-                                              LiveVariables *LV) const {
+                                              LiveVariables *LV,
+                                              LiveIntervals *LIS) const {
     return nullptr;
   }
 

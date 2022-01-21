@@ -1375,7 +1375,8 @@ MachineInstr *X86InstrInfo::convertToThreeAddressWithLEA(
 ///
 MachineInstr *
 X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
-                                    MachineInstr &MI, LiveVariables *LV) const {
+                                    MachineInstr &MI, LiveVariables *LV,
+                                    LiveIntervals *LIS) const {
   // The following opcodes also sets the condition code register(s). Only
   // convert them to equivalent lea if the condition code register def's
   // are dead!

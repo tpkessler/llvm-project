@@ -210,7 +210,7 @@ FixupLEAPass::postRAConvertToLEA(MachineBasicBlock &MBB,
     break;
   }
   MachineFunction::iterator MFI = MBB.getIterator();
-  return TII->convertToThreeAddress(MFI, MI, nullptr);
+  return TII->convertToThreeAddress(MFI, MI, nullptr, nullptr);
 }
 
 FunctionPass *llvm::createX86FixupLEAs() { return new FixupLEAPass(); }

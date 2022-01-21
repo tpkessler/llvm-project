@@ -122,7 +122,8 @@ public:
 
   MachineInstr *convertToThreeAddress(MachineFunction::iterator &MFI,
                                       MachineInstr &MI,
-                                      LiveVariables *LV) const override;
+                                      LiveVariables *LV,
+                                      LiveIntervals *LIS) const override;
 
   virtual const ARMBaseRegisterInfo &getRegisterInfo() const = 0;
   const ARMSubtarget &getSubtarget() const { return Subtarget; }

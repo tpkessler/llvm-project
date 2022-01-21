@@ -272,7 +272,8 @@ public:
                             const TargetRegisterInfo *TRI) const override;
   MachineInstr *convertToThreeAddress(MachineFunction::iterator &MFI,
                                       MachineInstr &MI,
-                                      LiveVariables *LV) const override;
+                                      LiveVariables *LV,
+                                      LiveIntervals *LIS) const override;
   MachineInstr *
   foldMemoryOperandImpl(MachineFunction &MF, MachineInstr &MI,
                         ArrayRef<unsigned> Ops,

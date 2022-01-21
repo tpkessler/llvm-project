@@ -174,7 +174,8 @@ CreateTargetPostRAHazardRecognizer(const InstrItineraryData *II,
 }
 
 MachineInstr *ARMBaseInstrInfo::convertToThreeAddress(
-    MachineFunction::iterator &MFI, MachineInstr &MI, LiveVariables *LV) const {
+    MachineFunction::iterator &MFI, MachineInstr &MI, LiveVariables *LV,
+    LiveIntervals *LIS) const {
   // FIXME: Thumb2 support.
 
   if (!EnableARM3Addr)

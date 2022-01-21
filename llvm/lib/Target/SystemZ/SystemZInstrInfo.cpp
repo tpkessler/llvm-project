@@ -943,7 +943,8 @@ static void transferMIFlag(MachineInstr *OldMI, MachineInstr *NewMI,
 }
 
 MachineInstr *SystemZInstrInfo::convertToThreeAddress(
-    MachineFunction::iterator &MFI, MachineInstr &MI, LiveVariables *LV) const {
+    MachineFunction::iterator &MFI, MachineInstr &MI, LiveVariables *LV,
+    LiveIntervals *LIS) const {
   MachineBasicBlock *MBB = MI.getParent();
 
   // Try to convert an AND into an RISBG-type instruction.

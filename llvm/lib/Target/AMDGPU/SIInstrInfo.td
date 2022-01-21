@@ -2559,6 +2559,14 @@ def getFlatScratchInstSVfromSS : InstrMapping {
   let ValueCols = [["SV"]];
 }
 
+def getMFMAEarlyClobberOp : InstrMapping {
+  let FilterClass = "MFMATable";
+  let RowFields = ["FMAOp"];
+  let ColFields = ["IsMac"];
+  let KeyCol = ["1"];
+  let ValueCols = [["0"]];
+}
+
 include "SIInstructions.td"
 
 include "DSInstructions.td"

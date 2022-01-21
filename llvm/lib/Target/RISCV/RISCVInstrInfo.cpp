@@ -1381,7 +1381,8 @@ MachineInstr *RISCVInstrInfo::commuteInstructionImpl(MachineInstr &MI,
   CASE_WIDEOP_CHANGE_OPCODE_COMMON(OP, M4)
 
 MachineInstr *RISCVInstrInfo::convertToThreeAddress(
-    MachineFunction::iterator &MBB, MachineInstr &MI, LiveVariables *LV) const {
+    MachineFunction::iterator &MBB, MachineInstr &MI, LiveVariables *LV
+    LiveIntervals *LIS) const {
   switch (MI.getOpcode()) {
   default:
     break;
