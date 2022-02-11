@@ -1,5 +1,5 @@
 ; RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx900 --amdhsa-code-object-version=3 -filetype=obj -o - < %s | llvm-readelf --notes - | FileCheck %s
-; RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx900 --amdhsa-code-object-version=3 -amdgpu-dump-hsa-metadata -amdgpu-verify-hsa-metadata -filetype=obj -o - < %s 2>&1 | FileCheck --check-prefix=PARSER %s
+; RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx900 --amdhsa-code-object-version=3 -amdgpu-dump-hsa-metadata -amdgpu-verify-hsa-metadata -filetype=obj -o - < %s 2>&1 | FileCheck  %s
 
 ; CHECK:              ---
 ; CHECK:      amdhsa.kernels:
@@ -39,7 +39,7 @@ define amdgpu_kernel void @test_kernel(i8 %a) #0
 ; CHECK-NEXT: - 1
 ; CHECK-NEXT: - 0
 
-attributes #0 = { "amdgpu-implicitarg-num-bytes"="48" }
+attributes #0 = { sanitize_address "amdgpu-implicitarg-num-bytes"="48" }
 
 !1 = !{i32 0}
 !2 = !{!"none"}
@@ -48,8 +48,3 @@ attributes #0 = { "amdgpu-implicitarg-num-bytes"="48" }
 
 !opencl.ocl.version = !{!90}
 !90 = !{i32 2, i32 0}
-
-!llvm.module.flags = !{!0}
-!0 = !{i32 1, !"amdgpu_hostcall", i32 1}
-
-; PARSER: AMDGPU HSA Metadata Parser Test: PASS

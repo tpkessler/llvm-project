@@ -51,6 +51,9 @@ bool isHsaAbiVersion4(const MCSubtargetInfo *STI);
 /// false otherwise.
 bool isHsaAbiVersion3Or4(const MCSubtargetInfo *STI);
 
+/// \returns The offset of the hostcall pointer argument from implicitarg_ptr
+unsigned getHostcallImplicitArgPosition();
+
 struct GcnBufferFormatInfo {
   unsigned Format;
   unsigned BitsPerComp;

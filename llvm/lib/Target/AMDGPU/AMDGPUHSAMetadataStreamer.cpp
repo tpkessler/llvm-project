@@ -405,7 +405,7 @@ void MetadataStreamerV2::emitHiddenKernelArgs(const Function &Func) {
   if (HiddenArgNumBytes >= 32) {
     if (Func.getParent()->getNamedMetadata("llvm.printf.fmts"))
       emitKernelArg(DL, Int8PtrTy, Align(8), ValueKind::HiddenPrintfBuffer);
-    else if (Func.getParent()->getFunction("__ockl_hostcall_internal")) {
+    else if (!Func.hasFnAttribute("amdgpu-no-hostcall-ptr")) {
       // The printf runtime binding pass should have ensured that hostcall and
       // printf are not used in the same module.
       assert(!Func.getParent()->getNamedMetadata("llvm.printf.fmts"));
@@ -821,7 +821,7 @@ void MetadataStreamerV3::emitHiddenKernelArgs(const Function &Func,
     if (M->getNamedMetadata("llvm.printf.fmts"))
       emitKernelArg(DL, Int8PtrTy, Align(8), "hidden_printf_buffer", Offset,
                     Args);
-    else if (M->getModuleFlag("amdgpu_hostcall")) {
+    else if (!Func.hasFnAttribute("amdgpu-no-hostcall-ptr")) {
       // The printf runtime binding pass should have ensured that hostcall and
       // printf are not used in the same module.
       assert(!M->getNamedMetadata("llvm.printf.fmts"));

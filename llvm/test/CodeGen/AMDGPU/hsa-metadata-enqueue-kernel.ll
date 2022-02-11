@@ -26,6 +26,9 @@
 ; CHECK-NEXT:     - Size:          8
 ; CHECK-NEXT:       Align:         8
 ; CHECK-NEXT:       ValueKind:     HiddenGlobalOffsetZ
+; CHECK-NEXT:     - Size:          8
+; CHECK-NEXT:       Align:         8
+; CHECK-NEXT:       ValueKind:     HiddenNone
 ; CHECK-NOT:        ValueKind:     HiddenDefaultQueue
 ; CHECK-NOT:        ValueKind:     HiddenCompletionAction
 define amdgpu_kernel void @test_non_enqueue_kernel_caller(i8 %a) #0
