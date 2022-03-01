@@ -9,10 +9,14 @@
 define hidden void @ptr_arg_split_subregs(%struct.A* %arg1) #0 !dbg !9 {
 ; CHECK-LABEL: ptr_arg_split_subregs:
 ; CHECK:       .Lfunc_begin0:
-; CHECK:       .loc 1 5 0 ; example.cpp:5:0
+; CHECK-NEXT:    .file 1 "temp" "example.cpp"
+; CHECK-NEXT:    .loc 1 5 0 ; example.cpp:5:0
 ; CHECK-NEXT:    .cfi_sections .debug_frame
 ; CHECK-NEXT:    .cfi_startproc
 ; CHECK-NEXT:  ; %bb.0:
+; CHECK-NEXT:    .cfi_llvm_def_aspace_cfa 64, 0, 6
+; CHECK-NEXT:    .cfi_escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04 ;
+; CHECK-NEXT:    .cfi_undefined 2562
 ; CHECK-NEXT:    ;DEBUG_VALUE: ptr_arg_split_subregs:a <- [DW_OP_LLVM_fragment 32 32] [$vgpr1+0]
 ; CHECK-NEXT:    ;DEBUG_VALUE: ptr_arg_split_subregs:a <- [DW_OP_LLVM_fragment 0 32] [$vgpr0+0]
 ; CHECK-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
@@ -24,7 +28,6 @@ define hidden void @ptr_arg_split_subregs(%struct.A* %arg1) #0 !dbg !9 {
 ; CHECK-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
 ; CHECK-NEXT:    s_setpc_b64 s[30:31]
 ; CHECK-NEXT:  .Ltmp1:
-; CHECK:         .cfi_endproc
   call void @llvm.dbg.declare(metadata %struct.A* %arg1, metadata !20, metadata !DIExpression()), !dbg !21
   %gep1 = getelementptr inbounds %struct.A, %struct.A* %arg1, i32 0, i32 0, i32 99, !dbg !22
   store i32 1, i32* %gep1, align 4, !dbg !23
@@ -43,9 +46,13 @@ define hidden void @ptr_arg_split_reg_mem(<30 x i32>, %struct.A* %arg2) #0 !dbg 
 ; CHECK-NEXT:    .loc 1 10 0 ; example.cpp:10:0
 ; CHECK-NEXT:    .cfi_startproc
 ; CHECK-NEXT:  ; %bb.0:
+; CHECK-NEXT:    .cfi_llvm_def_aspace_cfa 64, 0, 6
+; CHECK-NEXT:    .cfi_escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04 ;
+; CHECK-NEXT:    .cfi_undefined 2560
+; CHECK-NEXT:    .cfi_undefined 2591
 ; CHECK-NEXT:    ;DEBUG_VALUE: ptr_arg_split_reg_mem:b <- [$vgpr30+0]
 ; CHECK-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; CHECK-NEXT:    buffer_load_dword v31, off, s[0:3], s32{{$}}
+; CHECK-NEXT:    buffer_load_dword v31, off, s[0:3], s32
 ; CHECK-NEXT:    v_mov_b32_e32 v0, 1
 ; CHECK-NEXT:  .Ltmp2:
 ; CHECK-NEXT:    .loc 1 12 13 prologue_end ; example.cpp:12:13
@@ -55,7 +62,6 @@ define hidden void @ptr_arg_split_reg_mem(<30 x i32>, %struct.A* %arg2) #0 !dbg 
 ; CHECK-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
 ; CHECK-NEXT:    s_setpc_b64 s[30:31]
 ; CHECK-NEXT:  .Ltmp3:
-; CHECK:         .cfi_endproc
   call void @llvm.dbg.declare(metadata %struct.A* %arg2, metadata !26, metadata !DIExpression()), !dbg !27
   %gep2 = getelementptr inbounds %struct.A, %struct.A* %arg2, i32 0, i32 0, i32 99, !dbg !28
   store i32 1, i32* %gep2, align 4, !dbg !29
@@ -70,6 +76,11 @@ define hidden void @ptr_arg_in_memory(<32 x i32>, %struct.A* %arg3) #0 !dbg !31 
 ; CHECK-NEXT:    .loc 1 15 0 ; example.cpp:15:0
 ; CHECK-NEXT:    .cfi_startproc
 ; CHECK-NEXT:  ; %bb.0:
+; CHECK-NEXT:    .cfi_llvm_def_aspace_cfa 64, 0, 6
+; CHECK-NEXT:    .cfi_escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04 ;
+; CHECK-NEXT:    .cfi_undefined 2560
+; CHECK-NEXT:    .cfi_undefined 2561
+; CHECK-NEXT:    .cfi_undefined 2562
 ; CHECK-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; CHECK-NEXT:    buffer_load_dword v1, off, s[0:3], s32 offset:8
 ; CHECK-NEXT:    buffer_load_dword v0, off, s[0:3], s32 offset:4
@@ -82,7 +93,6 @@ define hidden void @ptr_arg_in_memory(<32 x i32>, %struct.A* %arg3) #0 !dbg !31 
 ; CHECK-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
 ; CHECK-NEXT:    s_setpc_b64 s[30:31]
 ; CHECK-NEXT:  .Ltmp5:
-; CHECK:         .cfi_endproc
   call void @llvm.dbg.declare(metadata %struct.A* %arg3, metadata !32, metadata !DIExpression()), !dbg !33
   %gep3 = getelementptr inbounds %struct.A, %struct.A* %arg3, i32 0, i32 0, i32 99, !dbg !34
   store i32 1, i32* %gep3, align 4, !dbg !35

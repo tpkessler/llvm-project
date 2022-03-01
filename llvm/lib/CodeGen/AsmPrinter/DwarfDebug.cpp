@@ -225,10 +225,6 @@ void DebugLocDwarfExpression::commitTemporaryBuffer() {
   TmpBuf->Comments.clear();
 }
 
-const DIType *DbgVariable::getType() const {
-  return getVariable()->getType();
-}
-
 /// Get .debug_loc entry for the instruction range starting at MI.
 static DbgValueLoc getDebugLocValue(const MachineInstr *MI) {
   const DIExpression *Expr = MI->getDebugExpression();
@@ -255,7 +251,7 @@ static DbgValueLoc getDebugLocValue(const MachineInstr *MI) {
   return DbgValueLoc(Expr, DbgValueLocEntries, IsVariadic);
 }
 
-void DbgVariable::initializeDbgValue(const MachineInstr *DbgValue) {
+void OldDbgVariable::initializeDbgValue(const MachineInstr *DbgValue) {
   assert(FrameIndexExprs.empty() && "Already initialized?");
   assert(!ValueLoc.get() && "Already initialized?");
 
@@ -269,7 +265,7 @@ void DbgVariable::initializeDbgValue(const MachineInstr *DbgValue) {
       FrameIndexExprs.push_back({0, E});
 }
 
-ArrayRef<DbgVariable::FrameIndexExpr> DbgVariable::getFrameIndexExprs() const {
+ArrayRef<DbgVariable::FrameIndexExpr> OldDbgVariable::getFrameIndexExprs() const {
   if (FrameIndexExprs.size() == 1)
     return FrameIndexExprs;
 
@@ -287,14 +283,16 @@ ArrayRef<DbgVariable::FrameIndexExpr> DbgVariable::getFrameIndexExprs() const {
   return FrameIndexExprs;
 }
 
-void DbgVariable::addMMIEntry(const DbgVariable &V) {
+void OldDbgVariable::addMMIEntry(const DbgVariable &V) {
+  const OldDbgVariable *OV = dyn_cast<OldDbgVariable>(&V);
+
   assert(DebugLocListIndex == ~0U && !ValueLoc.get() && "not an MMI entry");
-  assert(V.DebugLocListIndex == ~0U && !V.ValueLoc.get() && "not an MMI entry");
-  assert(V.getVariable() == getVariable() && "conflicting variable");
-  assert(V.getInlinedAt() == getInlinedAt() && "conflicting inlined-at location");
+  assert(OV->DebugLocListIndex == ~0U && !OV->ValueLoc.get() && "not an MMI entry");
+  assert(OV->getVariable() == getVariable() && "conflicting variable");
+  assert(OV->getInlinedAt() == getInlinedAt() && "conflicting inlined-at location");
 
   assert(!FrameIndexExprs.empty() && "Expected an MMI entry");
-  assert(!V.FrameIndexExprs.empty() && "Expected an MMI entry");
+  assert(!OV->FrameIndexExprs.empty() && "Expected an MMI entry");
 
   // FIXME: This logic should not be necessary anymore, as we now have proper
   // deduplication. However, without it, we currently run into the assertion
@@ -306,7 +304,7 @@ void DbgVariable::addMMIEntry(const DbgVariable &V) {
       return;
   }
 
-  for (const auto &FIE : V.FrameIndexExprs)
+  for (const auto &FIE : OV->FrameIndexExprs)
     // Ignore duplicate entries.
     if (llvm::none_of(FrameIndexExprs, [&](const FrameIndexExpr &Other) {
           return FIE.FI == Other.FI && FIE.Expr == Other.Expr;
@@ -372,6 +370,8 @@ DwarfDebug::DwarfDebug(AsmPrinter *A)
   UseLocSection = !TT.isNVPTX();
 
   HasAppleExtensionAttributes = tuneForLLDB();
+  HasHeterogeneousExtensionAttributes =
+      Asm->MAI->supportsHeterogeneousDebuggingExtensions();
 
   // Handle split DWARF.
   HasSplitDwarf = !Asm->TM.Options.MCOptions.SplitDwarfFile.empty();
@@ -1051,6 +1051,10 @@ void DwarfDebug::finishUnitAttributes(const DICompileUnit *DIUnit,
                     dwarf::DW_FORM_data1, RVer);
   }
 
+  if (useHeterogeneousExtensionAttributes()) {
+    NewCU.addString(Die, dwarf::DW_AT_LLVM_augmentation, "[llvm:v0.0]");
+  }
+
   if (DIUnit->getDWOId()) {
     // This CU is either a clang module DWO or a skeleton CU.
     NewCU.addUInt(Die, dwarf::DW_AT_GNU_dwo_id, dwarf::DW_FORM_data8,
@@ -1155,12 +1159,32 @@ void DwarfDebug::beginModule(Module *M) {
   SingleCU = NumDebugCUs == 1;
   DenseMap<DIGlobalVariable *, SmallVector<DwarfCompileUnit::GlobalExpr, 1>>
       GVMap;
+  DenseMap<DIFragment *, const GlobalVariable *> GVFragmentMap;
   for (const GlobalVariable &Global : M->globals()) {
+    // To support the "inlining" of GV-fragments as an optimization, we record
+    // the referrer for each such fragment.
+    if (llvm::isHeterogeneousDebug(*M)) {
+      if (DIFragment *F = Global.getDbgDef())
+        GVFragmentMap[F] = &Global;
+      continue;
+    }
     SmallVector<DIGlobalVariableExpression *, 1> GVs;
     Global.getDebugInfo(GVs);
     for (auto *GVE : GVs)
       GVMap[GVE->getVariable()].push_back({&Global, GVE->getExpression()});
   }
+  // FIXME: This is a shortcut to enable debug info for globals at -O0. The
+  // general support cannot assume there is only a computed lifetime for each
+  // global, as function-local intrinsics may "override" the computed lifetime
+  // with bounded lifetimes.
+  DenseMap<DICompileUnit *, SmallVector<DILifetime *>> CULifetimeMap;
+  if (isHeterogeneousDebug(*M))
+    if (NamedMDNode *RN = M->getNamedMetadata("llvm.dbg.retainedNodes"))
+      for (MDNode *O : RN->operands())
+        if (auto *L = dyn_cast<DILifetime>(O))
+          if (auto *GV = dyn_cast<DIGlobalVariable>(L->getObject()))
+            if (auto *CU = dyn_cast<DICompileUnit>(GV->getScope()))
+              CULifetimeMap[CU].push_back(L);
 
   // Create the symbol that designates the start of the unit's contribution
   // to the string offsets table. In a split DWARF scenario, only the skeleton
@@ -1198,7 +1222,8 @@ void DwarfDebug::beginModule(Module *M) {
 
     if (!HasNonLocalImportedEntities && CUNode->getEnumTypes().empty() &&
         CUNode->getRetainedTypes().empty() &&
-        CUNode->getGlobalVariables().empty() && CUNode->getMacros().empty())
+        CUNode->getGlobalVariables().empty() && CUNode->getMacros().empty() &&
+        !isHeterogeneousDebug(*M))
       continue;
 
     DwarfCompileUnit &CU = getOrCreateDwarfCompileUnit(CUNode);
@@ -1219,6 +1244,13 @@ void DwarfDebug::beginModule(Module *M) {
       DIGlobalVariable *GV = GVE->getVariable();
       if (Processed.insert(GV).second)
         CU.getOrCreateGlobalVariableDIE(GV, sortGlobalExprs(GVMap[GV]));
+    }
+
+    if (isHeterogeneousDebug(*M)) {
+      const auto &LS = CULifetimeMap.find(CUNode);
+      if (LS != CULifetimeMap.end())
+        for (auto &L : LS->getSecond())
+          CU.getOrCreateGlobalVariableDIE(*L, GVFragmentMap);
     }
 
     for (auto *Ty : CUNode->getEnumTypes())
@@ -1505,9 +1537,63 @@ void DwarfDebug::ensureAbstractEntityIsCreatedIfScoped(DwarfCompileUnit &CU,
     CU.createAbstractEntity(Node, Scope);
 }
 
-// Collect variable information from side table maintained by MF.
+// Collect variable information from MF.
+void DwarfDebug::collectVariableInfoFromMF(
+    DwarfCompileUnit &TheCU, DenseSet<InlinedEntity> &Processed) {
+  SmallDenseMap<InlinedEntity, DbgVariable *> MFVars;
+  LLVM_DEBUG(dbgs() << "DwarfDebug: collecting variables from MF\n");
+  for (const auto &MBB : *Asm->MF) {
+    for (const auto &MI : MBB) {
+      if (!MI.isDebugDef()) {
+        continue;
+      }
+
+      LLVM_DEBUG(dbgs() << "Processing instruction: " << MI);
+
+      // FIXME(KZHURAVL): This is fine at -O0. Need to handle DIFragment and
+      // DIGlobalVariable at other optimization levels.
+      const DILifetime *LT = MI.getDebugLifetime();
+      const DILocalVariable *LV = dyn_cast<DILocalVariable>(LT->getObject());
+      assert(LV && "DILifetime's object is not DILocalVariable");
+
+      InlinedEntity Var(LV, nullptr);
+      Processed.insert(Var);
+      LexicalScope *Scope = MI.getDebugLoc().get() ?
+          LScopes.findLexicalScope(MI.getDebugLoc().get()) :
+          LScopes.findLexicalScope(LV->getScope());
+
+      // If variable scope is not found then skip this variable.
+      if (!Scope) {
+        LLVM_DEBUG(dbgs() << "Dropping debug info for " << LV->getName()
+                          << ", no variable scope found\n");
+        continue;
+      }
+
+      ensureAbstractEntityIsCreatedIfScoped(TheCU, Var.first, Scope->getScopeNode());
+      auto RegVar = std::make_unique<NewDbgVariable>(
+                        cast<DILocalVariable>(Var.first), Var.second);
+      RegVar->initializeLifetime(LT);
+      LLVM_DEBUG(dbgs() << "Created DbgVariable for " << LV->getName()
+                        << "\n");
+
+      if (DbgVariable *DbgVar = MFVars.lookup(Var))
+        DbgVar->addMMIEntry(*RegVar);
+      else if (InfoHolder.addScopeVariable(Scope, RegVar.get())) {
+        MFVars.insert({Var, RegVar.get()});
+        ConcreteEntities.push_back(std::move(RegVar));
+      }
+    }
+  }
+}
+
+// Collect variable information from the side table maintained by MF.
 void DwarfDebug::collectVariableInfoFromMFTable(
     DwarfCompileUnit &TheCU, DenseSet<InlinedEntity> &Processed) {
+  if (isHeterogeneousDebug(*Asm->MF->getFunction().getParent())) {
+    collectVariableInfoFromMF(TheCU, Processed);
+    return;
+  }
+
   SmallDenseMap<InlinedEntity, DbgVariable *> MFVars;
   LLVM_DEBUG(dbgs() << "DwarfDebug: collecting variables from MF side table\n");
   for (const auto &VI : Asm->MF->getVariableDbgInfo()) {
@@ -1528,7 +1614,7 @@ void DwarfDebug::collectVariableInfoFromMFTable(
     }
 
     ensureAbstractEntityIsCreatedIfScoped(TheCU, Var.first, Scope->getScopeNode());
-    auto RegVar = std::make_unique<DbgVariable>(
+    auto RegVar = std::make_unique<OldDbgVariable>(
                     cast<DILocalVariable>(Var.first), Var.second);
     RegVar->initializeMMI(VI.Expr, VI.Slot);
     LLVM_DEBUG(dbgs() << "Created DbgVariable for " << VI.Var->getName()
@@ -1812,7 +1898,7 @@ DbgEntity *DwarfDebug::createConcreteEntity(DwarfCompileUnit &TheCU,
   ensureAbstractEntityIsCreatedIfScoped(TheCU, Node, Scope.getScopeNode());
   if (isa<const DILocalVariable>(Node)) {
     ConcreteEntities.push_back(
-        std::make_unique<DbgVariable>(cast<const DILocalVariable>(Node),
+        std::make_unique<OldDbgVariable>(cast<const DILocalVariable>(Node),
                                        Location));
     InfoHolder.addScopeVariable(&Scope,
         cast<DbgVariable>(ConcreteEntities.back().get()));
@@ -1936,6 +2022,11 @@ void DwarfDebug::collectEntityInfo(DwarfCompileUnit &TheCU,
     /// actually address when generating Dwarf DIE.
     MCSymbol *Sym = getLabelBeforeInsn(MI);
     createConcreteEntity(TheCU, *Scope, Label, IL.second, Sym);
+  }
+
+  // FIXME(KZHURAVL): Do we need following *for* loop for heterogeneous debug?
+  if (isHeterogeneousDebug(*Asm->MF->getFunction().getParent())) {
+    return;
   }
 
   // Collect info for variables/labels that were optimized out.
@@ -2861,6 +2952,9 @@ void DwarfDebug::emitDebugLocImpl(MCSection *Sec) {
 
 // Emit locations into the .debug_loc/.debug_loclists section.
 void DwarfDebug::emitDebugLoc() {
+  if (DisableDwarfLocations)
+    return;
+
   emitDebugLocImpl(
       getDwarfVersion() >= 5
           ? Asm->getObjFileLowering().getDwarfLoclistsSection()
@@ -2869,6 +2963,9 @@ void DwarfDebug::emitDebugLoc() {
 
 // Emit locations into the .debug_loc.dwo/.debug_loclists.dwo section.
 void DwarfDebug::emitDebugLocDWO() {
+  if (DisableDwarfLocations)
+    return;
+
   if (getDwarfVersion() >= 5) {
     emitDebugLocImpl(
         Asm->getObjFileLowering().getDwarfLoclistsDWOSection());

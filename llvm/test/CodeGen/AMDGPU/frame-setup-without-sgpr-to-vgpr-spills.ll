@@ -17,8 +17,8 @@ define void @callee_with_stack_and_call() #0 {
 ; SPILL-TO-VGPR-NEXT:    s_mov_b32 s33, s32
 ; SPILL-TO-VGPR-NEXT:    s_addk_i32 s32, 0x400
 ; SPILL-TO-VGPR-NEXT:    v_writelane_b32 v40, s30, 0
-; SPILL-TO-VGPR-NEXT:    v_mov_b32_e32 v0, 0
 ; SPILL-TO-VGPR-NEXT:    v_writelane_b32 v40, s31, 1
+; SPILL-TO-VGPR-NEXT:    v_mov_b32_e32 v0, 0
 ; SPILL-TO-VGPR-NEXT:    buffer_store_dword v0, off, s[0:3], s33
 ; SPILL-TO-VGPR-NEXT:    s_waitcnt vmcnt(0)
 ; SPILL-TO-VGPR-NEXT:    s_getpc_b64 s[4:5]

@@ -233,11 +233,13 @@ define void @spill_only_csr_sgpr() {
 ; TODO: Can the SP inc/deec be remvoed?
 ; GCN-LABEL: {{^}}callee_with_stack_no_fp_elim_csr_vgpr:
 ; GCN: s_waitcnt
-; GCN-NEXT:s_mov_b32 [[FP_COPY:s[0-9]+]], s33
+; GCN-NEXT: s_mov_b32 [[FP_COPY:s[0-9]+]], s33
 ; GCN-NEXT: s_mov_b32 s33, s32
-; GCN: v_mov_b32_e32 [[ZERO:v[0-9]+]], 0
+; MUBUF:       s_addk_i32 s32, 0x300
 ; MUBUF-DAG:   buffer_store_dword v41, off, s[0:3], s33 ; 4-byte Folded Spill
+; FLATSCR:      s_add_i32 s32, s32, 12
 ; FLATSCR-DAG: scratch_store_dword off, v41, s33 ; 4-byte Folded Spill
+; GCN: v_mov_b32_e32 [[ZERO:v[0-9]+]], 0
 ; MUBUF-DAG:   buffer_store_dword [[ZERO]], off, s[0:3], s33 offset:4
 ; FLATSCR-DAG: scratch_store_dword off, [[ZERO]], s33 offset:4
 
@@ -247,10 +249,8 @@ define void @spill_only_csr_sgpr() {
 
 ; MUBUF:   buffer_load_dword v41, off, s[0:3], s33 ; 4-byte Folded Reload
 ; FLATSCR: scratch_load_dword v41, off, s33 ; 4-byte Folded Reload
-; MUBUF:        s_addk_i32 s32, 0x300
-; MUBUF-NEXT:   s_addk_i32 s32, 0xfd00
+; MUBUF:   s_addk_i32 s32, 0xfd00
 ; MUBUF-NEXT:   s_mov_b32 s33, s4
-; FLATSCR:      s_add_i32 s32, s32, 12
 ; FLATSCR-NEXT: s_add_i32 s32, s32, -12
 ; FLATSCR-NEXT: s_mov_b32 s33, s0
 ; GCN-NEXT: s_waitcnt vmcnt(0)
@@ -270,20 +270,18 @@ define void @callee_with_stack_no_fp_elim_csr_vgpr() #1 {
 ; FLATSCR-NEXT: scratch_store_dword off, [[CSR_VGPR:v[0-9]+]], s32 offset:8 ; 4-byte Folded Spill
 ; GCN-NEXT: s_mov_b64 exec, [[COPY_EXEC0]]
 ; GCN-NEXT: v_writelane_b32 v0, s33, 63
-; GCN-COUNT-60: v_writelane_b32 v0
 ; GCN: s_mov_b32 s33, s32
-; GCN: v_writelane_b32 v0
-; MUBUF:   buffer_store_dword v41, off, s[0:3], s33 ; 4-byte Folded Spill
+; FLATSCR:      s_add_i32 s32, s32, 16
+; MUBUF: s_addk_i32 s32, 0x400
+; MUBUF: buffer_store_dword v41, off, s[0:3], s33 ; 4-byte Folded Spill
 ; FLATSCR: scratch_store_dword off, v41, s33 ; 4-byte Folded Spill
-; GCN: v_writelane_b32 v0
+; GCN-COUNT-63: v_writelane_b32 v0
 ; MUBUF:   buffer_store_dword v{{[0-9]+}}, off, s[0:3], s33 offset:4
 ; FLATSCR: scratch_store_dword off, v{{[0-9]+}}, s33 offset:4
 ; GCN: ;;#ASMSTART
-; GCN: v_writelane_b32 v0
-
-; MUBUF:        s_addk_i32 s32, 0x400
-; MUBUF:        s_addk_i32 s32, 0xfc00
-; FLATSCR:      s_add_i32 s32, s32, 16
+; FLATSCR: scratch_load_dword v41, off, s33        ; 4-byte Folded Reload
+; GCN-COUNT-63: v_readlane_b32
+; MUBUF: s_addk_i32 s32, 0xfc00
 ; FLATSCR:      s_add_i32 s32, s32, -16
 ; GCN-NEXT: v_readlane_b32 s33, v0, 63
 ; GCN-NEXT: s_or_saveexec_b64 [[COPY_EXEC1:s\[[0-9]+:[0-9]+\]]], -1{{$}}
@@ -315,22 +313,20 @@ define void @last_lane_vgpr_for_fp_csr() #1 {
 ; MUBUF-NEXT:   buffer_store_dword [[CSR_VGPR:v[0-9]+]], off, s[0:3], s32 offset:8 ; 4-byte Folded Spill
 ; FLATSCR-NEXT: scratch_store_dword off, [[CSR_VGPR:v[0-9]+]], s32 offset:8 ; 4-byte Folded Spill
 ; GCN-NEXT: s_mov_b64 exec, [[COPY_EXEC0]]
-; GCN-COUNT-61: v_writelane_b32 v0,
 ; FLATSCR: s_mov_b32 [[FP_COPY:s[0-9]+]], s33
 ; FLATSCR-NEXT: s_mov_b32 s33, s32
+; FLATSCR:      s_add_i32 s32, s32, 16
 ; MUBUF: s_mov_b32 [[FP_COPY:s[0-9]+]], s33
 ; MUBUF-NEXT: s_mov_b32 s33, s32
+; MUBUF:   s_addk_i32 s32, 0x400
 ; MUBUF:   buffer_store_dword v41, off, s[0:3], s33 ; 4-byte Folded Spill
 ; FLATSCR: scratch_store_dword off, v41, s33 ; 4-byte Folded Spill
-; GCN: v_writelane_b32 v0,
+; GCN-COUNT-64: v_writelane_b32 v0,
 ; MUBUF:   buffer_store_dword
 ; FLATSCR: scratch_store_dword
 ; GCN: ;;#ASMSTART
-; GCN: v_writelane_b32 v0,
 ; MUBUF:   buffer_load_dword v41, off, s[0:3], s33 ; 4-byte Folded Reload
 ; FLATSCR: scratch_load_dword v41, off, s33 ; 4-byte Folded Reload
-; MUBUF:        s_addk_i32 s32, 0x400
-; FLATSCR:      s_add_i32 s32, s32, 16
 ; GCN-COUNT-64: v_readlane_b32 s{{[0-9]+}}, v0
 ; MUBUF-NEXT:   s_addk_i32 s32, 0xfc00
 ; FLATSCR-NEXT: s_add_i32 s32, s32, -16
@@ -391,11 +387,11 @@ define void @realign_stack_no_fp_elim() #1 {
 ; GCN-NEXT: s_mov_b64 exec, [[COPY_EXEC0]]
 ; GCN-NEXT: v_writelane_b32 [[CSR_VGPR]], s33, 2
 ; GCN-NEXT: s_mov_b32 s33, s32
-; GCN: v_writelane_b32 [[CSR_VGPR]], s30, 0
-; GCN: v_mov_b32_e32 [[ZERO:v[0-9]+]], 0
 ; MUBUF:        s_addk_i32 s32, 0x300
 ; FLATSCR:      s_add_i32 s32, s32, 12
+; GCN: v_writelane_b32 [[CSR_VGPR]], s30, 0
 ; GCN: v_writelane_b32 [[CSR_VGPR]], s31, 1
+; GCN: v_mov_b32_e32 [[ZERO:v[0-9]+]], 0
 ; MUBUF:   buffer_store_dword [[ZERO]], off, s[0:3], s33{{$}}
 ; FLATSCR: scratch_store_dword off, [[ZERO]], s33{{$}}
 ; GCN-NEXT:     s_waitcnt vmcnt(0)

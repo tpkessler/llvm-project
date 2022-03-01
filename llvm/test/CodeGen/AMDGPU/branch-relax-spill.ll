@@ -961,21 +961,21 @@ define void @spill_func(i32 addrspace(1)* %arg) #0 {
 ; CHECK-NEXT:    v_writelane_b32 v0, s86, 55
 ; CHECK-NEXT:    v_writelane_b32 v0, s87, 56
 ; CHECK-NEXT:    v_writelane_b32 v0, s88, 57
+; CHECK-NEXT:    v_writelane_b32 v0, s89, 58
+; CHECK-NEXT:    v_writelane_b32 v0, s90, 59
+; CHECK-NEXT:    v_writelane_b32 v0, s91, 60
+; CHECK-NEXT:    v_writelane_b32 v0, s92, 61
+; CHECK-NEXT:    v_writelane_b32 v0, s93, 62
+; CHECK-NEXT:    v_writelane_b32 v0, s94, 63
 ; CHECK-NEXT:    s_waitcnt expcnt(0)
 ; CHECK-NEXT:    v_writelane_b32 v1, s95, 0
-; CHECK-NEXT:    v_writelane_b32 v0, s89, 58
 ; CHECK-NEXT:    v_writelane_b32 v1, s96, 1
-; CHECK-NEXT:    v_writelane_b32 v0, s90, 59
 ; CHECK-NEXT:    v_writelane_b32 v1, s97, 2
-; CHECK-NEXT:    v_writelane_b32 v0, s91, 60
 ; CHECK-NEXT:    v_writelane_b32 v1, s98, 3
-; CHECK-NEXT:    v_writelane_b32 v0, s92, 61
 ; CHECK-NEXT:    v_writelane_b32 v1, s99, 4
-; CHECK-NEXT:    v_writelane_b32 v0, s93, 62
 ; CHECK-NEXT:    v_writelane_b32 v1, s100, 5
-; CHECK-NEXT:    s_mov_b32 s31, s12
-; CHECK-NEXT:    v_writelane_b32 v0, s94, 63
 ; CHECK-NEXT:    v_writelane_b32 v1, s101, 6
+; CHECK-NEXT:    s_mov_b32 s31, s12
 ; CHECK-NEXT:    s_cmp_eq_u32 s31, 0
 ; CHECK-NEXT:    ;;#ASMSTART
 ; CHECK-NEXT:    s_mov_b32 s0, 0

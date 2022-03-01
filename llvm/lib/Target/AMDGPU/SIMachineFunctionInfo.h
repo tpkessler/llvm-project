@@ -504,6 +504,9 @@ public: // FIXME
   Register SGPRForBPSaveRestoreCopy;
   Optional<int> BasePointerSaveIndex;
 
+  Optional<int> ReturnAddressSaveIndex;
+  Optional<int> EXECSaveIndex;
+
   bool isCalleeSavedReg(const MCPhysReg *CSRegs, MCPhysReg Reg);
 
 public:
@@ -560,7 +563,7 @@ public:
 
   /// If \p ResetSGPRSpillStackIDs is true, reset the stack ID from sgpr-spill
   /// to the default stack.
-  bool removeDeadFrameIndices(MachineFrameInfo &MFI,
+  bool removeDeadFrameIndices(MachineFunction &MF,
                               bool ResetSGPRSpillStackIDs);
 
   int getScavengeFI(MachineFrameInfo &MFI, const SIRegisterInfo &TRI);

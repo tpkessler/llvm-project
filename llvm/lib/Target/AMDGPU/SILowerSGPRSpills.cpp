@@ -73,44 +73,19 @@ INITIALIZE_PASS_END(SILowerSGPRSpills, DEBUG_TYPE,
 char &llvm::SILowerSGPRSpillsID = SILowerSGPRSpills::ID;
 
 /// Insert restore code for the callee-saved registers used in the function.
-static void insertCSRSaves(MachineBasicBlock &SaveBlock,
-                           ArrayRef<CalleeSavedInfo> CSI,
-                           LiveIntervals *LIS) {
-  MachineFunction &MF = *SaveBlock.getParent();
-  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
-  const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
-  const GCNSubtarget &ST = MF.getSubtarget<GCNSubtarget>();
-  const SIRegisterInfo *RI = ST.getRegisterInfo();
-
+static void insertCSRSaves(const GCNSubtarget &ST, MachineBasicBlock &SaveBlock,
+                           ArrayRef<CalleeSavedInfo> CSI, LiveIntervals *LIS) {
+  const TargetFrameLowering *TFI = ST.getFrameLowering();
+  const TargetRegisterInfo *TRI = ST.getRegisterInfo();
   MachineBasicBlock::iterator I = SaveBlock.begin();
-  if (!TFI->spillCalleeSavedRegisters(SaveBlock, I, CSI, TRI)) {
-    const MachineRegisterInfo &MRI = MF.getRegInfo();
+  MachineInstrSpan MIS(I, &SaveBlock);
+  bool Success = TFI->spillCalleeSavedRegisters(SaveBlock, I, CSI, TRI);
+  assert(Success && "spillCalleeSavedRegisters should always succeed");
+  (void)Success;
 
-    for (const CalleeSavedInfo &CS : CSI) {
-      // Insert the spill to the stack frame.
-      MCRegister Reg = CS.getReg();
-
-      MachineInstrSpan MIS(I, &SaveBlock);
-      const TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(
-          Reg, Reg == RI->getReturnAddressReg(MF) ? MVT::i64 : MVT::i32);
-
-      // If this value was already livein, we probably have a direct use of the
-      // incoming register value, so don't kill at the spill point. This happens
-      // since we pass some special inputs (workgroup IDs) in the callee saved
-      // range.
-      const bool IsLiveIn = MRI.isLiveIn(Reg);
-      TII.storeRegToStackSlot(SaveBlock, I, Reg, !IsLiveIn, CS.getFrameIdx(),
-                              RC, TRI);
-
-      if (LIS) {
-        assert(std::distance(MIS.begin(), I) == 1);
-        MachineInstr &Inst = *std::prev(I);
-
-        LIS->InsertMachineInstrInMaps(Inst);
-        LIS->removeAllRegUnitsForPhysReg(Reg);
-      }
-    }
+  if (LIS) {
+    for (MachineInstr &Inst : make_range(MIS.begin(), I))
+      LIS->InsertMachineInstrInMaps(Inst);
   }
 }
 
@@ -228,7 +203,7 @@ bool SILowerSGPRSpills::spillCalleeSavedRegs(MachineFunction &MF) {
 
     if (!CSI.empty()) {
       for (MachineBasicBlock *SaveBlock : SaveBlocks)
-        insertCSRSaves(*SaveBlock, CSI, LIS);
+        insertCSRSaves(ST, *SaveBlock, CSI, LIS);
 
       // Add live ins to save blocks.
       assert(SaveBlocks.size() == 1 && "shrink wrapping not fully implemented");
@@ -325,7 +300,7 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
     // free frame index ids by the later pass(es) like "stack slot coloring"
     // which in turn could mess-up with the book keeping of "frame index to VGPR
     // lane".
-    FuncInfo->removeDeadFrameIndices(MFI, /*ResetSGPRSpillStackIDs*/ false);
+    FuncInfo->removeDeadFrameIndices(MF, /*ResetSGPRSpillStackIDs*/ false);
 
     MadeChange = true;
   }

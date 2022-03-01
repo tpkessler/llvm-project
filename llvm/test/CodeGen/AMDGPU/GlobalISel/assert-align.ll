@@ -14,9 +14,9 @@ define i32 addrspace(1)* @call_assert_align() {
 ; CHECK-NEXT:    s_mov_b32 s33, s32
 ; CHECK-NEXT:    s_addk_i32 s32, 0x400
 ; CHECK-NEXT:    v_writelane_b32 v40, s30, 0
+; CHECK-NEXT:    v_writelane_b32 v40, s31, 1
 ; CHECK-NEXT:    v_mov_b32_e32 v0, 0
 ; CHECK-NEXT:    v_mov_b32_e32 v1, 0
-; CHECK-NEXT:    v_writelane_b32 v40, s31, 1
 ; CHECK-NEXT:    s_getpc_b64 s[16:17]
 ; CHECK-NEXT:    s_add_u32 s16, s16, ext@rel32@lo+4
 ; CHECK-NEXT:    s_addc_u32 s17, s17, ext@rel32@hi+12

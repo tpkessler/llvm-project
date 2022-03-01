@@ -388,9 +388,9 @@ define amdgpu_gfx void @strict_wwm_call(<4 x i32> inreg %tmp14, i32 inreg %arg) 
 ; GFX9-O3-NEXT:    buffer_store_dword v1, off, s[0:3], s32 offset:4 ; 4-byte Folded Spill
 ; GFX9-O3-NEXT:    s_mov_b64 exec, s[34:35]
 ; GFX9-O3-NEXT:    v_writelane_b32 v3, s33, 2
-; GFX9-O3-NEXT:    v_writelane_b32 v3, s30, 0
 ; GFX9-O3-NEXT:    s_mov_b32 s33, s32
 ; GFX9-O3-NEXT:    s_addk_i32 s32, 0x400
+; GFX9-O3-NEXT:    v_writelane_b32 v3, s30, 0
 ; GFX9-O3-NEXT:    v_writelane_b32 v3, s31, 1
 ; GFX9-O3-NEXT:    v_mov_b32_e32 v2, s8
 ; GFX9-O3-NEXT:    s_not_b64 exec, exec
@@ -631,9 +631,9 @@ define amdgpu_gfx void @strict_wwm_call_i64(<4 x i32> inreg %tmp14, i64 inreg %a
 ; GFX9-O3-NEXT:    buffer_store_dword v3, off, s[0:3], s32 offset:20 ; 4-byte Folded Spill
 ; GFX9-O3-NEXT:    s_mov_b64 exec, s[34:35]
 ; GFX9-O3-NEXT:    v_writelane_b32 v8, s33, 2
-; GFX9-O3-NEXT:    v_writelane_b32 v8, s30, 0
 ; GFX9-O3-NEXT:    s_mov_b32 s33, s32
 ; GFX9-O3-NEXT:    s_addk_i32 s32, 0x800
+; GFX9-O3-NEXT:    v_writelane_b32 v8, s30, 0
 ; GFX9-O3-NEXT:    v_writelane_b32 v8, s31, 1
 ; GFX9-O3-NEXT:    s_or_saveexec_b64 s[34:35], -1
 ; GFX9-O3-NEXT:    s_getpc_b64 s[36:37]
