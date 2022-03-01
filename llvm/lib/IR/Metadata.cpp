@@ -703,6 +703,7 @@ MDNode *MDNode::replaceWithPermanentImpl() {
 #define HANDLE_MDNODE_LEAF_UNIQUABLE(CLASS)                                    \
   case CLASS##Kind:                                                            \
     break;
+#define HANDLE_MDNODE_LEAF_UNIQUED(CLASS) HANDLE_MDNODE_LEAF_UNIQUABLE(CLASS)
 #include "llvm/IR/Metadata.def"
   }
 
@@ -843,6 +844,7 @@ MDNode *MDNode::uniquify() {
     dispatchRecalculateHash(SubclassThis, ShouldRecalculateHash);              \
     return uniquifyImpl(SubclassThis, getContext().pImpl->CLASS##s);           \
   }
+#define HANDLE_MDNODE_LEAF_UNIQUED(CLASS) HANDLE_MDNODE_LEAF_UNIQUABLE(CLASS)
 #include "llvm/IR/Metadata.def"
   }
 }
@@ -855,6 +857,7 @@ void MDNode::eraseFromStore() {
   case CLASS##Kind:                                                            \
     getContext().pImpl->CLASS##s.erase(cast<CLASS>(this));                     \
     break;
+#define HANDLE_MDNODE_LEAF_UNIQUED(CLASS) HANDLE_MDNODE_LEAF_UNIQUABLE(CLASS)
 #include "llvm/IR/Metadata.def"
   }
 }
@@ -1593,4 +1596,29 @@ void GlobalVariable::getDebugInfo(
   getMetadata(LLVMContext::MD_dbg, MDs);
   for (MDNode *MD : MDs)
     GVs.push_back(cast<DIGlobalVariableExpression>(MD));
+}
+
+void GlobalVariable::addDebugInfo(DIGlobalVariable *GV) {
+  addMetadata(LLVMContext::MD_dbg, *GV);
+}
+
+void GlobalVariable::getDebugInfo(
+    SmallVectorImpl<DIGlobalVariable *> &GVs) const {
+  SmallVector<MDNode *, 1> MDs;
+  getMetadata(LLVMContext::MD_dbg, MDs);
+  for (MDNode *MD : MDs)
+    GVs.push_back(cast<DIGlobalVariable>(MD));
+}
+
+void GlobalVariable::setDbgDef(DIFragment *F) {
+  addMetadata("dbg.def", *F);
+}
+
+DIFragment *GlobalVariable::getDbgDef() const {
+  SmallVector<MDNode *, 1> MDs;
+  getMetadata("dbg.def", MDs);
+  assert(MDs.size() <= 1);
+  if (MDs.size())
+    return cast<DIFragment>(MDs[0]);
+  return nullptr;
 }

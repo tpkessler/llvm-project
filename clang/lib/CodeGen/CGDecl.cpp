@@ -1612,16 +1612,27 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
   // Emit debug info for local var declaration.
   if (EmitDebugInfo && HaveInsertPoint()) {
-    Address DebugAddr = address;
-    bool UsePointerValue = NRVO && ReturnValuePointer.isValid();
     DI->setLocation(D.getLocation());
 
-    // If NRVO, use a pointer to the return address.
+    // Even for NRVO, we may not have ReturnValuePointer if the sret parameter
+    // is also byval.
+    bool UsePointerValue = NRVO && ReturnValuePointer.isValid();
+    Address DebugAddr = Address::invalid();
     if (UsePointerValue) {
       DebugAddr = ReturnValuePointer;
-      AllocaAddr = ReturnValuePointer;
+    } else {
+      // We are either in an alloca, and AllocaAddr is valid, or we are in:
+      // * An sret+byval NRVO return parameter.
+      // * A runtime-managed OpenMP allocation.
+      // FIXME: The assert condition here is overly broad.
+      // FIXME: Can the cases where OpenMP requires this be eliminated?
+      assert(AllocaAddr.isValid() || NRVO ||
+             getLangOpts().OpenMP &&
+                 "Expected either an alloca, sret+byval NRVO parameter, or "
+                 "OpenMP runtime allocation.");
+      DebugAddr = AllocaAddr.isValid() ? AllocaAddr : address;
     }
-    (void)DI->EmitDeclareOfAutoVariable(&D, AllocaAddr.getPointer(), Builder,
+    (void)DI->EmitDeclareOfAutoVariable(&D, DebugAddr.getPointer(), Builder,
                                         UsePointerValue);
   }
 
@@ -2476,13 +2487,13 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
   if (Arg.isIndirect()) {
     // If we have a prettier pointer type at this point, bitcast to that.
     DeclPtr = Arg.getIndirectAddress();
+    AllocaPtr = DeclPtr;
     DeclPtr = Builder.CreateElementBitCast(DeclPtr, ConvertTypeForMem(Ty),
                                            D.getName());
     // Indirect argument is in alloca address space, which may be different
     // from the default address space.
     auto AllocaAS = CGM.getASTAllocaAddressSpace();
     auto *V = DeclPtr.getPointer();
-    AllocaPtr = DeclPtr;
     auto SrcLangAS = getLangOpts().OpenCL ? LangAS::opencl_private : AllocaAS;
     auto DestLangAS =
         getLangOpts().OpenCL ? LangAS::opencl_private : LangAS::Default;

@@ -45,6 +45,18 @@ body:             |
     ; BOTHSCHEDPASS-LABEL: name: no_cluster
     ; BOTHSCHEDPASS: liveins: $sgpr0, $vgpr10_vgpr11
     ; BOTHSCHEDPASS-NEXT: {{  $}}
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr0_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr1_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr2_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr3_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr4_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr5_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr6_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr7_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr8_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr9_lo16
     ; BOTHSCHEDPASS-NEXT: $vgpr1 = V_MOV_B32_e32 1, implicit $exec
     ; BOTHSCHEDPASS-NEXT: $vgpr0 = V_MOV_B32_e32 1, implicit $exec
     ; BOTHSCHEDPASS-NEXT: $vgpr1 = V_ADD_F16_e32 killed $vgpr1, $vgpr0, implicit $mode, implicit $exec
@@ -143,6 +155,31 @@ body:             |
     ; BOTHSCHEDPASS-LABEL: name: basic_cluster
     ; BOTHSCHEDPASS: liveins: $agpr0_agpr1_agpr2_agpr3, $agpr4_agpr5_agpr6_agpr7, $agpr8_agpr9_agpr10_agpr11, $agpr12_agpr13_agpr14_agpr15
     ; BOTHSCHEDPASS-NEXT: {{  $}}
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr0_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr1_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr2_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr3_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr4_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr5_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr6_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr0_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr1_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr2_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr3_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr4_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr5_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr6_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr7_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr8_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr9_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr10_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr11_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr12_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr13_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr14_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr15_lo16
     ; BOTHSCHEDPASS-NEXT: $vgpr1 = V_MOV_B32_e32 1, implicit $exec
     ; BOTHSCHEDPASS-NEXT: $vgpr3 = V_MOV_B32_e32 1, implicit $exec
     ; BOTHSCHEDPASS-NEXT: $vgpr0 = V_MOV_B32_e32 1, implicit $exec
@@ -261,6 +298,33 @@ body:             |
     ; BOTHSCHEDPASS-LABEL: name: complex_cluster
     ; BOTHSCHEDPASS: liveins: $sgpr0, $agpr0_agpr1_agpr2_agpr3, $agpr4_agpr5_agpr6_agpr7, $agpr8_agpr9_agpr10_agpr11, $agpr12_agpr13_agpr14_agpr15, $vgpr10_vgpr11
     ; BOTHSCHEDPASS-NEXT: {{  $}}
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr0_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr1_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr2_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr3_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr4_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr5_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr6_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr8_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr9_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr0_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr1_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr2_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr3_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr4_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr5_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr6_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr7_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr8_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr9_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr10_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr11_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr12_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr13_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr14_lo16
+    ; BOTHSCHEDPASS-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr15_lo16
     ; BOTHSCHEDPASS-NEXT: $vgpr1 = V_MOV_B32_e32 1, implicit $exec
     ; BOTHSCHEDPASS-NEXT: $vgpr0 = V_MOV_B32_e32 1, implicit $exec
     ; BOTHSCHEDPASS-NEXT: $vgpr2 = V_MOV_B32_e32 1, implicit $exec

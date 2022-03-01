@@ -22,8 +22,8 @@ declare void @external_void_func_i32(i32) #0
 
 ; GCN: s_swappc_b64
 
-; GCN: v_readlane_b32 s31, v40, 1
 ; GCN: v_readlane_b32 s30, v40, 0
+; GCN: v_readlane_b32 s31, v40, 1
 
 ; GCN-NEXT: s_addk_i32 s32, 0xfc00
 ; GCN-NEXT: v_readlane_b32 s33, v40, 2

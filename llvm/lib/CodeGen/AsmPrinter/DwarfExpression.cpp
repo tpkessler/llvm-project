@@ -20,6 +20,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <algorithm>
+#include <stack>
 
 using namespace llvm;
 
@@ -731,4 +732,453 @@ void DwarfExpression::addWasmLocation(unsigned Index, uint64_t Offset) {
     assert(LocationKind == Implicit || LocationKind == Unknown);
     LocationKind = Implicit;
   }
+}
+
+static bool isUnsigned(const ConstantInt *CI) {
+  return (CI->getType()->getSignBit() & CI->getSExtValue()) == 0;
+}
+
+size_t DIEDwarfExprAST::Node::getChildrenCount() const {
+  return visit<size_t>(
+      makeVisitor(
+          [](DIOp::Arg) { return 0; }, [](DIOp::Constant) { return 0; },
+          [](DIOp::PushLane) { return 0; }, [](DIOp::Referrer) { return 0; },
+          [](DIOp::TypeObject) { return 0; }, [](DIOp::AddrOf) { return 1; },
+          [](DIOp::Convert) { return 1; }, [](DIOp::Deref) { return 1; },
+          [](DIOp::Extend) { return 1; }, [](DIOp::Read) { return 1; },
+          [](DIOp::Reinterpret) { return 1; }, [](DIOp::Add) { return 2; },
+          [](DIOp::BitOffset) { return 2; }, [](DIOp::ByteOffset) { return 2; },
+          [](DIOp::Div) { return 2; }, [](DIOp::Mul) { return 2; },
+          [](DIOp::Shl) { return 2; }, [](DIOp::Shr) { return 2; },
+          [](DIOp::Sub) { return 2; }, [](DIOp::Select) { return 3; },
+          [](DIOp::Composite) -> size_t {
+            // FIXME(KZHURAVL): Handle DIOp::Composite.
+            llvm_unreachable("DIOp::Composite is not handled in "
+                             "DIEDwarfExprAST::Node::getChildrenCount");
+          }),
+      Element);
+}
+
+Optional<uint8_t> DIEDwarfExprAST::Node::getEquivalentDwarfOp() const {
+  return visit<Optional<uint8_t>>(
+      makeVisitor(
+          [](DIOp::Arg) { return None; }, [](DIOp::Constant) { return None; },
+          [](DIOp::PushLane) { return None; },
+          [](DIOp::Referrer) { return None; },
+          [](DIOp::TypeObject) { return None; },
+          [](DIOp::AddrOf) { return None; }, [](DIOp::Convert) { return None; },
+          [](DIOp::Deref) { return None; }, [](DIOp::Extend) { return None; },
+          [](DIOp::Read) { return None; },
+          [](DIOp::Reinterpret) { return None; },
+          [](DIOp::Add) { return dwarf::DW_OP_plus; },
+          [](DIOp::BitOffset) { return dwarf::DW_OP_LLVM_bit_offset; },
+          [](DIOp::ByteOffset) { return dwarf::DW_OP_LLVM_offset; },
+          [](DIOp::Div) { return dwarf::DW_OP_div; },
+          [](DIOp::Mul) { return dwarf::DW_OP_mul; },
+          [](DIOp::Shl) { return dwarf::DW_OP_shl; },
+          [](DIOp::Shr) { return dwarf::DW_OP_shr; },
+          [](DIOp::Sub) { return dwarf::DW_OP_minus; },
+          [](DIOp::Select) { return None; },
+          [](DIOp::Composite) { return None; }),
+      Element);
+}
+
+void DIEDwarfExprAST::buildDIExprAST() {
+  std::stack<std::unique_ptr<DIEDwarfExprAST::Node>> Operands;
+
+  for (const auto &Op : Lifetime.getLocation()->builder()) {
+    std::unique_ptr<DIEDwarfExprAST::Node> OpNode =
+        std::make_unique<DIEDwarfExprAST::Node>(Op);
+    size_t OpChildrenCount = OpNode->getChildrenCount();
+    if (OpChildrenCount == 0) {
+      Operands.push(std::move(OpNode));
+    } else {
+      for (size_t I = 0; I < OpChildrenCount; ++I) {
+        OpNode->getChildren().insert(
+            OpNode->getChildren().begin(), std::move(Operands.top()));
+        Operands.pop();
+      }
+      Operands.push(std::move(OpNode));
+    }
+  }
+
+  assert(Operands.size() == 1);
+  Root = std::move(Operands.top());
+}
+
+void DIEDwarfExprAST::traverseAndLower(DIEDwarfExprAST::Node *OpNode) {
+  if (!OpNode || !IsImplemented) {
+    return;
+  }
+
+  for (auto &ChildOpNode : OpNode->getChildren()) {
+    // FIXME(KZHURAVL): Do this iteratively, otherwise we may hit stack size
+    // problems.
+    traverseAndLower(ChildOpNode.get());
+    if (!IsImplemented) {
+      return;
+    }
+  }
+
+  lower(OpNode);
+}
+
+void DIEDwarfExprAST::lower(DIEDwarfExprAST::Node *OpNode) {
+  visit(makeVisitor([&](DIOp::Arg) { lowerDIOpArg(OpNode); },
+                    [&](DIOp::Constant) { lowerDIOpConstant(OpNode); },
+                    [&](DIOp::PushLane) { lowerDIOpPushLane(OpNode); },
+                    [&](DIOp::Referrer) { lowerDIOpReferrer(OpNode); },
+                    [&](DIOp::TypeObject) { lowerDIOpTypeObject(OpNode); },
+                    [&](DIOp::AddrOf) { lowerDIOpAddrOf(OpNode); },
+                    [&](DIOp::Convert) { lowerDIOpConvert(OpNode); },
+                    [&](DIOp::Deref) { lowerDIOpDeref(OpNode); },
+                    [&](DIOp::Extend) { lowerDIOpExtend(OpNode); },
+                    [&](DIOp::Read) { lowerDIOpRead(OpNode); },
+                    [&](DIOp::Reinterpret) { lowerDIOpReinterpret(OpNode); },
+                    [&](DIOp::Add) { lowerDIOpAdd(OpNode); },
+                    [&](DIOp::BitOffset) { lowerDIOpBitOffset(OpNode); },
+                    [&](DIOp::ByteOffset) { lowerDIOpByteOffset(OpNode); },
+                    [&](DIOp::Div) { lowerDIOpDiv(OpNode); },
+                    [&](DIOp::Mul) { lowerDIOpMul(OpNode); },
+                    [&](DIOp::Shl) { lowerDIOpShl(OpNode); },
+                    [&](DIOp::Shr) { lowerDIOpShr(OpNode); },
+                    [&](DIOp::Sub) { lowerDIOpSub(OpNode); },
+                    [&](DIOp::Select) { lowerDIOpSelect(OpNode); },
+                    [&](DIOp::Composite) { lowerDIOpComposite(OpNode); }),
+        OpNode->getElement());
+}
+
+bool DIEDwarfExprAST::tryInlineArgObject(DIObject *ArgObject) {
+  if (!GVFragmentMap)
+    return false;
+  auto *Fragment = dyn_cast<DIFragment>(ArgObject);
+  if (!Fragment)
+    return false;
+  const auto GV = GVFragmentMap->find(Fragment);
+  if (GV == GVFragmentMap->end())
+    return false;
+  const GlobalVariable *Global = GV->getSecond();
+  const MCSymbol *Sym = AP.getSymbol(Global);
+  CU.getDwarfDebug().addArangeLabel(SymbolCU(&CU, Sym));
+  emitDwarfOp(dwarf::DW_OP_addr);
+  CU.addLabel(getActiveDIE(), dwarf::DW_FORM_addr, Sym);
+  emitDwarfOp(dwarf::DW_OP_stack_value);
+  return true;
+}
+
+void DIEDwarfExprAST::lowerDIOpArg(DIEDwarfExprAST::Node *OpNode) {
+  const DIOp::Variant &Element = OpNode->getElement();
+  assert(Element.holdsAlternative<DIOp::Arg>() &&
+         "Expected DIOp::Arg, but got something else");
+
+  const DIOp::Arg &Arg = Element.get<DIOp::Arg>();
+  uint32_t Index = Arg.getIndex();
+  assert(Index >= std::distance(Lifetime.argObjects().end(),
+                                Lifetime.argObjects().begin()));
+  DIObject *ArgObject = *(Lifetime.argObjects().begin() + Index);
+
+  if (tryInlineArgObject(ArgObject)) {
+    OpNode->setIsLowered();
+    OpNode->setResultType(Arg.getResultType());
+    return;
+  }
+
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerDIOpConstant(DIEDwarfExprAST::Node *OpNode) {
+  const DIOp::Variant &Element = OpNode->getElement();
+  assert(Element.holdsAlternative<DIOp::Constant>() &&
+         "Expected DIOp::Constant, but got something else");
+
+  ConstantData *LiteralValue = Element.get<DIOp::Constant>().getLiteralValue();
+  if (!ConstantInt::classof(LiteralValue)) {
+    // FIXME(KZHURAVL): Support ConstantFP?
+    IsImplemented = false;
+    return;
+  }
+
+  ConstantInt *IntLiteralValue = dyn_cast<ConstantInt>(LiteralValue);
+  assert(IntLiteralValue && "Expected ConstantInt, but got something else");
+
+  if (isUnsigned(IntLiteralValue)) {
+    emitUnsigned(IntLiteralValue->getZExtValue());
+  } else {
+    emitSigned(IntLiteralValue->getSExtValue());
+  }
+
+  emitDwarfOp(dwarf::DW_OP_stack_value);
+
+  OpNode->setIsLowered();
+  OpNode->setResultType(IntLiteralValue->getType());
+}
+
+void DIEDwarfExprAST::lowerDIOpPushLane(DIEDwarfExprAST::Node *OpNode) {
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerDIOpReferrer(DIEDwarfExprAST::Node *OpNode) {
+  const DIOp::Variant &Element = OpNode->getElement();
+  assert(Element.holdsAlternative<DIOp::Referrer>() &&
+         "Expected DIOp::Referrer, but got something else");
+
+  auto LLVMFrameRegister = TRI->getFrameRegister(*AP.MF);
+  auto DWARFFrameRegister = TRI->getDwarfRegNum(LLVMFrameRegister, false);
+
+  // FIXME(KZHURAVL): This is fine at -O0. Need to record the actual Value which
+  // is acting as the referrer for each lifetime when we walk the MF.
+  emitReg(DWARFFrameRegister);
+
+  OpNode->setIsLowered();
+  // FIXME(KZHURAVL): Is the following result type correct?
+  OpNode->setResultType(Element.get<DIOp::Referrer>().getResultType());
+}
+
+void DIEDwarfExprAST::lowerDIOpTypeObject(DIEDwarfExprAST::Node *OpNode) {
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerDIOpAddrOf(DIEDwarfExprAST::Node *OpNode) {
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerDIOpConvert(DIEDwarfExprAST::Node *OpNode) {
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerDIOpDeref(DIEDwarfExprAST::Node *OpNode) {
+  const DIOp::Variant &Element = OpNode->getElement();
+  assert(Element.holdsAlternative<DIOp::Deref>() &&
+         "Expected DIOp::Deref, but got something else");
+  assert(OpNode->getChildren().size() == 1 && "Expected 1 child");
+
+  Type *ResultType = OpNode->getChildren()[0]->getResultType();
+  if (!ResultType->isPointerTy()) {
+    // FIXME(KZHURAVL): Support non pointer types?
+    IsImplemented = false;
+    return;
+  }
+
+  PointerType *PointerResultType = dyn_cast<PointerType>(ResultType);
+  assert(PointerResultType && "Expected PointerType, but got something else");
+
+  uint64_t PointerSizeInBits = AP.getDataLayout().getPointerSizeInBits(PointerResultType->getAddressSpace());
+  assert(PointerSizeInBits % 8 == 0 && "Expected multiple of 8");
+
+  uint64_t PointerSizeInBytes = PointerSizeInBits / 8;
+
+  unsigned PointerLLVMAddrSpace = PointerResultType->getAddressSpace();
+  Optional<unsigned> PointerDWARFAddrSpace =
+      AP.TM.mapToDWARFAddrSpace(PointerLLVMAddrSpace);
+  if (!PointerDWARFAddrSpace) {
+    LLVM_DEBUG(dbgs() << "Failed to lower DIOpDeref of pointer to addrspace("
+                      << PointerLLVMAddrSpace
+                      << "): no corresponding DWARF addrspace.\n");
+    IsImplemented = false;
+    return;
+  }
+
+  emitDwarfOp(dwarf::DW_OP_deref_size);
+  emitDwarfData1(PointerSizeInBytes);
+  emitDwarfOp(dwarf::DW_OP_constu);
+  emitDwarfUnsigned(*PointerDWARFAddrSpace);
+  emitDwarfOp(dwarf::DW_OP_LLVM_form_aspace_address);
+
+  OpNode->setIsLowered();
+  // FIXME(KZHURAVL): Is the following result type correct?
+  OpNode->setResultType(Element.get<DIOp::Deref>().getResultType());
+}
+
+void DIEDwarfExprAST::lowerDIOpExtend(DIEDwarfExprAST::Node *OpNode) {
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerDIOpRead(DIEDwarfExprAST::Node *OpNode) {
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerDIOpReinterpret(DIEDwarfExprAST::Node *OpNode) {
+  const DIOp::Variant &Element = OpNode->getElement();
+  assert(Element.holdsAlternative<DIOp::Reinterpret>() &&
+         "Expected DIOp::Reinterpret, but got something else");
+
+  // FIXME(KZHURAVL): Type checking: make sure result types are compatible?
+  OpNode->setIsLowered();
+  // FIXME(KZHURAVL): Is the following result type correct?
+  OpNode->setResultType(Element.get<DIOp::Reinterpret>().getResultType());
+}
+
+void DIEDwarfExprAST::lowerDIOpAdd(DIEDwarfExprAST::Node *OpNode) {
+  assert(OpNode->getElement().holdsAlternative<DIOp::Add>() &&
+         "Expected DIOp::Add, but got something else");
+  lowerMathOp(OpNode);
+}
+
+void DIEDwarfExprAST::lowerDIOpBitOffset(DIEDwarfExprAST::Node *OpNode) {
+  assert(OpNode->getElement().holdsAlternative<DIOp::BitOffset>() &&
+         "Expected DIOp::BitOffset, but got something else");
+  lowerBitOrByteOffset(OpNode);
+}
+
+void DIEDwarfExprAST::lowerDIOpByteOffset(DIEDwarfExprAST::Node *OpNode) {
+  assert(OpNode->getElement().holdsAlternative<DIOp::ByteOffset>() &&
+         "Expected DIOp::ByteOffset, but got something else");
+  lowerBitOrByteOffset(OpNode);
+}
+
+void DIEDwarfExprAST::lowerDIOpDiv(DIEDwarfExprAST::Node *OpNode) {
+  assert(OpNode->getElement().holdsAlternative<DIOp::Div>() &&
+         "Expected DIOp::Div, but got something else");
+  lowerMathOp(OpNode);
+}
+
+void DIEDwarfExprAST::lowerDIOpMul(DIEDwarfExprAST::Node *OpNode) {
+  assert(OpNode->getElement().holdsAlternative<DIOp::Mul>() &&
+         "Expected DIOp::Mul, but got something else");
+  lowerMathOp(OpNode);
+}
+
+void DIEDwarfExprAST::lowerDIOpShl(DIEDwarfExprAST::Node *OpNode) {
+  assert(OpNode->getElement().holdsAlternative<DIOp::Shl>() &&
+         "Expected DIOp::Shl, but got something else");
+  lowerMathOp(OpNode);
+}
+
+void DIEDwarfExprAST::lowerDIOpShr(DIEDwarfExprAST::Node *OpNode) {
+  assert(OpNode->getElement().holdsAlternative<DIOp::Shr>() &&
+         "Expected DIOp::Shr, but got something else");
+  lowerMathOp(OpNode);
+}
+
+void DIEDwarfExprAST::lowerDIOpSub(DIEDwarfExprAST::Node *OpNode) {
+  assert(OpNode->getElement().holdsAlternative<DIOp::Sub>() &&
+         "Expected DIOp::Sub, but got something else");
+  lowerMathOp(OpNode);
+}
+
+void DIEDwarfExprAST::lowerDIOpSelect(DIEDwarfExprAST::Node *OpNode) {
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerDIOpComposite(DIEDwarfExprAST::Node *OpNode) {
+  IsImplemented = false;
+}
+
+void DIEDwarfExprAST::lowerBitOrByteOffset(DIEDwarfExprAST::Node *OpNode) {
+  const DIOp::Variant &Element = OpNode->getElement();
+  assert((Element.holdsAlternative<DIOp::BitOffset>() ||
+             Element.holdsAlternative<DIOp::ByteOffset>()) &&
+         "Expected bit or byte offset op, but got something else");
+  assert(OpNode->getChildren().size() == 2 && "Expected 2 children");
+
+  readToValue(OpNode->getChildren()[1].get(), /*NeedsSwap=*/false);
+
+  Optional<uint8_t> DwarfOp = OpNode->getEquivalentDwarfOp();
+  assert(DwarfOp.hasValue() && "Expected equivalent dwarf operation");
+
+  emitDwarfOp(DwarfOp.getValue());
+
+  OpNode->setIsLowered();
+  // FIXME(KZHURAVL): Is the following result type correct?
+  if (OpNode->getElement().holdsAlternative<DIOp::BitOffset>()) {
+    OpNode->setResultType(Element.get<DIOp::BitOffset>().getResultType());
+  } else if (OpNode->getElement().holdsAlternative<DIOp::ByteOffset>()) {
+    OpNode->setResultType(Element.get<DIOp::ByteOffset>().getResultType());
+  }
+}
+
+void DIEDwarfExprAST::lowerMathOp(DIEDwarfExprAST::Node *OpNode) {
+  assert((OpNode->getElement().holdsAlternative<DIOp::Add>() ||
+             OpNode->getElement().holdsAlternative<DIOp::Div>() ||
+             OpNode->getElement().holdsAlternative<DIOp::Mul>() ||
+             OpNode->getElement().holdsAlternative<DIOp::Shl>() ||
+             OpNode->getElement().holdsAlternative<DIOp::Shr>() ||
+             OpNode->getElement().holdsAlternative<DIOp::Sub>()) &&
+         "Expected math op, but got something else");
+  assert(OpNode->getChildren().size() == 2 && "Expected 2 children");
+
+  // FIXME(KZHURAVL): Type checking: make sure result types are compatible?
+
+  for (auto &ChildOpNode : OpNode->getChildren()) {
+    assert(ChildOpNode->isLowered() && "Expected lowered child");
+    assert(ChildOpNode->getResultType() && "Expected non-null result type");
+
+    readToValue(ChildOpNode.get(), /*NeedsSwap=*/true);
+  }
+
+  Optional<uint8_t> DwarfOp = OpNode->getEquivalentDwarfOp();
+  assert(DwarfOp.hasValue() && "Expected equivalent dwarf operation");
+
+  emitDwarfOp(DwarfOp.getValue());
+  emitDwarfOp(dwarf::DW_OP_stack_value);
+
+  OpNode->setIsLowered();
+  // FIXME(KZHURAVL): Is the following result type correct?
+  OpNode->setResultType(OpNode->getChildren()[0]->getResultType());
+}
+
+void DIEDwarfExprAST::readToValue(DIEDwarfExprAST::Node *OpNode,
+                                  bool NeedsSwap) {
+  uint64_t PrimitiveSizeInBits =
+      OpNode->getResultType()->getPrimitiveSizeInBits();
+  assert(PrimitiveSizeInBits != 0 && "Expected primitive type");
+  assert(PrimitiveSizeInBits % 8 == 0 && "Expected multiple of 8");
+
+  uint64_t PrimitiveSizeInBytes = PrimitiveSizeInBits / 8;
+
+  emitDwarfOp(dwarf::DW_OP_deref_size);
+  emitDwarfData1(PrimitiveSizeInBytes);
+  if (NeedsSwap) {
+    emitDwarfOp(dwarf::DW_OP_swap);
+  }
+}
+
+void DIEDwarfExprAST::emitReg(int32_t DwarfReg, const char *Comment) {
+  assert(DwarfReg >= 0 && "Invalid dwarf register number");
+
+  if (DwarfReg < 32) {
+    emitDwarfOp(dwarf::DW_OP_reg0 + DwarfReg, Comment);
+  } else {
+    emitDwarfOp(dwarf::DW_OP_regx, Comment);
+    emitDwarfUnsigned(DwarfReg);
+  }
+}
+
+void DIEDwarfExprAST::emitSigned(int64_t SignedValue) {
+  emitDwarfOp(dwarf::DW_OP_consts);
+  emitDwarfSigned(SignedValue);
+}
+
+void DIEDwarfExprAST::emitUnsigned(uint64_t UnsignedValue) {
+  if (UnsignedValue < 32) {
+    emitDwarfOp(dwarf::DW_OP_lit0 + UnsignedValue);
+  } else if (UnsignedValue == std::numeric_limits<uint64_t>::max()) {
+    // Only do this for 64-bit values as the DWARF expression stack uses
+    // target-address-size values.
+    emitDwarfOp(dwarf::DW_OP_lit0);
+    emitDwarfOp(dwarf::DW_OP_not);
+  } else {
+    emitDwarfOp(dwarf::DW_OP_constu);
+    emitDwarfUnsigned(UnsignedValue);
+  }
+}
+
+DIELoc &DIEDwarfExprAST::getActiveDIE() {
+  return OutDIE;
+}
+
+void DIEDwarfExprAST::emitDwarfData1(uint8_t Data1Value) {
+  CU.addUInt(getActiveDIE(), dwarf::DW_FORM_data1, Data1Value);
+}
+
+void DIEDwarfExprAST::emitDwarfOp(uint8_t DwarfOpValue, const char *Comment) {
+  CU.addUInt(getActiveDIE(), dwarf::DW_FORM_data1, DwarfOpValue);
+}
+
+void DIEDwarfExprAST::emitDwarfSigned(int64_t SignedValue) {
+  CU.addSInt(getActiveDIE(), dwarf::DW_FORM_sdata, SignedValue);
+}
+
+void DIEDwarfExprAST::emitDwarfUnsigned(uint64_t UnsignedValue) {
+  CU.addUInt(getActiveDIE(), dwarf::DW_FORM_udata, UnsignedValue);
 }
