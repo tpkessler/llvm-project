@@ -600,8 +600,8 @@ void CodeGenModule::Release() {
     llvm::ArrayType *ATy = llvm::ArrayType::get(Int8PtrTy, UsedArray.size());
 
     auto *GV = new llvm::GlobalVariable(
-        getModule(), ATy, false, llvm::GlobalValue::AppendingLinkage,
-        llvm::ConstantArray::get(ATy, UsedArray), "gpu.used.external");
+        getModule(), ATy, false, llvm::GlobalValue::InternalLinkage,
+        llvm::ConstantArray::get(ATy, UsedArray), "__clang_gpu_used_external");
     addCompilerUsedGlobal(GV);
   }
 
