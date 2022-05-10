@@ -1,4 +1,6 @@
 #include "InterprocUncoalescedAnalysisPass.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #define DEBUG_TYPE "uncoalesced-analysis"
 
@@ -46,3 +48,9 @@ bool InterproceduralUncoalescedAnalysisPass::runOnModule(Module &M) {
 char InterproceduralUncoalescedAnalysisPass::ID = 0;
 static RegisterPass<InterproceduralUncoalescedAnalysisPass>
 Y("interproc-uncoalesced-analysis", "Interprocedural analysis to detect uncoalesced accesses in gpu programs.");
+
+// This lets us run the pass with Clang.
+static void registerInterproceduralUncoalescedAnalysisPass(const PassManagerBuilder &builder, legacy::PassManagerBase &manager) {
+  manager.add(new InterproceduralUncoalescedAnalysisPass());
+}
+static RegisterStandardPasses RegisterInterproceduralUncoalescedAnalysisPass(PassManagerBuilder::EP_ModuleOptimizerEarly, registerInterproceduralUncoalescedAnalysisPass);

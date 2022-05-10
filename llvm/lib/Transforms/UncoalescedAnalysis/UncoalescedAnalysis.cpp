@@ -402,7 +402,7 @@ void UncoalescedAnalysis::BuildAnalysisInfo(GPUState st) {
   UncoalescedAccesses_.clear();
 
   LLVM_DEBUG(errs() << "-------------- computing uncoalesced accesses ------------------\n");
-  errs() << "Function: " << F_->getName() << "\n";
+  errs() << "Function: " << demangle(F_->getName().str()) << "\n";
   initialState_ = st;
   entryBlock_ = &F_->getEntryBlock();
   Execute();
