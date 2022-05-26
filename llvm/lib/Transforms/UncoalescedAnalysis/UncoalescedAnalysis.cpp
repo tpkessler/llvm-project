@@ -137,17 +137,8 @@ GPUState UncoalescedAnalysis::ExecuteInstruction(
         if (!name.compare("__HIP_Coordinates<__HIP_ThreadIdx>::__X::operator unsigned int() const")) {
           st.setValue(CI, MultiplierValue(ONE));
         } else if (
-            !name.compare("__HIP_Coordinates<__HIP_ThreadIdx>::__Y::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_ThreadIdx>::__Z::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_BlockDim>::__X::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_BlockDim>::__Z::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_BlockDim>::__Y::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_BlockIdx>::__X::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_BlockIdx>::__Y::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_BlockIdx>::__Z::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_GridDim>::__X::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_GridDim>::__Y::operator unsigned int() const") ||
-            !name.compare("__HIP_Coordinates<__HIP_GridDim>::__Z::operator unsigned int() const")
+            std::regex_match(name, std::regex{ "__HIP_Coordinates<__HIP_ThreadIdx>::__(Y|Z)::operator unsigned int\(\) const" } ||
+            std::regex_match(name, std::regex{ "__HIP_Coordinates<__HIP_(BlockDim|BlockIdx|GridDim)>::__(X|Y|Z)::operator unsigned int\(\) const" })
             ) {
             
           st.setValue(CI, MultiplierValue(ZERO));
