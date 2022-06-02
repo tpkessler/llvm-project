@@ -77,40 +77,18 @@ static void insertCSRSaves(MachineBasicBlock &SaveBlock,
                            ArrayRef<CalleeSavedInfo> CSI,
                            LiveIntervals *LIS) {
   MachineFunction &MF = *SaveBlock.getParent();
-  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
-  const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
   const GCNSubtarget &ST = MF.getSubtarget<GCNSubtarget>();
-  const SIRegisterInfo *RI = ST.getRegisterInfo();
-
+  const TargetFrameLowering *TFI = ST.getFrameLowering();
+  const TargetRegisterInfo *TRI = ST.getRegisterInfo();
   MachineBasicBlock::iterator I = SaveBlock.begin();
-  if (!TFI->spillCalleeSavedRegisters(SaveBlock, I, CSI, TRI)) {
-    const MachineRegisterInfo &MRI = MF.getRegInfo();
+  MachineInstrSpan MIS(I, &SaveBlock);
+  bool Success = TFI->spillCalleeSavedRegisters(SaveBlock, I, CSI, TRI);
+  assert(Success && "spillCalleeSavedRegisters should always succeed");
+  (void)Success;
 
-    for (const CalleeSavedInfo &CS : CSI) {
-      // Insert the spill to the stack frame.
-      MCRegister Reg = CS.getReg();
-
-      MachineInstrSpan MIS(I, &SaveBlock);
-      const TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(
-          Reg, Reg == RI->getReturnAddressReg(MF) ? MVT::i64 : MVT::i32);
-
-      // If this value was already livein, we probably have a direct use of the
-      // incoming register value, so don't kill at the spill point. This happens
-      // since we pass some special inputs (workgroup IDs) in the callee saved
-      // range.
-      const bool IsLiveIn = MRI.isLiveIn(Reg);
-      TII.storeRegToStackSlot(SaveBlock, I, Reg, !IsLiveIn, CS.getFrameIdx(),
-                              RC, TRI);
-
-      if (LIS) {
-        assert(std::distance(MIS.begin(), I) == 1);
-        MachineInstr &Inst = *std::prev(I);
-
-        LIS->InsertMachineInstrInMaps(Inst);
-        LIS->removeAllRegUnitsForPhysReg(Reg);
-      }
-    }
+  if (LIS) {
+    for (MachineInstr &Inst : make_range(MIS.begin(), I))
+      LIS->InsertMachineInstrInMaps(Inst);
   }
 }
 
@@ -212,11 +190,19 @@ bool SILowerSGPRSpills::spillCalleeSavedRegs(MachineFunction &MF) {
 
     std::vector<CalleeSavedInfo> CSI;
     const MCPhysReg *CSRegs = MRI.getCalleeSavedRegs();
+    Register RetAddrReg = TRI->getReturnAddressReg(MF);
+    bool SpillRetAddrReg = false;
 
     for (unsigned I = 0; CSRegs[I]; ++I) {
       MCRegister Reg = CSRegs[I];
 
       if (SavedRegs.test(Reg)) {
+        if (Reg == TRI->getSubReg(RetAddrReg, AMDGPU::sub0) ||
+            Reg == TRI->getSubReg(RetAddrReg, AMDGPU::sub1)) {
+          SpillRetAddrReg = true;
+          continue;
+        }
+
         const TargetRegisterClass *RC =
           TRI->getMinimalPhysRegClass(Reg, MVT::i32);
         int JunkFI = MFI.CreateStackObject(TRI->getSpillSize(*RC),
@@ -224,6 +210,17 @@ bool SILowerSGPRSpills::spillCalleeSavedRegs(MachineFunction &MF) {
 
         CSI.push_back(CalleeSavedInfo(Reg, JunkFI));
       }
+    }
+
+    // Return address uses a register pair. Add the super register to the
+    // CSI list so that it's easier to identify the entire spill and CFI
+    // can be emitted appropriately.
+    if (SpillRetAddrReg) {
+      const TargetRegisterClass *RC =
+          TRI->getMinimalPhysRegClass(RetAddrReg, MVT::i64);
+      int JunkFI = MFI.CreateStackObject(TRI->getSpillSize(*RC),
+                                         TRI->getSpillAlign(*RC), true);
+      CSI.push_back(CalleeSavedInfo(RetAddrReg, JunkFI));
     }
 
     if (!CSI.empty()) {
@@ -317,6 +314,12 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
             SpillFIs[MI.getOperand(0).getIndex()]) {
           MI.getOperand(0).ChangeToRegister(Register(), false /*isDef*/);
         }
+        // FIXME: Need to update expression to locate lane of VGPR to which the
+        // SGPR was spilled.
+        if (MI.isDebugDef() && MI.getDebugOperand(0).isFI() &&
+            SpillFIs[MI.getDebugOperand(0).getIndex()]) {
+          MI.getDebugOperand(0).ChangeToRegister(Register(), false /*isDef*/);
+        }
       }
     }
 
@@ -325,7 +328,7 @@ bool SILowerSGPRSpills::runOnMachineFunction(MachineFunction &MF) {
     // free frame index ids by the later pass(es) like "stack slot coloring"
     // which in turn could mess-up with the book keeping of "frame index to VGPR
     // lane".
-    FuncInfo->removeDeadFrameIndices(MFI, /*ResetSGPRSpillStackIDs*/ false);
+    FuncInfo->removeDeadFrameIndices(MF, /*ResetSGPRSpillStackIDs*/ false);
 
     MadeChange = true;
   }

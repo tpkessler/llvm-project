@@ -433,14 +433,18 @@ bool SIMachineFunctionInfo::allocateVGPRSpillToAGPR(MachineFunction &MF,
 }
 
 bool SIMachineFunctionInfo::removeDeadFrameIndices(
-    MachineFrameInfo &MFI, bool ResetSGPRSpillStackIDs) {
+    MachineFunction &MF, bool ResetSGPRSpillStackIDs) {
+  MachineFrameInfo &MFI = MF.getFrameInfo();
+  const GCNSubtarget &ST = MF.getSubtarget<GCNSubtarget>();
+  const SIRegisterInfo *TRI = ST.getRegisterInfo();
   // Remove dead frame indices from function frame, however keep FP & BP since
   // spills for them haven't been inserted yet. And also make sure to remove the
   // frame indices from `SGPRToVGPRSpills` data structure, otherwise, it could
   // result in an unexpected side effect and bug, in case of any re-mapping of
   // freed frame indices by later pass(es) like "stack slot coloring".
   for (auto &R : make_early_inc_range(SGPRToVGPRSpills)) {
-    if (R.first != FramePointerSaveIndex && R.first != BasePointerSaveIndex) {
+    if (R.first != FramePointerSaveIndex && R.first != BasePointerSaveIndex &&
+        (!TRI->isCFISavedRegsSpillEnabled() || R.first != EXECSaveIndex)) {
       MFI.RemoveStackObject(R.first);
       SGPRToVGPRSpills.erase(R.first);
     }
@@ -453,12 +457,12 @@ bool SIMachineFunctionInfo::removeDeadFrameIndices(
     // stack ID.
     for (int i = MFI.getObjectIndexBegin(), e = MFI.getObjectIndexEnd(); i != e;
          ++i) {
-      if (i != FramePointerSaveIndex && i != BasePointerSaveIndex) {
+      if (i != FramePointerSaveIndex && i != BasePointerSaveIndex &&
+          (!TRI->isCFISavedRegsSpillEnabled() || i != EXECSaveIndex))
         if (MFI.getStackID(i) == TargetStackID::SGPRSpill) {
           MFI.setStackID(i, TargetStackID::Default);
           HaveSGPRToMemory = true;
         }
-      }
     }
   }
 

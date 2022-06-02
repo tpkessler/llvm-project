@@ -15,6 +15,8 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitmaskEnum.h"
+#include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/IntrusiveVariant.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -206,6 +208,7 @@ public:
     case DICommonBlockKind:
     case DITemplateTypeParameterKind:
     case DITemplateValueParameterKind:
+    case DIFragmentKind:
     case DIGlobalVariableKind:
     case DILocalVariableKind:
     case DILabelKind:
@@ -213,6 +216,7 @@ public:
     case DIImportedEntityKind:
     case DIModuleKind:
     case DIGenericSubrangeKind:
+    case DILifetimeKind:
       return true;
     }
   }
@@ -2488,8 +2492,60 @@ public:
   }
 };
 
-/// Base class for variables.
-class DIVariable : public DINode {
+/// Base class for program objects.
+class DIObject : public DINode {
+protected:
+  DIObject(LLVMContext &C, unsigned ID, StorageType Storage, unsigned Tag,
+           ArrayRef<Metadata *> Ops)
+      : DINode(C, ID, Storage, Tag, Ops) {}
+  ~DIObject() = default;
+
+public:
+  static bool classof(const Metadata *MD) {
+    switch (MD->getMetadataID()) {
+    default:
+      return false;
+    case DIFragmentKind:
+    case DILocalVariableKind:
+    case DIGlobalVariableKind:
+      return true;
+    }
+  }
+};
+
+/// Non-source program objects, and pieces of source program objects.
+class DIFragment : public DIObject {
+  friend class LLVMContextImpl;
+  friend class MDNode;
+
+private:
+  static DIFragment *getImpl(LLVMContext &Context, StorageType Storage);
+
+protected:
+  DIFragment(LLVMContext &C, StorageType Storage);
+  ~DIFragment() = default;
+
+public:
+  static void get() = delete;
+  static void getIfExists() = delete;
+
+  static DIFragment *getDistinct(LLVMContext &Context) {
+    return getImpl(Context, Distinct);
+  }
+
+  static TempDIFragment getTemporary(LLVMContext &Context) {
+    return TempDIFragment(getImpl(Context, Temporary));
+  }
+
+  TempDIFragment cloneImpl() const { return getTemporary(getContext()); }
+
+  static bool classof(const Metadata *MD) {
+    return MD->getMetadataID() == DIFragmentKind;
+  }
+};
+
+/// Base class for source variable program objects.
+class DIVariable : public DIObject {
   unsigned Line;
   uint32_t AlignInBits;
 
@@ -2906,6 +2962,276 @@ template <> struct DenseMapInfo<DIExpression::FragmentInfo> {
   }
 
   static bool isEqual(const FragInfo &A, const FragInfo &B) { return A == B; }
+};
+
+namespace DIOp {
+
+// These are the concrete alternatives that a DIOp::Variant encapsulates.
+#define HANDLE_OP0(NAME)                                                       \
+  class NAME {                                                                 \
+    DECLARE_INTRUSIVE_ALTERNATIVE                                              \
+  public:                                                                      \
+    explicit NAME() {}                                                         \
+    bool operator==(const NAME &O) const { return true; }                      \
+    friend hash_code hash_value(const NAME &O);                                \
+    static constexpr StringRef getAsmName();                                   \
+    static constexpr unsigned getBitcodeID();                                  \
+  };
+#define HANDLE_OP1(NAME, TYPE1, NAME1)                                         \
+  class NAME {                                                                 \
+    DECLARE_INTRUSIVE_ALTERNATIVE                                              \
+    TYPE1 NAME1;                                                               \
+                                                                               \
+  public:                                                                      \
+    explicit NAME(TYPE1 NAME1) : NAME1(NAME1) {}                               \
+    bool operator==(const NAME &O) const { return NAME1 == O.NAME1; }          \
+    friend hash_code hash_value(const NAME &O);                                \
+    static constexpr StringRef getAsmName();                                   \
+    static constexpr unsigned getBitcodeID();                                  \
+    TYPE1 get##NAME1() const { return NAME1; }                                 \
+    void set##NAME1(TYPE1 NAME1) { this->NAME1 = NAME1; }                      \
+  };
+#define HANDLE_OP2(NAME, TYPE1, NAME1, TYPE2, NAME2)                           \
+  class NAME {                                                                 \
+    DECLARE_INTRUSIVE_ALTERNATIVE                                              \
+    TYPE1 NAME1;                                                               \
+    TYPE2 NAME2;                                                               \
+                                                                               \
+  public:                                                                      \
+    explicit NAME(TYPE1 NAME1, TYPE2 NAME2) : NAME1(NAME1), NAME2(NAME2) {}    \
+    bool operator==(const NAME &O) const {                                     \
+      return NAME1 == O.NAME1 && NAME2 == O.NAME2;                             \
+    }                                                                          \
+    friend hash_code hash_value(const NAME &O);                                \
+    static constexpr StringRef getAsmName();                                   \
+    static constexpr unsigned getBitcodeID();                                  \
+    TYPE1 get##NAME1() const { return NAME1; }                                 \
+    void set##NAME1(TYPE1 NAME1) { this->NAME1 = NAME1; }                      \
+    TYPE2 get##NAME2() const { return NAME2; }                                 \
+    void set##NAME2(TYPE2 NAME2) { this->NAME2 = NAME2; }                      \
+  };
+#include "llvm/IR/DIExprOps.def"
+
+/// Container for a runtime-variant DIOp
+using Variant = IntrusiveVariant<
+#define HANDLE_OP_NAME(NAME) NAME
+#define SEPARATOR ,
+#include "llvm/IR/DIExprOps.def"
+    >;
+
+#define HANDLE_OP_NAME(NAME)                                                   \
+  constexpr StringRef DIOp::NAME::getAsmName() { return "DIOp" #NAME; }
+#include "llvm/IR/DIExprOps.def"
+
+StringRef getAsmName(const Variant &V);
+
+#define DEFINE_BC_ID(NAME, ID)                                                 \
+  constexpr unsigned DIOp::NAME::getBitcodeID() { return ID; }
+DEFINE_BC_ID(Referrer, 1u)
+DEFINE_BC_ID(Arg, 2u)
+DEFINE_BC_ID(TypeObject, 3u)
+DEFINE_BC_ID(Constant, 4u)
+DEFINE_BC_ID(Convert, 5u)
+DEFINE_BC_ID(Reinterpret, 6u)
+DEFINE_BC_ID(BitOffset, 7u)
+DEFINE_BC_ID(ByteOffset, 8u)
+DEFINE_BC_ID(Composite, 9u)
+DEFINE_BC_ID(Extend, 10u)
+DEFINE_BC_ID(Select, 11u)
+DEFINE_BC_ID(AddrOf, 12u)
+DEFINE_BC_ID(Deref, 13u)
+DEFINE_BC_ID(Read, 14u)
+DEFINE_BC_ID(Add, 15u)
+DEFINE_BC_ID(Sub, 16u)
+DEFINE_BC_ID(Mul, 17u)
+DEFINE_BC_ID(Div, 18u)
+DEFINE_BC_ID(Shr, 19u)
+DEFINE_BC_ID(Shl, 20u)
+DEFINE_BC_ID(PushLane, 21u)
+#undef DEFINE_BC_ID
+
+unsigned getBitcodeID(const Variant &V);
+
+// The sizeof of `Op` is the size of the largest union variant, which
+// is essentially defined as:
+//
+//    uint8_t Kind;
+//    uint32_t I;
+//    void* P;
+//
+// For 64-bit targets, try to catch issues where the struct is not packed
+// into two 64-bit words.
+//
+// FIXME: If we can constrain `I` further to <= 16 bits we should also
+// fit in two 32-bit words on 32-bit targets.
+static_assert(sizeof(uintptr_t) != 64 ||
+                  sizeof(Variant) == 2 * sizeof(uintptr_t),
+              "oversized DIOp");
+
+} // namespace DIOp
+
+template <class NodeTy> struct MDNodeKeyImpl;
+
+  /// Mutable buffer to manipulate debug info expressions.
+  ///
+  /// Example of creating a new expression from scratch:
+  ///
+  /// LLVMContext Ctx;
+  ///
+  /// DIExpr::Builder Builder(Ctx);
+  /// Builder.append(DIOp::InPlaceAdd).intoExpr();
+  ///
+  /// Example of creating a new expression:
+  ///
+  /// DIExpr *Expr = ...;
+  /// ...
+  /// DIExpr *NewExpr = Expr.builder()
+  ///     .append(DIOp::InPlaceDeref)
+  ///     .intoExpr();
+class DIExprBuilder {
+  LLVMContext &C;
+  SmallVector<DIOp::Variant> Elements;
+#ifndef NDEBUG
+  bool StateIsUnspecified = false;
+#endif
+public:
+  /// Create a builder for a new, initially empty expression.
+  explicit DIExprBuilder(LLVMContext &C);
+  /// Create a builder for a new expression for the sequence of ops in \p IL.
+  explicit DIExprBuilder(LLVMContext &C,
+                         std::initializer_list<DIOp::Variant> IL);
+  /// Create a builder for a new expression, initially a copy of \p E.
+  explicit DIExprBuilder(const DIExpr &E);
+
+  class Iterator
+      : public iterator_facade_base<Iterator, std::random_access_iterator_tag,
+                                    DIOp::Variant> {
+    friend DIExprBuilder;
+    DIOp::Variant *Op = nullptr;
+    Iterator(DIOp::Variant *Op) : Op(Op) {}
+
+  public:
+    Iterator() = delete;
+    Iterator(const Iterator &) = default;
+    bool operator==(const Iterator &R) const { return R.Op == Op; }
+    DIOp::Variant &operator*() const { return *Op; }
+    friend iterator_facade_base::difference_type operator-(Iterator LHS,
+                                                           Iterator RHS) {
+      return LHS.Op - RHS.Op;
+    }
+    Iterator &operator+=(iterator_facade_base::difference_type D) {
+      Op += D;
+      return *this;
+    }
+    Iterator &operator-=(iterator_facade_base::difference_type D) {
+      Op -= D;
+      return *this;
+    }
+  };
+
+  Iterator begin() { return Elements.begin(); }
+  Iterator end() { return Elements.end(); }
+  iterator_range<Iterator> range() { return make_range(begin(), end()); }
+
+  Iterator insert(Iterator I, DIOp::Variant O);
+
+  template <typename T, typename... ArgsT>
+  Iterator insert(Iterator I, ArgsT &&...Args) {
+    // FIXME: SmallVector doesn't define an ::emplace(iterator, ...)
+    return Elements.insert(
+        I.Op, DIOp::Variant{in_place_type<T>, std::forward<ArgsT>(Args)...});
+  }
+
+  template <typename RangeTy> Iterator insert(Iterator I, RangeTy &&R) {
+    return Elements.insert(I.Op, R.begin(), R.end());
+  }
+
+  template <typename ItTy> Iterator insert(Iterator I, ItTy &&From, ItTy &&To) {
+    return Elements.insert(I.Op, std::forward<ItTy>(From),
+                           std::forward<ItTy>(To));
+  }
+
+  Iterator insert(Iterator I, std::initializer_list<DIOp::Variant> IL) {
+    return Elements.insert(I.Op, IL.begin(), IL.end());
+  }
+
+  /// Appends \p O to the expression being built.
+  DIExprBuilder &append(DIOp::Variant O);
+
+  /// Appends a new DIOp of type T to the expression being built. The new
+  /// DIOp is constructed in-place by forwarding the provided arguments Args.
+  template <typename T, typename... ArgsT>
+  DIExprBuilder &append(ArgsT &&...Args) {
+    Elements.emplace_back(in_place_type<T>, std::forward<ArgsT>(Args)...);
+    return *this;
+  }
+
+  Iterator erase(Iterator I);
+  Iterator erase(Iterator From, Iterator To);
+
+  /// Returns true if the expression being built contains DIOp of type T,
+  /// false otherwise.
+  template <typename T> bool contains() const {
+    return any_of(Elements, std::mem_fn(&DIOp::Variant::holdsAlternative<T>));
+  }
+
+  /// Update the expression to reflect the removal of one level of indirection
+  /// from the value acting as the referrer.
+  ///
+  /// The referrer must be of pointer type, as the expression is logically
+  /// updated by replacing the @c DIOpReferrer result type with its pointee
+  /// type, provided as @c PointeeType, and inserting @p
+  /// DIOpAddrOf(<pointer-address-space>) after it.
+  ///
+  /// Returns @c *this to permit chaining with other methods.
+  DIExprBuilder &removeReferrerIndirection(Type *PointeeType);
+
+  /// Get the uniqued, immutable expression metadata from the current state
+  /// of the builder.
+  ///
+  /// This leaves the Builder in a valid but unspecified state, as if it were
+  /// moved from.
+  DIExpr *intoExpr();
+};
+
+/// Immutable debug info expression.
+///
+/// This is an opaque, uniqued metadata node type defined by an immutable
+/// sequence of DIOp. In order to view or mutate an expression, use
+/// DIExpr::Builder.
+class DIExpr : public MDNode {
+  friend class LLVMContextImpl;
+  friend class MDNode;
+  friend struct MDNodeKeyImpl<DIExpr>;
+  friend class DIExprBuilder;
+
+  const SmallVector<DIOp::Variant> Elements;
+
+  DIExpr(LLVMContext &C, StorageType Storage,
+         SmallVector<DIOp::Variant> &&Elements)
+      : MDNode(C, DIExprKind, Storage, None), Elements(std::move(Elements)) {}
+  ~DIExpr() = default;
+
+  static DIExpr *getImpl(LLVMContext &Context,
+                         SmallVector<DIOp::Variant> &&Elements,
+                         StorageType Storage, bool ShouldCreate = true);
+
+  TempDIExpr cloneImpl() const {
+    auto Copy = Elements;
+    return getTemporary(getContext(), std::move(Copy));
+  }
+
+  DEFINE_MDNODE_GET(DIExpr, (SmallVector<DIOp::Variant> && Elements),
+                    (std::move(Elements)))
+
+public:
+  static bool classof(const Metadata *MD) {
+    return MD->getMetadataID() == DIExprKind;
+  }
+  TempDIExpr clone() const { return cloneImpl(); }
+
+  /// Convenience method to get a builder by copying the current expression.
+  DIExprBuilder builder() const { return DIExprBuilder(*this); }
 };
 
 /// Global variables.
@@ -3604,6 +3930,95 @@ public:
   }
 
   void handleChangedOperand(void *Ref, Metadata *New);
+};
+
+/// Represents one lifetime segment of a DIObject.
+class DILifetime : public DINode {
+  friend class LLVMContextImpl;
+  friend class MDNode;
+
+  // FIXME: DILifetime must derive from DINode in order to be added to
+  // retainedNodes, but it has no meaningful "Tag".
+  DILifetime(LLVMContext &C, StorageType Storage, ArrayRef<Metadata *> Ops,
+             ArrayRef<Metadata *> Args)
+      : DINode(C, DILifetimeKind, Storage, 0, Ops, Args) {
+    assert(Storage != Uniqued);
+  }
+  ~DILifetime() = default;
+
+  static DILifetime *getImpl(LLVMContext &Context, Metadata *Obj, Metadata *Loc,
+                             ArrayRef<Metadata *> Args, StorageType Storage);
+
+  TempDILifetime cloneImpl() const {
+    SmallVector<Metadata *> ArgObjects(argObjectsBegin(), argObjectsEnd());
+    return getTemporary(getContext(), getRawObject(), getRawLocation(),
+                        ArgObjects);
+  }
+
+public:
+  static DILifetime *getDistinct(LLVMContext &Context, Metadata *Obj,
+                                 Metadata *Loc,
+                                 ArrayRef<Metadata *> Args = None) {
+    return getImpl(Context, Obj, Loc, Args, Distinct);
+  }
+  static TempDILifetime getTemporary(LLVMContext &Context, Metadata *Obj,
+                                     Metadata *Loc,
+                                     ArrayRef<Metadata *> Args = None) {
+    return TempDILifetime(getImpl(Context, Obj, Loc, Args, Temporary));
+  }
+
+  TempDILifetime clone() const { return cloneImpl(); }
+
+  Metadata *getRawObject() const { return getOperand(0); }
+  Metadata *getRawLocation() const { return getOperand(1); }
+  MDNode::op_iterator rawArgObjectsBegin() const { return op_begin() + 2; }
+  MDNode::op_iterator rawArgObjectsEnd() const { return op_end(); }
+  MDNode::op_range rawArgObjects() const {
+    return {rawArgObjectsBegin(), rawArgObjectsEnd()};
+  }
+
+  DIObject *getObject() const { return cast<DIObject>(getRawObject()); }
+  DIExpr *getLocation() const { return cast<DIExpr>(getRawLocation()); }
+  void setLocation(DIExpr *E) { setOperand(1, E); }
+  class ArgObjectIterator
+      : public llvm::iterator_facade_base<
+            ArgObjectIterator, std::random_access_iterator_tag, DIObject> {
+    friend DILifetime;
+    MDNode::op_iterator I;
+    explicit ArgObjectIterator(MDNode::op_iterator I) : I(I) {}
+
+  public:
+    ArgObjectIterator() = delete;
+    ArgObjectIterator(const ArgObjectIterator &) = default;
+    bool operator==(const ArgObjectIterator &R) const { return R.I == I; }
+    DIObject *operator*() const { return cast<DIObject>(*I); }
+    friend iterator_facade_base::difference_type
+    operator-(ArgObjectIterator LHS, ArgObjectIterator RHS) {
+      return LHS.I - RHS.I;
+    }
+    ArgObjectIterator &operator+=(iterator_facade_base::difference_type D) {
+      I += D;
+      return *this;
+    }
+    ArgObjectIterator &operator-=(iterator_facade_base::difference_type D) {
+      I -= D;
+      return *this;
+    }
+  };
+  using ArgObjectRange = iterator_range<ArgObjectIterator>;
+  ArgObjectIterator argObjectsBegin() const {
+    return ArgObjectIterator(rawArgObjectsBegin());
+  }
+  ArgObjectIterator argObjectsEnd() const {
+    return ArgObjectIterator(rawArgObjectsEnd());
+  }
+  ArgObjectRange argObjects() const {
+    return {argObjectsBegin(), argObjectsEnd()};
+  }
+
+  static bool classof(const Metadata *MD) {
+    return MD->getMetadataID() == DILifetimeKind;
+  }
 };
 
 /// Identifies a unique instance of a variable.

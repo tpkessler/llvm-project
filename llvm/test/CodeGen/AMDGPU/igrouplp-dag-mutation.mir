@@ -11,6 +11,16 @@ body:             |
     ; DEFAULT-LABEL: name: no_pipeline
     ; DEFAULT: liveins: $sgpr0, $vgpr10_vgpr11
     ; DEFAULT-NEXT: {{  $}}
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr0_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr1_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr2_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr3_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr5_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr6_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr8_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr9_lo16
     ; DEFAULT-NEXT: $vgpr1 = V_MOV_B32_e32 1, implicit $exec
     ; DEFAULT-NEXT: $vgpr0 = V_MOV_B32_e32 1, implicit $exec
     ; DEFAULT-NEXT: $vgpr1 = V_ADD_F16_e32 killed $vgpr1, $vgpr0, implicit $mode, implicit $exec
@@ -24,6 +34,16 @@ body:             |
     ; PIPELINE-LABEL: name: no_pipeline
     ; PIPELINE: liveins: $sgpr0, $vgpr10_vgpr11
     ; PIPELINE-NEXT: {{  $}}
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr0_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr1_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr2_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr3_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr5_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr6_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr8_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr9_lo16
     ; PIPELINE-NEXT: $vgpr1 = V_MOV_B32_e32 1, implicit $exec
     ; PIPELINE-NEXT: $vgpr0 = V_MOV_B32_e32 1, implicit $exec
     ; PIPELINE-NEXT: $vgpr1 = V_ADD_F16_e32 killed $vgpr1, $vgpr0, implicit $mode, implicit $exec
@@ -56,6 +76,54 @@ body:             |
     ; DEFAULT-LABEL: name: full_pipe
     ; DEFAULT: liveins: $sgpr0, $agpr0_agpr1_agpr2_agpr3, $agpr4_agpr5_agpr6_agpr7, $agpr8_agpr9_agpr10_agpr11, $agpr12_agpr13_agpr14_agpr15, $agpr16_agpr17_agpr18_agpr19, $vgpr10_vgpr11
     ; DEFAULT-NEXT: {{  $}}
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr0_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr1_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr2_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr3_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr4_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr5_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr6_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr7_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr8_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr9_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr10_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr11_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr12_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr15_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr16_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr17_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr18_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr19_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr20_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr21_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr22_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr23_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr24_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr26_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr27_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr30_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr0_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr1_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr2_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr3_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr4_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr5_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr6_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr7_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr8_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr9_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr10_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr11_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr12_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr13_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr14_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr15_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr16_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr17_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr18_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr19_lo16
     ; DEFAULT-NEXT: $vgpr0 = V_MOV_B32_e32 0, implicit $exec
     ; DEFAULT-NEXT: $vgpr1 = V_MOV_B32_e32 1, implicit $exec
     ; DEFAULT-NEXT: $vgpr2 = V_MOV_B32_e32 2, implicit $exec
@@ -100,6 +168,54 @@ body:             |
     ; PIPELINE-LABEL: name: full_pipe
     ; PIPELINE: liveins: $sgpr0, $agpr0_agpr1_agpr2_agpr3, $agpr4_agpr5_agpr6_agpr7, $agpr8_agpr9_agpr10_agpr11, $agpr12_agpr13_agpr14_agpr15, $agpr16_agpr17_agpr18_agpr19, $vgpr10_vgpr11
     ; PIPELINE-NEXT: {{  $}}
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr0_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr1_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr2_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr3_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr4_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr5_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr6_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr7_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr8_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr9_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr10_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr11_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr12_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr15_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr16_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr17_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr18_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr19_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr20_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr21_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr22_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr23_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr24_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr26_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr27_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr30_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr0_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr1_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr2_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr3_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr4_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr5_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr6_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr7_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr8_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr9_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr10_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr11_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr12_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr13_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr14_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr15_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr16_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr17_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr18_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr19_lo16
     ; PIPELINE-NEXT: $vgpr0 = V_MOV_B32_e32 0, implicit $exec
     ; PIPELINE-NEXT: $vgpr1 = V_MOV_B32_e32 1, implicit $exec
     ; PIPELINE-NEXT: $vgpr2 = V_MOV_B32_e32 2, implicit $exec
@@ -191,6 +307,17 @@ body:             |
     ; DEFAULT-LABEL: name: block_ends_in_bundle
     ; DEFAULT: liveins: $vgpr0, $vgpr1, $vgpr7, $agpr0_agpr1_agpr2_agpr3
     ; DEFAULT-NEXT: {{  $}}
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr10_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr11_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr12_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr15_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr16_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr0_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr1_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr2_lo16
+    ; DEFAULT-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr3_lo16
     ; DEFAULT-NEXT: BUNDLE implicit-def $vgpr10, implicit-def $vgpr10_lo16, implicit-def $vgpr10_hi16, implicit-def $vgpr11, implicit-def $vgpr11_lo16, implicit-def $vgpr11_hi16, implicit-def $vgpr12, implicit-def $vgpr12_lo16, implicit-def $vgpr12_hi16, implicit-def $vgpr15, implicit-def $vgpr15_lo16, implicit-def $vgpr15_hi16, implicit-def $vgpr16, implicit-def $vgpr16_lo16, implicit-def $vgpr16_hi16, implicit killed $vgpr7, implicit $exec {
     ; DEFAULT-NEXT:   $vgpr10 = DS_READ_U16_gfx9 $vgpr7, 0, 512, implicit $exec
     ; DEFAULT-NEXT:   $vgpr11 = DS_READ_U16_gfx9 $vgpr7, 0, 2048, implicit $exec
@@ -202,6 +329,17 @@ body:             |
     ; PIPELINE-LABEL: name: block_ends_in_bundle
     ; PIPELINE: liveins: $vgpr0, $vgpr1, $vgpr7, $agpr0_agpr1_agpr2_agpr3
     ; PIPELINE-NEXT: {{  $}}
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION llvm_def_aspace_cfa <badreg>, 0, 6
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr10_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr11_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr12_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr15_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $vgpr16_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr0_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr1_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr2_lo16
+    ; PIPELINE-NEXT: frame-setup CFI_INSTRUCTION undefined $agpr3_lo16
     ; PIPELINE-NEXT: BUNDLE implicit-def $vgpr10, implicit-def $vgpr10_lo16, implicit-def $vgpr10_hi16, implicit-def $vgpr11, implicit-def $vgpr11_lo16, implicit-def $vgpr11_hi16, implicit-def $vgpr12, implicit-def $vgpr12_lo16, implicit-def $vgpr12_hi16, implicit-def $vgpr15, implicit-def $vgpr15_lo16, implicit-def $vgpr15_hi16, implicit-def $vgpr16, implicit-def $vgpr16_lo16, implicit-def $vgpr16_hi16, implicit killed $vgpr7, implicit $exec {
     ; PIPELINE-NEXT:   $vgpr10 = DS_READ_U16_gfx9 $vgpr7, 0, 512, implicit $exec
     ; PIPELINE-NEXT:   $vgpr11 = DS_READ_U16_gfx9 $vgpr7, 0, 2048, implicit $exec

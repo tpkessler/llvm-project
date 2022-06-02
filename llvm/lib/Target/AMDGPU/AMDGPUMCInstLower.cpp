@@ -174,6 +174,12 @@ void AMDGPUAsmPrinter::emitInstruction(const MachineInstr *MI) {
   // FIXME: Enable feature predicate checks once all the test pass.
   // AMDGPU_MC::verifyInstructionPredicates(MI->getOpcode(),
   //                                        getSubtargetInfo().getFeatureBits());
+  switch (MI->getOpcode()) {
+  case TargetOpcode::DBG_DEF:
+  case TargetOpcode::DBG_KILL:
+  case TargetOpcode::DBG_VALUE:
+    llvm_unreachable("Should be handled target independently");
+  }
 
   if (emitPseudoExpansionLowering(*OutStreamer, MI))
     return;

@@ -21,19 +21,19 @@ define amdgpu_gfx float @caller(float %arg0) {
 ; GCN-NEXT:    buffer_store_dword v1, off, s[0:3], s32 ; 4-byte Folded Spill
 ; GCN-NEXT:    s_mov_b64 exec, s[34:35]
 ; GCN-NEXT:    v_writelane_b32 v1, s33, 3
-; GCN-NEXT:    v_writelane_b32 v1, s4, 0
 ; GCN-NEXT:    s_mov_b32 s33, s32
 ; GCN-NEXT:    s_addk_i32 s32, 0x400
+; GCN-NEXT:    v_writelane_b32 v1, s4, 0
 ; GCN-NEXT:    v_writelane_b32 v1, s30, 1
+; GCN-NEXT:    v_writelane_b32 v1, s31, 2
 ; GCN-NEXT:    v_add_f32_e32 v0, 1.0, v0
 ; GCN-NEXT:    s_mov_b32 s4, 2.0
-; GCN-NEXT:    v_writelane_b32 v1, s31, 2
 ; GCN-NEXT:    s_getpc_b64 s[34:35]
 ; GCN-NEXT:    s_add_u32 s34, s34, callee@rel32@lo+4
 ; GCN-NEXT:    s_addc_u32 s35, s35, callee@rel32@hi+12
 ; GCN-NEXT:    s_swappc_b64 s[30:31], s[34:35]
-; GCN-NEXT:    v_readlane_b32 s31, v1, 2
 ; GCN-NEXT:    v_readlane_b32 s30, v1, 1
+; GCN-NEXT:    v_readlane_b32 s31, v1, 2
 ; GCN-NEXT:    v_readlane_b32 s4, v1, 0
 ; GCN-NEXT:    s_addk_i32 s32, 0xfc00
 ; GCN-NEXT:    v_readlane_b32 s33, v1, 3
