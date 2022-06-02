@@ -748,4 +748,28 @@ TEST(AssignmentTrackingTest, InstrMethods) {
   }
 }
 
+TEST(IsHeterogeneousDebugTest, EmptyModule) {
+  LLVMContext C;
+  std::unique_ptr<Module> M = parseIR(C, "");
+  EXPECT_FALSE(isHeterogeneousDebug(*M));
+}
+
+TEST(IsHeterogeneousDebugTest, V3Module) {
+  LLVMContext C;
+  std::unique_ptr<Module> M = parseIR(C, R"(
+    !llvm.module.flags = !{!0}
+    !0 = !{i32 2, !"Debug Info Version", i32 3}
+)");
+  EXPECT_FALSE(isHeterogeneousDebug(*M));
+}
+
+TEST(IsHeterogeneousDebugTest, V4Module) {
+  LLVMContext C;
+  std::unique_ptr<Module> M = parseIR(C, R"(
+    !llvm.module.flags = !{!0}
+    !0 = !{i32 2, !"Debug Info Version", i32 4}
+)");
+  EXPECT_TRUE(isHeterogeneousDebug(*M));
+}
+
 } // end namespace

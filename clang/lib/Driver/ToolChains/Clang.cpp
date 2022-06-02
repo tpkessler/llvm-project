@@ -4401,6 +4401,13 @@ static void renderDebugOptions(const ToolChain &TC, const Driver &D,
 
   renderDwarfFormat(D, T, Args, CmdArgs, EffectiveDWARFVersion);
   RenderDebugInfoCompressionArgs(Args, CmdArgs, D, TC);
+
+  bool EmitDwarfForAMDGCN = EmitDwarf && T.isAMDGCN();
+  if (EmitDwarfForAMDGCN)
+    CmdArgs.append({"-mllvm", "-amdgpu-spill-cfi-saved-regs"});
+  if (Args.hasFlag(options::OPT_gheterogeneous_dwarf,
+                   options::OPT_gno_heterogeneous_dwarf, EmitDwarfForAMDGCN))
+    CmdArgs.push_back("-gheterogeneous-dwarf");
 }
 
 static void ProcessVSRuntimeLibrary(const ArgList &Args,

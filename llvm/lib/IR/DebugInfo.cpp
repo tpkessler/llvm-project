@@ -155,6 +155,7 @@ void DebugInfoFinder::reset() {
   CUs.clear();
   SPs.clear();
   GVs.clear();
+  HGVs.clear();
   TYs.clear();
   Scopes.clear();
   NodesSeen.clear();
@@ -208,6 +209,8 @@ void DebugInfoFinder::processInstruction(const Module &M,
                                          const Instruction &I) {
   if (auto *DVI = dyn_cast<DbgVariableIntrinsic>(&I))
     processVariable(M, *DVI);
+  else if (auto *DDKI = dyn_cast<DbgDefKillIntrinsic>(&I))
+    processLifetime(DDKI->getLifetime());
 
   if (auto DbgLoc = I.getDebugLoc())
     processLocation(M, DbgLoc.get());
@@ -307,6 +310,21 @@ void DebugInfoFinder::processVariable(const Module &M,
     return;
   processScope(DV->getScope());
   processType(DV->getType());
+}
+
+void DebugInfoFinder::processLifetime(DILifetime *DL) {
+  if (!DL)
+    return;
+  processObject(DL->getObject());
+  for (auto *DO : DL->argObjects())
+    processObject(DO);
+}
+
+void DebugInfoFinder::processObject(DIObject *DO) {
+  if (!DO)
+    return;
+  if (auto *DGV = dyn_cast<DIGlobalVariable>(DO))
+    HGVs.push_back(DGV);
 }
 
 bool DebugInfoFinder::addType(DIType *DT) {
@@ -827,6 +845,11 @@ unsigned llvm::getDebugMetadataVersionFromModule(const Module &M) {
           M.getModuleFlag("Debug Info Version")))
     return Val->getZExtValue();
   return 0;
+}
+
+bool llvm::isHeterogeneousDebug(const Module &M) {
+  return getDebugMetadataVersionFromModule(M) ==
+         DEBUG_METADATA_VERSION_HETEROGENEOUS_DWARF;
 }
 
 void Instruction::applyMergedLocation(const DILocation *LocA,
