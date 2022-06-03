@@ -373,6 +373,8 @@ DwarfDebug::DwarfDebug(AsmPrinter *A)
   UseLocSection = !TT.isNVPTX();
 
   HasAppleExtensionAttributes = tuneForLLDB();
+  HasHeterogeneousExtensionAttributes =
+      Asm->MAI->supportsHeterogeneousDebuggingExtensions();
 
   // Handle split DWARF.
   HasSplitDwarf = !Asm->TM.Options.MCOptions.SplitDwarfFile.empty();
@@ -1075,6 +1077,10 @@ void DwarfDebug::finishUnitAttributes(const DICompileUnit *DIUnit,
     if (unsigned RVer = DIUnit->getRuntimeVersion())
       NewCU.addUInt(Die, dwarf::DW_AT_APPLE_major_runtime_vers,
                     dwarf::DW_FORM_data1, RVer);
+  }
+
+  if (useHeterogeneousExtensionAttributes()) {
+    NewCU.addString(Die, dwarf::DW_AT_LLVM_augmentation, "[llvm:v0.0]");
   }
 
   if (DIUnit->getDWOId()) {

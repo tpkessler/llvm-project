@@ -204,8 +204,8 @@ entry:
 ; GCN-NEXT: buffer_store_dword [[CSRV:v[0-9]+]], off, s[0:3], s33 offset:8 ; 4-byte Folded Spill
 ; GCN-NEXT: buffer_store_dword [[CSRV_1:v[0-9]+]], off, s[0:3], s33 offset:12 ; 4-byte Folded Spill
 ; GCN-NEXT: s_mov_b64 exec
-; GCN-DAG: s_addk_i32 s32, 0x800
 ; GCN: v_writelane_b32 [[CSRV_1]], [[FP_SCRATCH_COPY]], 0
+; GCN-DAG: s_addk_i32 s32, 0x800
 
 ; GCN-DAG: s_getpc_b64 s[4:5]
 ; GCN-DAG: s_add_u32 s4, s4, i32_fastcc_i32_i32@gotpcrel32@lo+4
@@ -222,11 +222,12 @@ entry:
 ; GCN-DAG: buffer_load_dword v42, off, s[0:3], s33 ; 4-byte Folded Reload
 ; GCN-DAG: buffer_load_dword v41, off, s[0:3], s33 offset:4 ; 4-byte Folded Reload
 
-; GCN: s_getpc_b64 s[4:5]
+; GCN: v_readlane_b32 s30, [[CSRV]], 0
+; GCN-NEXT: s_getpc_b64 s[4:5]
 ; GCN-NEXT: s_add_u32 s4, s4, sibling_call_i32_fastcc_i32_i32@rel32@lo+4
 ; GCN-NEXT: s_addc_u32 s5, s5, sibling_call_i32_fastcc_i32_i32@rel32@hi+12
+
 ; GCN-NEXT: v_readlane_b32 s31, [[CSRV]], 1
-; GCN-NEXT: v_readlane_b32 s30, [[CSRV]], 0
 ; GCN-NEXT: v_readlane_b32 [[FP_SCRATCH_COPY:s[0-9]+]], [[CSRV_1]], 0
 ; GCN-NEXT: s_or_saveexec_b64 s[8:9], -1
 ; GCN-NEXT: buffer_load_dword [[CSRV]], off, s[0:3], s33 offset:8 ; 4-byte Folded Reload
