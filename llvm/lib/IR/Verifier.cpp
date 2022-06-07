@@ -315,6 +315,9 @@ class Verifier : public InstVisitor<Verifier>, VerifierSupport {
   /// Whether the current function has a DISubprogram attached to it.
   bool HasDebugInfo = false;
 
+  /// The Debug Info Version of the module being verified.
+  std::optional<unsigned> DebugInfoVersion;
+
   /// The current source language.
   dwarf::SourceLanguage CurrentSourceLang = dwarf::DW_LANG_lo_user;
 
@@ -363,6 +366,8 @@ public:
       : VerifierSupport(OS, M), LandingPadResultTy(nullptr),
         SawFrameEscape(false), TBAAVerifyHelper(this) {
     TreatBrokenDebugInfoAsError = ShouldTreatBrokenDebugInfoAsError;
+    if (unsigned V = getDebugMetadataVersionFromModule(M))
+      DebugInfoVersion = V;
   }
 
   bool hasBrokenDebugInfo() const { return BrokenDebugInfo; }
@@ -6148,6 +6153,10 @@ void Verifier::visitConstrainedFPIntrinsic(ConstrainedFPIntrinsic &FPI) {
 }
 
 void Verifier::visitDbgIntrinsic(StringRef Kind, DbgVariableIntrinsic &DII) {
+  if (DebugInfoVersion)
+    CheckDI(*DebugInfoVersion == DEBUG_METADATA_VERSION,
+            "debug intrinsic incompatible with Debug Info Version", &DII,
+            *DebugInfoVersion);
   auto *MD = DII.getRawLocation();
   CheckDI(isa<ValueAsMetadata>(MD) || isa<DIArgList>(MD) ||
               (isa<MDNode>(MD) && !cast<MDNode>(MD)->getNumOperands()),
