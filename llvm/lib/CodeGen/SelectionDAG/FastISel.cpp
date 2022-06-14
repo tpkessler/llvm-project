@@ -1350,17 +1350,17 @@ bool FastISel::selectIntrinsicCall(const IntrinsicInst *II) {
     const Value *Referrer = DDI.getReferrer();
     assert(Referrer);
     if (const auto *UV = dyn_cast<UndefValue>(Referrer)) {
-      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD.getDL(),
               TII.get(TargetOpcode::DBG_DEF))
           .addMetadata(DDI.getLifetime())
           .addReg(Register());
     } else if (const auto *CI = dyn_cast<ConstantInt>(Referrer)) {
-      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD.getDL(),
               TII.get(TargetOpcode::DBG_DEF))
           .addMetadata(DDI.getLifetime())
           .addCImm(CI);
     } else if (auto *CFP = dyn_cast<ConstantFP>(Referrer)) {
-      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD.getDL(),
               TII.get(TargetOpcode::DBG_DEF))
           .addMetadata(DDI.getLifetime())
           .addFPImm(CFP);
@@ -1368,7 +1368,7 @@ bool FastISel::selectIntrinsicCall(const IntrinsicInst *II) {
       auto SI = FuncInfo.StaticAllocaMap.find(AI);
       if (SI != FuncInfo.StaticAllocaMap.end()) {
         DILifetime *Lifetime = DDI.getLifetime();
-        BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+        BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD.getDL(),
                 TII.get(TargetOpcode::DBG_DEF))
             .addMetadata(Lifetime)
             .addFrameIndex(SI->second);
@@ -1384,7 +1384,7 @@ bool FastISel::selectIntrinsicCall(const IntrinsicInst *II) {
         LLVM_DEBUG(dbgs() << "Dropping debug info for alloca " << DDI << "\n");
       }
     } else if (Register Reg = lookUpRegForValue(Referrer)) {
-      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD.getDL(),
               TII.get(TargetOpcode::DBG_DEF))
           .addMetadata(DDI.getLifetime())
           .addReg(Reg);
@@ -1395,7 +1395,7 @@ bool FastISel::selectIntrinsicCall(const IntrinsicInst *II) {
   }
   case Intrinsic::dbg_kill: {
     const DbgKillInst &DKI = *cast<DbgKillInst>(II);
-    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, MIMD.getDL(),
             TII.get(TargetOpcode::DBG_KILL))
         .addMetadata(DKI.getLifetime());
     return true;
