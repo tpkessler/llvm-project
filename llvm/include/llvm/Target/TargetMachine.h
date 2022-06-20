@@ -319,6 +319,15 @@ public:
     return false;
   }
 
+  /// Returns the DWARF address space corresponding to the given LLVM address
+  /// space, or None if no such mapping exists.
+  virtual std::optional<unsigned>
+  mapToDWARFAddrSpace(unsigned LLVMAddrSpace) const {
+    if (LLVMAddrSpace == DL.getDefaultGlobalsAddressSpace())
+      return 0;
+    return std::nullopt;
+  }
+
   void setPGOOption(std::optional<PGOOptions> PGOOpt) { PGOOption = PGOOpt; }
   const std::optional<PGOOptions> &getPGOOption() const { return PGOOption; }
 
