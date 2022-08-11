@@ -2327,8 +2327,13 @@ void CodeGenModule::ConstructAttributeList(StringRef Name,
                      getLangOpts().Sanitize.has(SanitizerKind::Memory) ||
                      getLangOpts().Sanitize.has(SanitizerKind::Return);
 
+  // Enable noundef attribute based on codegen options and
+  // skip adding the attribute to HIP device functions.
+  bool EnableNoundefAttrs = CodeGenOpts.EnableNoundefAttrs &&
+                            !(getLangOpts().HIP && getLangOpts().CUDAIsDevice);
+
   // Determine if the return type could be partially undef
-  if (CodeGenOpts.EnableNoundefAttrs && HasStrictReturn) {
+  if (EnableNoundefAttrs && HasStrictReturn) {
     if (!RetTy->isVoidType() && RetAI.getKind() != ABIArgInfo::Indirect &&
         DetermineNoUndef(RetTy, getTypes(), DL, RetAI))
       RetAttrs.addAttribute(llvm::Attribute::NoUndef);
@@ -2462,8 +2467,7 @@ void CodeGenModule::ConstructAttributeList(StringRef Name,
     }
 
     // Decide whether the argument we're handling could be partially undef
-    if (CodeGenOpts.EnableNoundefAttrs &&
-        DetermineNoUndef(ParamType, getTypes(), DL, AI)) {
+    if (EnableNoundefAttrs && DetermineNoUndef(ParamType, getTypes(), DL, AI)) {
       Attrs.addAttribute(llvm::Attribute::NoUndef);
     }
 

@@ -5,7 +5,7 @@
 #define __global__ __attribute__((global))
 #define __device__ __attribute__((device))
 
-// CHECK-LABEL: @_Z15unsafeAtomicAddPff(ptr noundef %addr, float noundef %value
+// CHECK-LABEL: @_Z15unsafeAtomicAddPff(ptr %addr, float %value
 __device__ inline float unsafeAtomicAdd(float* addr, float value) {
   // CHECK: %[[ADDR_ADDR:.*]] = alloca ptr, align 8, addrspace(5)
   // CHECK: %[[ADDR_ADDR_ASCAST:.*]] = addrspacecast ptr addrspace(5) %[[ADDR_ADDR]] to ptr 
