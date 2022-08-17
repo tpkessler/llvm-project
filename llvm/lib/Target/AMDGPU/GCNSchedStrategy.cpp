@@ -24,6 +24,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GCNSchedStrategy.h"
+#include "AMDGPUIGroupLP.h"
 #include "SIMachineFunctionInfo.h"
 #include "llvm/CodeGen/RegisterClassInfo.h"
 
@@ -429,10 +430,12 @@ void GCNScheduleDAGMILive::finalizeSchedule() {
   RegionsWithClusters.resize(Regions.size());
   RegionsWithHighRP.resize(Regions.size());
   RegionsWithMinOcc.resize(Regions.size());
+  RegionsWithIGLPInstrs.resize(Regions.size());
   RescheduleRegions.set();
   RegionsWithClusters.reset();
   RegionsWithHighRP.reset();
   RegionsWithMinOcc.reset();
+  RegionsWithIGLPInstrs.reset();
 
   runSchedStages();
 }
@@ -511,6 +514,7 @@ bool UnclusteredRescheduleStage::initGCNSchedStage() {
     return false;
 
   SavedMutations.swap(DAG.Mutations);
+  DAG.addMutation(createIGroupLPDAGMutation());
 
   LLVM_DEBUG(dbgs() << "Retrying function scheduling without clustering.\n");
   return true;
@@ -594,8 +598,17 @@ bool GCNSchedStage::initGCNRegion() {
   // Save original instruction order before scheduling for possible revert.
   Unsched.clear();
   Unsched.reserve(DAG.NumRegionInstrs);
-  for (auto &I : DAG)
-    Unsched.push_back(&I);
+  if (StageID == GCNSchedStageID::InitialSchedule) {
+    for (auto &I : DAG) {
+      Unsched.push_back(&I);
+      if (I.getOpcode() == AMDGPU::SCHED_GROUP_BARRIER ||
+          I.getOpcode() == AMDGPU::IGLP_OPT)
+        DAG.RegionsWithIGLPInstrs[RegionIdx] = true;
+    }
+  } else {
+    for (auto &I : DAG)
+      Unsched.push_back(&I);
+  }
 
   PressureBefore = DAG.Pressure[RegionIdx];
 
@@ -610,6 +623,13 @@ bool GCNSchedStage::initGCNRegion() {
   // collected it. That way pickNode() will not scan SDep's when not needed.
   S.HasClusteredNodes = StageID > GCNSchedStageID::InitialSchedule;
   S.HasExcessPressure = false;
+
+  if (DAG.RegionsWithIGLPInstrs[RegionIdx] &&
+      StageID != GCNSchedStageID::UnclusteredReschedule) {
+    SavedMutations.clear();
+    SavedMutations.swap(DAG.Mutations);
+    DAG.addMutation(createIGroupLPDAGMutation());
+  }
 
   return true;
 }
@@ -662,6 +682,10 @@ void GCNSchedStage::finalizeGCNRegion() {
   // Revert scheduling if we have dropped occupancy or there is some other
   // reason that the original schedule is better.
   checkScheduling();
+
+  if (DAG.RegionsWithIGLPInstrs[RegionIdx] &&
+      StageID != GCNSchedStageID::UnclusteredReschedule)
+    SavedMutations.swap(DAG.Mutations);
 
   DAG.exitRegion();
   RegionIdx++;
@@ -1157,4 +1181,35 @@ void GCNScheduleDAGMILive::updateRegionBoundaries(
       return;
     }
   }
+}
+
+static bool hasIGLPInstrs(ScheduleDAGInstrs *DAG) {
+  return std::any_of(
+      DAG->begin(), DAG->end(), [](MachineBasicBlock::iterator MI) {
+        unsigned Opc = MI->getOpcode();
+        return Opc == AMDGPU::SCHED_GROUP_BARRIER || Opc == AMDGPU::IGLP_OPT;
+      });
+}
+
+GCNPostScheduleDAGMILive::GCNPostScheduleDAGMILive(
+    MachineSchedContext *C, std::unique_ptr<MachineSchedStrategy> S,
+    bool RemoveKillFlags)
+    : ScheduleDAGMI(C, std::move(S), RemoveKillFlags) {}
+
+void GCNPostScheduleDAGMILive::schedule() {
+  HasIGLPInstrs = hasIGLPInstrs(this);
+  if (HasIGLPInstrs) {
+    SavedMutations.clear();
+    SavedMutations.swap(Mutations);
+    addMutation(createIGroupLPDAGMutation());
+  }
+
+  ScheduleDAGMI::schedule();
+}
+
+void GCNPostScheduleDAGMILive::finalizeSchedule() {
+  if (HasIGLPInstrs)
+    SavedMutations.swap(Mutations);
+
+  ScheduleDAGMI::finalizeSchedule();
 }
