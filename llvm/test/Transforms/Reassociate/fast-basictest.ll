@@ -181,9 +181,6 @@ define float @test6_reassoc(float %A, float %B, float %C) {
 }
 
 ; (-X)*Y + Z -> Z-X*Y
-; TODO: check why IR transformation of test7 with 'fast' math flag
-; is worse than without it (and even without transformation)
-
 define float @test7(float %X, float %Y, float %Z) {
 ; CHECK-LABEL: @test7(
 ; CHECK-NEXT:    [[TMP1:%.*]] = fsub fast float 0.000000e+00, 0.000000e+00
@@ -214,10 +211,11 @@ define float @test7_unary_fneg(float %X, float %Y, float %Z) {
 
 define float @test7_reassoc_nsz(float %X, float %Y, float %Z) {
 ; CHECK-LABEL: @test7_reassoc_nsz(
-; CHECK-NEXT:    [[A:%.*]] = fsub reassoc nsz float 0.000000e+00, [[X:%.*]]
-; CHECK-NEXT:    [[B:%.*]] = fmul reassoc nsz float [[A]], [[Y:%.*]]
-; CHECK-NEXT:    [[C:%.*]] = fadd reassoc nsz float [[B]], [[Z:%.*]]
-; CHECK-NEXT:    ret float [[C]]
+; CHECK-NEXT:    [[TMP0:%.*]] = fsub reassoc nsz float 0.000000e+00, 0.000000e+00
+; CHECK-NEXT:    [[A:%.*]] = fmul reassoc nsz float [[Y:%.*]], [[X:%.*]]
+; CHECK-NEXT:    [[B:%.*]] = fmul reassoc nsz float [[A]], 1.000000e+00
+; CHECK-NEXT:    [[TMP1:%.*]] = fsub reassoc nsz float [[Z:%.*]], [[B]]
+; CHECK-NEXT:    ret float [[TMP1]]
 ;
   %A = fsub reassoc nsz float 0.0, %X
   %B = fmul reassoc nsz float %A, %Y
@@ -326,11 +324,12 @@ define float @test12_unary_fneg(float %X1, float %X2, float %X3) {
 
 define float @test12_reassoc_nsz(float %X1, float %X2, float %X3) {
 ; CHECK-LABEL: @test12_reassoc_nsz(
-; CHECK-NEXT:    [[A:%.*]] = fsub reassoc nsz float 0.000000e+00, [[X1:%.*]]
-; CHECK-NEXT:    [[B:%.*]] = fmul reassoc nsz float [[A]], [[X2:%.*]]
-; CHECK-NEXT:    [[C:%.*]] = fmul reassoc nsz float [[X1]], [[X3:%.*]]
-; CHECK-NEXT:    [[D:%.*]] = fadd reassoc nsz float [[B]], [[C]]
-; CHECK-NEXT:    ret float [[D]]
+; CHECK-NEXT:    [[TMP0:%.*]] = fsub reassoc nsz float 0.000000e+00, 0.000000e+00
+; CHECK-NEXT:    [[A:%.*]] = fmul reassoc nsz float [[X2:%.*]], [[X1:%.*]]
+; CHECK-NEXT:    [[B:%.*]] = fmul reassoc nsz float [[A]], 1.000000e+00
+; CHECK-NEXT:    [[C:%.*]] = fmul reassoc nsz float [[X3:%.*]], [[X1]]
+; CHECK-NEXT:    [[TMP1:%.*]] = fsub reassoc nsz float [[C]], [[B]]
+; CHECK-NEXT:    ret float [[TMP1]]
 ;
   %A = fsub reassoc nsz float 0.000000e+00, %X1
   %B = fmul reassoc nsz float %A, %X2   ; -X1*X2
@@ -454,13 +453,12 @@ define float @test15_unary_fneg(float %b, float %a) {
   ret float %4
 }
 
+; TODO: check if we can remove dead fsub.
 define float @test15_reassoc_nsz(float %b, float %a) {
 ; CHECK-LABEL: @test15_reassoc_nsz(
-; CHECK-NEXT:    [[TMP1:%.*]] = fadd reassoc nsz float [[A:%.*]], 1.234000e+03
-; CHECK-NEXT:    [[TMP2:%.*]] = fadd reassoc nsz float [[B:%.*]], [[TMP1]]
-; CHECK-NEXT:    [[TMP3:%.*]] = fsub reassoc nsz float 0.000000e+00, [[A]]
-; CHECK-NEXT:    [[TMP4:%.*]] = fadd reassoc nsz float [[TMP3]], [[TMP2]]
-; CHECK-NEXT:    ret float [[TMP4]]
+; CHECK-NEXT:    [[TMP1:%.*]] = fsub reassoc nsz float 0.000000e+00, [[A:%.*]]
+; CHECK-NEXT:    [[TMP2:%.*]] = fadd reassoc nsz float [[B:%.*]], 1.234000e+03
+; CHECK-NEXT:    ret float [[TMP2]]
 ;
   %1 = fadd reassoc nsz float %a, 1234.0
   %2 = fadd reassoc nsz float %b, %1
