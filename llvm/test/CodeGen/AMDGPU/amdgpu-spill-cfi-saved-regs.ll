@@ -122,11 +122,11 @@ define void @no_vgprs_to_spill_into() #1 {
 ; WAVE32: s_or_saveexec_b32 [[EXEC_COPY:s[0-9]+]], -1
 ; WAVE32-NEXT: buffer_store_dword [[RES_VGPR:v[0-9]+]], off, s[0:3], s32 offset:192 ; 4-byte Folded Spill
 ; WAVE32: s_mov_b32 exec_lo, [[EXEC_COPY]]
-; WAVE32-NEXT: v_mov_b32_e32 [[TEMP_VGPR:v[0-9]+]], exec_lo
+; WAVE32-NEXT: v_mov_b32_e32 [[TEMP_VGPR:v[0-9]+]], s33
+; WAVE32-NEXT: buffer_store_dword [[TEMP_VGPR]], off, s[0:3], s32 offset:200 ; 4-byte Folded Spill
+; WAVE32: v_mov_b32_e32 [[TEMP_VGPR]], exec_lo
 ; WAVE32-NEXT: buffer_store_dword [[TEMP_VGPR]], off, s[0:3], s32 offset:196 ; 4-byte Folded Spill
 ; WAVE32-NEXT: .cfi_offset 1, 6272
-; WAVE32-NEXT: v_mov_b32_e32 [[TEMP_VGPR]], s33
-; WAVE32-NEXT: buffer_store_dword [[TEMP_VGPR]], off, s[0:3], s32 offset:200 ; 4-byte Folded Spill
 ; WAVE32: buffer_store_dword v40, off, s[0:3], s33 offset
 ; WAVE32-COUNT-47: buffer_store_dword v{{[0-9]+}}, off, s[0:3], s33
 ; WAVE32: v_writelane_b32 [[RES_VGPR]], s34, 0

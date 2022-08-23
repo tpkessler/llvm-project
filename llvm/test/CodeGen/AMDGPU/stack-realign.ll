@@ -264,9 +264,9 @@ define void @no_free_regs_spill_bp_to_memory(<32 x i32> %a, i32 %b) #5 {
 ; GCN-LABEL: no_free_regs_spill_bp_to_mem
 ; GCN: s_or_saveexec_b64 s[4:5], -1
 ; GCN: v_mov_b32_e32 v0, s33
-; GCN: buffer_store_dword v0, off, s[0:3], s32
-; GCN: v_mov_b32_e32 v0, s34
 ; GCN-DAG: buffer_store_dword v0, off, s[0:3], s32
+; GCN: v_mov_b32_e32 v0, s34
+; GCN: buffer_store_dword v0, off, s[0:3], s32
   %local_val = alloca i32, align 128, addrspace(5)
   store volatile i32 %b, i32 addrspace(5)* %local_val, align 128
 

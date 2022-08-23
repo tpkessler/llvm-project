@@ -92,9 +92,9 @@ define dso_local fastcc void @func_needs_fp() unnamed_addr #0 {
 ; CHECK-NEXT:    buffer_store_dword v40, off, s[0:3], s32 ; 4-byte Folded Spill
 ; CHECK-NEXT:    buffer_store_dword v41, off, s[0:3], s32 offset:4 ; 4-byte Folded Spill
 ; CHECK-NEXT:    s_mov_b64 exec, s[16:17]
+; CHECK-NEXT:    v_writelane_b32 v41, s33, 2
 ; CHECK-NEXT:    v_writelane_b32 v41, exec_lo, 0
 ; CHECK-NEXT:    v_writelane_b32 v41, exec_hi, 1
-; CHECK-NEXT:    v_writelane_b32 v41, s33, 2
 ; CHECK-NEXT:    s_mov_b32 s33, s32
 ; CHECK-NEXT:    v_writelane_b32 v40, s30, 0
 ; CHECK-NEXT:    s_addk_i32 s32, 0x400
