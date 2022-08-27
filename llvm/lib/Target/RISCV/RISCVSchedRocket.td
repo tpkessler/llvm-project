@@ -175,6 +175,7 @@ def : WriteRes<WriteCSR, []>;
 def : WriteRes<WriteNop, []>;
 
 def : InstRW<[WriteIALU], (instrs COPY)>;
+def : InstRW<[WriteIALU], (instrs PRED_COPY)>;
 
 //===----------------------------------------------------------------------===//
 // Bypass and advance
