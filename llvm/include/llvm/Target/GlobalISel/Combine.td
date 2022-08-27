@@ -126,6 +126,12 @@ def copy_prop : GICombineRule<
          [{ return Helper.matchCombineCopy(*${mi}); }]),
   (apply [{ Helper.applyCombineCopy(*${mi}); }])>;
 
+def pred_copy_prop : GICombineRule<
+  (defs root:$d),
+  (match (PRED_COPY $d, $s):$mi,
+         [{ return Helper.matchCombineCopy(*${mi}); }]),
+  (apply [{ Helper.applyCombineCopy(*${mi}); }])>;
+
 def extending_loads : GICombineRule<
   (defs root:$root, extending_load_matchdata:$matchinfo),
   (match (wip_match_opcode G_LOAD, G_SEXTLOAD, G_ZEXTLOAD):$root,
@@ -940,8 +946,8 @@ def phi_combines : GICombineGroup<[extend_through_phis]>;
 def select_combines : GICombineGroup<[select_undef_cmp, select_constant_cmp,
                                       select_to_logical]>;
 
-def trivial_combines : GICombineGroup<[copy_prop, mul_to_shl, add_p2i_to_ptradd,
-                                       mul_by_neg_one]>;
+def trivial_combines : GICombineGroup<[copy_prop, pred_copy_prop, mul_to_shl,
+  add_p2i_to_ptradd, mul_by_neg_one]>;
 
 def fma_combines : GICombineGroup<[combine_fadd_fmul_to_fmad_or_fma,
   combine_fadd_fpext_fmul_to_fmad_or_fma, combine_fadd_fma_fmul_to_fmad_or_fma,

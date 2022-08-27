@@ -1777,7 +1777,8 @@ void MachineVerifier::visitMachineInstrBefore(const MachineInstr *MI) {
 
   // Verify properties of various specific instruction types
   switch (MI->getOpcode()) {
-  case TargetOpcode::COPY: {
+  case TargetOpcode::COPY:
+  case TargetOpcode::PRED_COPY: {
     const MachineOperand &DstOp = MI->getOperand(0);
     const MachineOperand &SrcOp = MI->getOperand(1);
     const Register SrcReg = SrcOp.getReg();

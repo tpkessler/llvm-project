@@ -96,10 +96,11 @@ struct ExtAddrMode {
 class TargetInstrInfo : public MCInstrInfo {
 public:
   TargetInstrInfo(unsigned CFSetupOpcode = ~0u, unsigned CFDestroyOpcode = ~0u,
-                  unsigned CatchRetOpcode = ~0u, unsigned ReturnOpcode = ~0u)
+                  unsigned CatchRetOpcode = ~0u, unsigned ReturnOpcode = ~0u,
+                  unsigned CopyOpcode = TargetOpcode::COPY)
       : CallFrameSetupOpcode(CFSetupOpcode),
         CallFrameDestroyOpcode(CFDestroyOpcode), CatchRetOpcode(CatchRetOpcode),
-        ReturnOpcode(ReturnOpcode) {}
+        ReturnOpcode(ReturnOpcode), CopyOpcode(CopyOpcode) {}
   TargetInstrInfo(const TargetInstrInfo &) = delete;
   TargetInstrInfo &operator=(const TargetInstrInfo &) = delete;
   virtual ~TargetInstrInfo();
@@ -233,6 +234,7 @@ public:
 
   unsigned getCatchReturnOpcode() const { return CatchRetOpcode; }
   unsigned getReturnOpcode() const { return ReturnOpcode; }
+  unsigned getCopyOpcode() const { return CopyOpcode; }
 
   /// Returns the actual stack pointer adjustment made by an instruction
   /// as part of a call sequence. By default, only call frame setup/destroy
@@ -1898,7 +1900,7 @@ public:
   MachineInstr *buildCopy(MachineBasicBlock &MBB,
                           MachineBasicBlock::iterator InsPt, const DebugLoc &DL,
                           Register Dst) const {
-    return BuildMI(MBB, InsPt, DL, get(TargetOpcode::COPY), Dst);
+    return BuildMI(MBB, InsPt, DL, get(getCopyOpcode()), Dst);
   }
 
   /// Helper function for inserting a COPY to \p Dst from \p Src at insertion
@@ -1907,7 +1909,7 @@ public:
                           MachineBasicBlock::iterator InsPt, const DebugLoc &DL,
                           Register Dst, Register Src, unsigned Flags = 0,
                           unsigned SubReg = 0) const {
-    return BuildMI(MBB, InsPt, DL, get(TargetOpcode::COPY), Dst)
+    return BuildMI(MBB, InsPt, DL, get(getCopyOpcode()), Dst)
         .addReg(Src, Flags, SubReg);
   }
 
@@ -2029,6 +2031,7 @@ private:
   unsigned CallFrameSetupOpcode, CallFrameDestroyOpcode;
   unsigned CatchRetOpcode;
   unsigned ReturnOpcode;
+  unsigned CopyOpcode;
 };
 
 /// Provide DenseMapInfo for TargetInstrInfo::RegSubRegPair.

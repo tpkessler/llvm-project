@@ -1142,7 +1142,8 @@ public:
           // Adding Use to ArtifactList.
           WrapperObserver.changedInstr(Use);
           break;
-        case TargetOpcode::COPY: {
+        case TargetOpcode::COPY:
+        case TargetOpcode::PRED_COPY: {
           Register Copy = Use.getOperand(0).getReg();
           if (Copy.isVirtual())
             UpdatedDefs.push_back(Copy);
@@ -1163,6 +1164,7 @@ private:
   static Register getArtifactSrcReg(const MachineInstr &MI) {
     switch (MI.getOpcode()) {
     case TargetOpcode::COPY:
+    case TargetOpcode::PRED_COPY:
     case TargetOpcode::G_TRUNC:
     case TargetOpcode::G_ZEXT:
     case TargetOpcode::G_ANYEXT:
@@ -1287,7 +1289,8 @@ private:
     using namespace llvm::MIPatternMatch;
 
     Register TmpReg;
-    while (mi_match(Reg, MRI, m_Copy(m_Reg(TmpReg)))) {
+    while (mi_match(Reg, MRI, m_Copy(m_Reg(TmpReg))) ||
+           mi_match(Reg, MRI, m_Pred_Copy(m_Reg(TmpReg)))) {
       if (MRI.getType(TmpReg).isValid())
         Reg = TmpReg;
       else

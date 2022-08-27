@@ -327,6 +327,7 @@ Optional<ValueAndVReg> getConstantVRegValWithLookThrough(
       VReg = MI->getOperand(1).getReg();
       break;
     case TargetOpcode::COPY:
+    case TargetOpcode::PRED_COPY:
       VReg = MI->getOperand(1).getReg();
       if (Register::isPhysicalRegister(VReg))
         return None;
