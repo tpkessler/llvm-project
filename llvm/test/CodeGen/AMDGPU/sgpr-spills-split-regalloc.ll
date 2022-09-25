@@ -6,8 +6,8 @@ define void @child_function() #0 {
 }
 
 ; GCN-LABEL: {{^}}spill_sgpr_with_no_lower_vgpr_available:
-; GCN:  buffer_store_dword v255, off, s[0:3], s32
 ; GCN:  s_mov_b32 [[TMP_SGPR:s[0-9]+]], s33
+; GCN:  buffer_store_dword v255, off, s[0:3], s33
 ; GCN:  v_writelane_b32 v255, s30, 0
 ; GCN:  v_writelane_b32 v255, s31, 1
 ; GCN:  s_swappc_b64 s[30:31], s[4:5]
@@ -52,8 +52,8 @@ define void @spill_sgpr_with_no_lower_vgpr_available() #0 {
 }
 
 ; GCN-LABEL: {{^}}spill_to_lowest_available_vgpr:
-; GCN:  buffer_store_dword v254, off, s[0:3], s32
 ; GCN:  s_mov_b32 [[TMP_SGPR:s[0-9]+]], s33
+; GCN:  buffer_store_dword v254, off, s[0:3], s33
 ; GCN:  v_writelane_b32 v254, s30, 0
 ; GCN:  v_writelane_b32 v254, s31, 1
 ; GCN:  s_swappc_b64 s[30:31], s[4:5]

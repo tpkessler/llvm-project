@@ -490,9 +490,9 @@ define i16 @v_extract_v128i16_varidx(<128 x i16> addrspace(1)* %ptr, i32 %idx) {
 ; GCN-NEXT:    buffer_load_dword v42, off, s[0:3], s33 offset:48 ; 4-byte Folded Reload
 ; GCN-NEXT:    buffer_load_dword v41, off, s[0:3], s33 offset:52 ; 4-byte Folded Reload
 ; GCN-NEXT:    buffer_load_dword v40, off, s[0:3], s33 offset:56 ; 4-byte Folded Reload
-; GCN-NEXT:    s_mov_b32 s33, s4
 ; GCN-NEXT:    s_waitcnt vmcnt(15)
 ; GCN-NEXT:    v_lshrrev_b32_e32 v0, v1, v0
+; GCN-NEXT:    s_mov_b32 s33, s4
 ; GCN-NEXT:    s_waitcnt vmcnt(0)
 ; GCN-NEXT:    s_setpc_b64 s[30:31]
   %vec = load <128 x i16>, <128 x i16> addrspace(1)* %ptr

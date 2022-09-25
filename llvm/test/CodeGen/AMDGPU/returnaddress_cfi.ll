@@ -11,10 +11,13 @@ define hidden void @_ZL3barv_spill_RA_to_vgpr() #0 {
 ; CHECK-NEXT:    .cfi_llvm_def_aspace_cfa 64, 0, 6
 ; CHECK-NEXT:    .cfi_escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04 ;
 ; CHECK:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; CHECK-NEXT:    s_or_saveexec_b64 s[16:17], -1
-; CHECK-NEXT:    buffer_store_dword v40, off, s[0:3], s32 offset:192 ; 4-byte Folded Spill
+; CHECK-NEXT:    s_mov_b32 s16, s33
+; CHECK-NEXT:    s_mov_b32 s33, s32
+; CHECK-NEXT:    s_or_saveexec_b64 s[18:19], -1
+; CHECK-NEXT:    buffer_store_dword v40, off, s[0:3], s33 offset:192 ; 4-byte Folded Spill
 ; CHECK-NEXT:    .cfi_offset 2600, 1228
-; CHECK-NEXT:    s_mov_b64 exec, s[16:17]
+
+; CHECK-NEXT:    s_mov_b64 exec, s[18:19]
 
 ; CHECK:    v_writelane_b32 v40, s30, 32
 ; CHECK-NEXT:    v_writelane_b32 v40, s31, 33
@@ -35,9 +38,12 @@ define hidden void @_ZL3barv_spill_RA_to_vgpr() #0 {
 ; CHECK-DAG:    v_readlane_b32 s30, v40, 32
 ; CHECK-DAG:    v_readlane_b32 s31, v40, 33
 
-; CHECK:    s_or_saveexec_b64 s[4:5], -1
-; CHECK-NEXT:    buffer_load_dword v40, off, s[0:3], s32 offset:192 ; 4-byte Folded Reload
-; CHECK-NEXT:    s_mov_b64 exec, s[4:5]
+
+; CHECK:    v_readfirstlane_b32 s4, v0
+; CHECK-NEXT:    s_or_saveexec_b64 s[6:7], -1
+; CHECK-NEXT:    buffer_load_dword v40, off, s[0:3], s33 offset:192 ; 4-byte Folded Reload
+; CHECK-NEXT:    s_mov_b64 exec, s[6:7]
+; CHECK:    s_mov_b32 s33, s4
 ; CHECK-NEXT:    s_waitcnt vmcnt(0)
 ; CHECK-NEXT:    s_setpc_b64 s[30:31]
 entry:
@@ -79,16 +85,17 @@ define hidden void @_ZL3barv_spill_RA_to_memory() #0 {
 ; CHECK-NEXT:    .cfi_llvm_def_aspace_cfa 64, 0, 6
 ; CHECK-NEXT:    .cfi_escape 0x10, 0x10, 0x08, 0x90, 0x3e, 0x93, 0x04, 0x90, 0x3f, 0x93, 0x04 ;
 ; CHECK:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; CHECK-NEXT:    v_mov_b32_e32 v0, s33
-; CHECK-NEXT:    buffer_store_dword v0, off, s[0:3], s32 offset:380 ; 4-byte Folded Spill
-; CHECK-NEXT:    .cfi_offset 65, 24320
+; CHECK-NEXT:    s_mov_b32 s16, s33
 ; CHECK-NEXT:    s_mov_b32 s33, s32
+; CHECK-NEXT:    v_mov_b32_e32 v0, s16
+; CHECK-NEXT:    buffer_store_dword v0, off, s[0:3], s33 offset:380 ; 4-byte Folded Spill
+; CHECK-NEXT:    .cfi_offset 65, 24320
 ; CHECK-NEXT:    .cfi_def_cfa_register 65
 ; CHECK-NEXT:    s_add_i32 s32, s32, 0x6400
 
 ; CHECK:    s_waitcnt vmcnt(0)
-; CHECK:    s_mov_b64 exec, s[16:17]
-; CHECK:    s_mov_b64 s[16:17], exec
+; CHECK:    s_mov_b64 exec, s[18:19]
+; CHECK:    s_mov_b64 s[18:19], exec
 ; CHECK:    s_mov_b64 exec, 3
 ; CHECK-NEXT:    buffer_store_dword v0, off, s[0:3], s33 offset:384
 ; CHECK-NEXT:    v_writelane_b32 v0, s30, 0
@@ -123,11 +130,12 @@ define hidden void @_ZL3barv_spill_RA_to_memory() #0 {
 ; CHECK-NEXT:    s_waitcnt vmcnt(0)
 ; CHECK-NEXT:    s_mov_b64 exec, s[4:5]
 
-; CHECK:    s_add_i32 s32, s32, 0xffff9c00
-; CHECK-NEXT:    buffer_load_dword v0, off, s[0:3], s32 offset:380 ; 4-byte Folded Reload
+; CHECK:    buffer_load_dword v0, off, s[0:3], s33 offset:380 ; 4-byte Folded Reload
 ; CHECK-NEXT:    s_waitcnt vmcnt(0)
-; CHECK-NEXT:    v_readfirstlane_b32 s33, v0
+; CHECK-NEXT:    v_readfirstlane_b32 s4, v0
+; CHECK-NEXT:    s_add_i32 s32, s32, 0xffff9c00
 ; CHECK-NEXT:    .cfi_def_cfa_register 64
+; CHECK-NEXT:    s_mov_b32 s33, s4
 ; CHECK-NEXT:    s_setpc_b64 s[30:31]
 entry:
   call void asm sideeffect "; clobber nonpreserved and 32 CSR SGPRs",
