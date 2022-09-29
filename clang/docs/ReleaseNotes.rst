@@ -371,6 +371,8 @@ Deprecated Compiler Flags
 
 Modified Compiler Flags
 -----------------------
+- Clang now permits specifying ``--config=`` multiple times, to load multiple
+  configuration files.
 
 Removed Compiler Flags
 -------------------------
