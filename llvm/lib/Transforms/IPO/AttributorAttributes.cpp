@@ -10266,10 +10266,20 @@ struct AAPotentialValuesFloating : AAPotentialValuesImpl {
         Worklist.push_back({{*SI.getFalseValue(), CtxI}, II.S});
       else
         Worklist.push_back({{*SI.getTrueValue(), CtxI}, II.S});
-    } else {
+    } else if (&SI == &getAssociatedValue()) {
       // We could not simplify the condition, assume both values.
       Worklist.push_back({{*SI.getTrueValue(), CtxI}, II.S});
       Worklist.push_back({{*SI.getFalseValue(), CtxI}, II.S});
+    } else {
+      Optional<Value *> SimpleV = A.getAssumedSimplified(
+          IRPosition::inst(SI), *this, UsedAssumedInformation, II.S);
+      if (!SimpleV.has_value())
+        return true;
+      if (*SimpleV) {
+        addValue(A, getState(), **SimpleV, CtxI, II.S, getAnchorScope());
+        return true;
+      }
+      return false;
     }
     return true;
   }
@@ -10354,16 +10364,28 @@ struct AAPotentialValuesFloating : AAPotentialValuesImpl {
       return LI;
     };
 
-    LivenessInfo &LI = GetLivenessInfo(*PHI.getFunction());
-    for (unsigned u = 0, e = PHI.getNumIncomingValues(); u < e; u++) {
-      BasicBlock *IncomingBB = PHI.getIncomingBlock(u);
-      if (LI.LivenessAA->isEdgeDead(IncomingBB, PHI.getParent())) {
-        LI.AnyDead = true;
-        continue;
+    if (&PHI == &getAssociatedValue()) {
+      LivenessInfo &LI = GetLivenessInfo(*PHI.getFunction());
+      for (unsigned u = 0, e = PHI.getNumIncomingValues(); u < e; u++) {
+        BasicBlock *IncomingBB = PHI.getIncomingBlock(u);
+        if (LI.LivenessAA->isEdgeDead(IncomingBB, PHI.getParent())) {
+          LI.AnyDead = true;
+          continue;
+        }
+        Worklist.push_back(
+            {{*PHI.getIncomingValue(u), IncomingBB->getTerminator()}, II.S});
       }
-      Worklist.push_back(
-          {{*PHI.getIncomingValue(u), IncomingBB->getTerminator()}, II.S});
+      return true;
     }
+
+    bool UsedAssumedInformation = false;
+    Optional<Value *> SimpleV = A.getAssumedSimplified(
+        IRPosition::inst(PHI), *this, UsedAssumedInformation, II.S);
+    if (!SimpleV.has_value())
+      return true;
+    if (!(*SimpleV))
+      return false;
+    addValue(A, getState(), **SimpleV, &PHI, II.S, getAnchorScope());
     return true;
   }
 
