@@ -64,8 +64,10 @@ static cl::opt<bool> Fix16BitCopies(
   cl::ReallyHidden);
 
 SIInstrInfo::SIInstrInfo(const GCNSubtarget &ST)
-  : AMDGPUGenInstrInfo(AMDGPU::ADJCALLSTACKUP, AMDGPU::ADJCALLSTACKDOWN),
-    RI(ST), ST(ST) {
+    : AMDGPUGenInstrInfo(AMDGPU::ADJCALLSTACKUP, AMDGPU::ADJCALLSTACKDOWN,
+                         /* CatchRetOpcode */ ~0u, /* ReturnOpcode */ ~0u,
+                         AMDGPU::PRED_COPY),
+      RI(ST), ST(ST) {
   SchedModel.init(&ST);
 }
 
@@ -1146,8 +1148,7 @@ void SIInstrInfo::insertVectorSelect(MachineBasicBlock &MBB,
 
   if (Cond.size() == 1) {
     Register SReg = MRI.createVirtualRegister(BoolXExecRC);
-    BuildMI(MBB, I, DL, get(AMDGPU::COPY), SReg)
-      .add(Cond[0]);
+    BuildMI(MBB, I, DL, get(getCopyOpcode()), SReg).add(Cond[0]);
     BuildMI(MBB, I, DL, get(AMDGPU::V_CNDMASK_B32_e64), DstReg)
       .addImm(0)
       .addReg(FalseReg)
@@ -1189,8 +1190,7 @@ void SIInstrInfo::insertVectorSelect(MachineBasicBlock &MBB,
       MachineOperand RegOp = Cond[1];
       RegOp.setImplicit(false);
       Register SReg = MRI.createVirtualRegister(BoolXExecRC);
-      BuildMI(MBB, I, DL, get(AMDGPU::COPY), SReg)
-        .add(RegOp);
+      BuildMI(MBB, I, DL, get(getCopyOpcode()), SReg).add(RegOp);
       BuildMI(MBB, I, DL, get(AMDGPU::V_CNDMASK_B32_e64), DstReg)
           .addImm(0)
           .addReg(FalseReg)
@@ -1203,8 +1203,7 @@ void SIInstrInfo::insertVectorSelect(MachineBasicBlock &MBB,
       MachineOperand RegOp = Cond[1];
       RegOp.setImplicit(false);
       Register SReg = MRI.createVirtualRegister(BoolXExecRC);
-      BuildMI(MBB, I, DL, get(AMDGPU::COPY), SReg)
-        .add(RegOp);
+      BuildMI(MBB, I, DL, get(getCopyOpcode()), SReg).add(RegOp);
       BuildMI(MBB, I, DL, get(AMDGPU::V_CNDMASK_B32_e64), DstReg)
           .addImm(0)
           .addReg(TrueReg)
@@ -1287,7 +1286,7 @@ Register SIInstrInfo::insertNE(MachineBasicBlock *MBB,
 unsigned SIInstrInfo::getMovOpcode(const TargetRegisterClass *DstRC) const {
 
   if (RI.isAGPRClass(DstRC))
-    return AMDGPU::COPY;
+    return getCopyOpcode();
   if (RI.getRegSizeInBits(*DstRC) == 32) {
     return RI.isSGPRClass(DstRC) ? AMDGPU::S_MOV_B32 : AMDGPU::V_MOV_B32_e32;
   } else if (RI.getRegSizeInBits(*DstRC) == 64 && RI.isSGPRClass(DstRC)) {
@@ -1295,7 +1294,7 @@ unsigned SIInstrInfo::getMovOpcode(const TargetRegisterClass *DstRC) const {
   } else if (RI.getRegSizeInBits(*DstRC) == 64 && !RI.isSGPRClass(DstRC)) {
     return  AMDGPU::V_MOV_B64_PSEUDO;
   }
-  return AMDGPU::COPY;
+  return getCopyOpcode();
 }
 
 const MCInstrDesc &
@@ -2951,6 +2950,7 @@ bool SIInstrInfo::isFoldableCopy(const MachineInstr &MI) {
   case AMDGPU::S_MOV_B32:
   case AMDGPU::S_MOV_B64:
   case AMDGPU::COPY:
+  case AMDGPU::PRED_COPY:
   case AMDGPU::V_ACCVGPR_WRITE_B32_e64:
   case AMDGPU::V_ACCVGPR_READ_B32_e64:
   case AMDGPU::V_ACCVGPR_MOV_B32:
@@ -4778,6 +4778,8 @@ unsigned SIInstrInfo::getVALUOp(const MachineInstr &MI) const {
   default: return AMDGPU::INSTRUCTION_LIST_END;
   case AMDGPU::REG_SEQUENCE: return AMDGPU::REG_SEQUENCE;
   case AMDGPU::COPY: return AMDGPU::COPY;
+  case AMDGPU::PRED_COPY:
+    return AMDGPU::PRED_COPY;
   case AMDGPU::PHI: return AMDGPU::PHI;
   case AMDGPU::INSERT_SUBREG: return AMDGPU::INSERT_SUBREG;
   case AMDGPU::WQM: return AMDGPU::WQM;
@@ -4786,9 +4788,9 @@ unsigned SIInstrInfo::getVALUOp(const MachineInstr &MI) const {
   case AMDGPU::STRICT_WQM: return AMDGPU::STRICT_WQM;
   case AMDGPU::S_MOV_B32: {
     const MachineRegisterInfo &MRI = MI.getParent()->getParent()->getRegInfo();
-    return MI.getOperand(1).isReg() ||
-           RI.isAGPR(MRI, MI.getOperand(0).getReg()) ?
-           AMDGPU::COPY : AMDGPU::V_MOV_B32_e32;
+    return MI.getOperand(1).isReg() || RI.isAGPR(MRI, MI.getOperand(0).getReg())
+               ? getCopyOpcode()
+               : AMDGPU::V_MOV_B32_e32;
   }
   case AMDGPU::S_ADD_I32:
     return ST.hasAddNoCarry() ? AMDGPU::V_ADD_U32_e64 : AMDGPU::V_ADD_CO_U32_e32;
@@ -4948,7 +4950,7 @@ void SIInstrInfo::legalizeOpWithMove(MachineInstr &MI, unsigned OpIdx) const {
   unsigned Size = RI.getRegSizeInBits(*RC);
   unsigned Opcode = (Size == 64) ? AMDGPU::V_MOV_B64_PSEUDO : AMDGPU::V_MOV_B32_e32;
   if (MO.isReg())
-    Opcode = AMDGPU::COPY;
+    Opcode = getCopyOpcode();
   else if (RI.isSGPRClass(RC))
     Opcode = (Size == 64) ? AMDGPU::S_MOV_B64 : AMDGPU::S_MOV_B32;
 
@@ -5530,7 +5532,7 @@ void SIInstrInfo::legalizeGenericOperand(MachineBasicBlock &InsertMBB,
     return;
 
   Register DstReg = MRI.createVirtualRegister(DstRC);
-  auto Copy = BuildMI(InsertMBB, I, DL, get(AMDGPU::COPY), DstReg).add(Op);
+  auto Copy = BuildMI(InsertMBB, I, DL, get(getCopyOpcode()), DstReg).add(Op);
 
   Op.setReg(DstReg);
   Op.setSubReg(0);
@@ -7142,6 +7144,7 @@ void SIInstrInfo::addUsersToMoveToVALUWorklist(
 
     switch (UseMI.getOpcode()) {
     case AMDGPU::COPY:
+    case AMDGPU::PRED_COPY:
     case AMDGPU::WQM:
     case AMDGPU::SOFT_WQM:
     case AMDGPU::STRICT_WWM:
@@ -7314,6 +7317,7 @@ const TargetRegisterClass *SIInstrInfo::getDestEquivalentVGPRClass(
   // class associated with the operand, so we need to find an equivalent VGPR
   // register class in order to move the instruction to the VALU.
   case AMDGPU::COPY:
+  case AMDGPU::PRED_COPY:
   case AMDGPU::PHI:
   case AMDGPU::REG_SEQUENCE:
   case AMDGPU::INSERT_SUBREG:
@@ -8121,6 +8125,7 @@ MachineInstr *llvm::getVRegSubRegDef(const TargetInstrInfo::RegSubRegPair &P,
     DefInst = nullptr;
     switch (MI->getOpcode()) {
     case AMDGPU::COPY:
+    case AMDGPU::PRED_COPY:
     case AMDGPU::V_MOV_B32_e32: {
       auto &Op1 = MI->getOperand(1);
       if (Op1.isReg() && Op1.getReg().isVirtual()) {

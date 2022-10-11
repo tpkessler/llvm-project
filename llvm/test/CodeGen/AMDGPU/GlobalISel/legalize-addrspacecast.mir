@@ -538,8 +538,8 @@ body: |
     ; VI-NEXT: [[COPY:%[0-9]+]]:_(<2 x p3>) = COPY $vgpr0_vgpr1
     ; VI-NEXT: [[UV:%[0-9]+]]:_(p3), [[UV1:%[0-9]+]]:_(p3) = G_UNMERGE_VALUES [[COPY]](<2 x p3>)
     ; VI-NEXT: [[C:%[0-9]+]]:_(p4) = G_CONSTANT i64 232
-    ; VI-NEXT: [[COPY1:%[0-9]+]]:_(p4) = COPY [[C]](p4)
-    ; VI-NEXT: [[LOAD:%[0-9]+]]:_(s32) = G_LOAD [[COPY1]](p4) :: (dereferenceable invariant load (s32), align 8, addrspace 4)
+    ; VI-NEXT: [[PRED_COPY:%[0-9]+]]:_(p4) = PRED_COPY [[C]](p4)
+    ; VI-NEXT: [[LOAD:%[0-9]+]]:_(s32) = G_LOAD [[PRED_COPY]](p4) :: (dereferenceable invariant load (s32), align 8, addrspace 4)
     ; VI-NEXT: [[PTRTOINT:%[0-9]+]]:_(s32) = G_PTRTOINT [[UV]](p3)
     ; VI-NEXT: [[MV:%[0-9]+]]:_(p0) = G_MERGE_VALUES [[PTRTOINT]](s32), [[LOAD]](s32)
     ; VI-NEXT: [[C1:%[0-9]+]]:_(p3) = G_CONSTANT i32 -1
@@ -759,8 +759,8 @@ body: |
     ; VI-NEXT: [[LOAD:%[0-9]+]]:_(s32) = G_LOAD [[C]](p4) :: (dereferenceable invariant load (s32), addrspace 4)
     ; VI-NEXT: [[PTRTOINT:%[0-9]+]]:_(s32) = G_PTRTOINT [[FRAME_INDEX]](p5)
     ; VI-NEXT: [[MV:%[0-9]+]]:_(p0) = G_MERGE_VALUES [[PTRTOINT]](s32), [[LOAD]](s32)
-    ; VI-NEXT: [[COPY:%[0-9]+]]:_(p0) = COPY [[MV]](p0)
-    ; VI-NEXT: $vgpr0_vgpr1 = COPY [[COPY]](p0)
+    ; VI-NEXT: [[PRED_COPY:%[0-9]+]]:_(p0) = PRED_COPY [[MV]](p0)
+    ; VI-NEXT: $vgpr0_vgpr1 = COPY [[PRED_COPY]](p0)
     ; GFX9-LABEL: name: test_addrspacecast_p5_fi_to_p0
     ; GFX9: [[FRAME_INDEX:%[0-9]+]]:_(p5) = G_FRAME_INDEX %stack.0
     ; GFX9-NEXT: [[S_GETREG_B32_:%[0-9]+]]:sreg_32(s32) = S_GETREG_B32 30735
@@ -768,8 +768,8 @@ body: |
     ; GFX9-NEXT: [[SHL:%[0-9]+]]:_(s32) = G_SHL [[S_GETREG_B32_]], [[C]](s32)
     ; GFX9-NEXT: [[PTRTOINT:%[0-9]+]]:_(s32) = G_PTRTOINT [[FRAME_INDEX]](p5)
     ; GFX9-NEXT: [[MV:%[0-9]+]]:_(p0) = G_MERGE_VALUES [[PTRTOINT]](s32), [[SHL]](s32)
-    ; GFX9-NEXT: [[COPY:%[0-9]+]]:_(p0) = COPY [[MV]](p0)
-    ; GFX9-NEXT: $vgpr0_vgpr1 = COPY [[COPY]](p0)
+    ; GFX9-NEXT: [[PRED_COPY:%[0-9]+]]:_(p0) = PRED_COPY [[MV]](p0)
+    ; GFX9-NEXT: $vgpr0_vgpr1 = COPY [[PRED_COPY]](p0)
     ; SI-LABEL: name: test_addrspacecast_p5_fi_to_p0
     ; SI: [[FRAME_INDEX:%[0-9]+]]:_(p5) = G_FRAME_INDEX %stack.0
     ; SI-NEXT: [[ADDRSPACE_CAST:%[0-9]+]]:_(p0) = G_ADDRSPACE_CAST [[FRAME_INDEX]](p5)

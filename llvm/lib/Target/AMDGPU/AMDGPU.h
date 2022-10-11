@@ -177,8 +177,8 @@ extern char &SIShrinkInstructionsID;
 void initializeSIFixSGPRCopiesPass(PassRegistry &);
 extern char &SIFixSGPRCopiesID;
 
-void initializeSIFixVGPRCopiesPass(PassRegistry &);
-extern char &SIFixVGPRCopiesID;
+void initializeSISimplifyPredicatedCopiesPass(PassRegistry &);
+extern char &SISimplifyPredicatedCopiesID;
 
 void initializeSILowerI1CopiesPass(PassRegistry &);
 extern char &SILowerI1CopiesID;
