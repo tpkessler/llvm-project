@@ -76,16 +76,16 @@ liveins:
 body:             |
   bb.0:
     liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3, $vgpr4, $sgpr30_sgpr31
-    %5:sreg_64 = COPY $sgpr30_sgpr31
-    %4:vgpr_32 = COPY $vgpr4
-    %3:vgpr_32 = COPY $vgpr3
-    %2:vgpr_32 = COPY $vgpr2
-    %1:vgpr_32 = COPY $vgpr1
-    %0:vgpr_32 = COPY $vgpr0
+    %5:sreg_64 = PRED_COPY $sgpr30_sgpr31
+    %4:vgpr_32 = PRED_COPY $vgpr4
+    %3:vgpr_32 = PRED_COPY $vgpr3
+    %2:vgpr_32 = PRED_COPY $vgpr2
+    %1:vgpr_32 = PRED_COPY $vgpr1
+    %0:vgpr_32 = PRED_COPY $vgpr0
     %6:sgpr_128 = REG_SEQUENCE %0, %subreg.sub0, %1, %subreg.sub1, %2, %subreg.sub2, %3, %subreg.sub3
     %7:vgpr_32 = BUFFER_LOAD_FORMAT_X_IDXEN %4, killed %6, 0, 0, 0, 0, 0, implicit $exec
-    $sgpr30_sgpr31 = COPY %5
-    $vgpr0 = COPY %7
+    $sgpr30_sgpr31 = PRED_COPY %5
+    $vgpr0 = PRED_COPY %7
     S_SETPC_B64_return $sgpr30_sgpr31, implicit $vgpr0
 ...
 
@@ -153,16 +153,16 @@ liveins:
 body:             |
   bb.0:
     liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3, $vgpr4, $sgpr30_sgpr31
-    %5:sreg_64 = COPY $sgpr30_sgpr31
-    %4:vgpr_32 = COPY $vgpr4
-    %3:vgpr_32 = COPY $vgpr3
-    %2:vgpr_32 = COPY $vgpr2
-    %1:vgpr_32 = COPY $vgpr1
-    %0:vgpr_32 = COPY $vgpr0
+    %5:sreg_64 = PRED_COPY $sgpr30_sgpr31
+    %4:vgpr_32 = PRED_COPY $vgpr4
+    %3:vgpr_32 = PRED_COPY $vgpr3
+    %2:vgpr_32 = PRED_COPY $vgpr2
+    %1:vgpr_32 = PRED_COPY $vgpr1
+    %0:vgpr_32 = PRED_COPY $vgpr0
     %6:sgpr_128 = REG_SEQUENCE %0, %subreg.sub0, %1, %subreg.sub1, %2, %subreg.sub2, %3, %subreg.sub3
     %7:vgpr_32 = BUFFER_LOAD_FORMAT_X_OFFEN %4, killed %6, 0, 0, 0, 0, 0, implicit $exec
-    $sgpr30_sgpr31 = COPY %5
-    $vgpr0 = COPY %7
+    $sgpr30_sgpr31 = PRED_COPY %5
+    $vgpr0 = PRED_COPY %7
     S_SETPC_B64_return $sgpr30_sgpr31, implicit $vgpr0
 ...
 
@@ -230,22 +230,22 @@ liveins:
 body:             |
   bb.0:
     liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3, $vgpr4, $sgpr30_sgpr31
-    %5:sreg_64 = COPY $sgpr30_sgpr31
-    %4:vreg_64 = COPY $vgpr4_vgpr5
-    %3:vgpr_32 = COPY $vgpr3
-    %2:vgpr_32 = COPY $vgpr2
-    %1:vgpr_32 = COPY $vgpr1
-    %0:vgpr_32 = COPY $vgpr0
+    %5:sreg_64 = PRED_COPY $sgpr30_sgpr31
+    %4:vreg_64 = PRED_COPY $vgpr4_vgpr5
+    %3:vgpr_32 = PRED_COPY $vgpr3
+    %2:vgpr_32 = PRED_COPY $vgpr2
+    %1:vgpr_32 = PRED_COPY $vgpr1
+    %0:vgpr_32 = PRED_COPY $vgpr0
     %6:sgpr_128 = REG_SEQUENCE %0, %subreg.sub0, %1, %subreg.sub1, %2, %subreg.sub2, %3, %subreg.sub3
     %7:vgpr_32 = BUFFER_LOAD_FORMAT_X_BOTHEN %4, killed %6, 0, 0, 0, 0, 0, implicit $exec
-    $sgpr30_sgpr31 = COPY %5
-    $vgpr0 = COPY %7
+    $sgpr30_sgpr31 = PRED_COPY %5
+    $vgpr0 = PRED_COPY %7
     S_SETPC_B64_return $sgpr30_sgpr31, implicit $vgpr0
 ...
 
 # ADDR64-LABEL: name: addr64
 # ADDR64-LABEL:  bb.0:
-# ADDR64: %14:vreg_64 = COPY %8.sub0_sub1
+# ADDR64: %14:vreg_64 = PRED_COPY %8.sub0_sub1
 # ADDR64: %15:sreg_64 = S_MOV_B64 0
 # ADDR64: %16:sgpr_32 = S_MOV_B32 0
 # ADDR64: %17:sgpr_32 = S_MOV_B32 61440
@@ -266,16 +266,16 @@ liveins:
 body:             |
   bb.0:
     liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3, $vgpr4, $sgpr30_sgpr31
-    %5:sreg_64 = COPY $sgpr30_sgpr31
-    %4:vreg_64 = COPY $vgpr4_vgpr5
-    %3:vgpr_32 = COPY $vgpr3
-    %2:vgpr_32 = COPY $vgpr2
-    %1:vgpr_32 = COPY $vgpr1
-    %0:vgpr_32 = COPY $vgpr0
+    %5:sreg_64 = PRED_COPY $sgpr30_sgpr31
+    %4:vreg_64 = PRED_COPY $vgpr4_vgpr5
+    %3:vgpr_32 = PRED_COPY $vgpr3
+    %2:vgpr_32 = PRED_COPY $vgpr2
+    %1:vgpr_32 = PRED_COPY $vgpr1
+    %0:vgpr_32 = PRED_COPY $vgpr0
     %6:sgpr_128 = REG_SEQUENCE %0, %subreg.sub0, %1, %subreg.sub1, %2, %subreg.sub2, %3, %subreg.sub3
     %7:vgpr_32 = BUFFER_LOAD_FORMAT_X_ADDR64 %4, killed %6, 0, 0, 0, 0, 0, implicit $exec
-    $sgpr30_sgpr31 = COPY %5
-    $vgpr0 = COPY %7
+    $sgpr30_sgpr31 = PRED_COPY %5
+    $vgpr0 = PRED_COPY %7
     S_SETPC_B64_return $sgpr30_sgpr31, implicit $vgpr0
 ...
 
@@ -332,7 +332,7 @@ body:             |
 # W32: $exec_lo = S_MOV_B32 [[SAVEEXEC]]
 
 # ADDR64: [[VRSRC:%[0-9]+]]:vreg_128 = REG_SEQUENCE %0, %subreg.sub0, %1, %subreg.sub1, %2, %subreg.sub2, %3, %subreg.sub3
-# ADDR64: [[RSRCPTR:%[0-9]+]]:vreg_64 = COPY [[VRSRC]].sub0_sub1
+# ADDR64: [[RSRCPTR:%[0-9]+]]:vreg_64 = PRED_COPY [[VRSRC]].sub0_sub1
 # ADDR64: [[ZERO64:%[0-9]+]]:sreg_64 = S_MOV_B64 0
 # ADDR64: [[RSRCFMTLO:%[0-9]+]]:sgpr_32 = S_MOV_B32 0
 # ADDR64: [[RSRCFMTHI:%[0-9]+]]:sgpr_32 = S_MOV_B32 61440
@@ -352,15 +352,15 @@ liveins:
 body:             |
   bb.0:
     liveins: $vgpr0, $vgpr1, $vgpr2, $vgpr3, $vgpr4, $sgpr30_sgpr31
-    %5:sreg_64 = COPY $sgpr30_sgpr31
-    %4:vreg_64 = COPY $vgpr4_vgpr5
-    %3:vgpr_32 = COPY $vgpr3
-    %2:vgpr_32 = COPY $vgpr2
-    %1:vgpr_32 = COPY $vgpr1
-    %0:vgpr_32 = COPY $vgpr0
+    %5:sreg_64 = PRED_COPY $sgpr30_sgpr31
+    %4:vreg_64 = PRED_COPY $vgpr4_vgpr5
+    %3:vgpr_32 = PRED_COPY $vgpr3
+    %2:vgpr_32 = PRED_COPY $vgpr2
+    %1:vgpr_32 = PRED_COPY $vgpr1
+    %0:vgpr_32 = PRED_COPY $vgpr0
     %6:sgpr_128 = REG_SEQUENCE %0, %subreg.sub0, %1, %subreg.sub1, %2, %subreg.sub2, %3, %subreg.sub3
     %7:vgpr_32 = BUFFER_LOAD_FORMAT_X_OFFSET killed %6, 0, 0, 0, 0, 0, implicit $exec
-    $sgpr30_sgpr31 = COPY %5
-    $vgpr0 = COPY %7
+    $sgpr30_sgpr31 = PRED_COPY %5
+    $vgpr0 = PRED_COPY %7
     S_SETPC_B64_return $sgpr30_sgpr31, implicit $vgpr0
 ...

@@ -238,8 +238,8 @@ body: |
     ; GFX9-NEXT: [[COPY5:%[0-9]+]]:_(s32) = COPY $vgpr5
     ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[COPY]](s32), [[COPY1]](s32)
     ; GFX9-NEXT: [[DEF:%[0-9]+]]:_(s32) = G_IMPLICIT_DEF
-    ; GFX9-NEXT: [[COPY6:%[0-9]+]]:_(s32) = COPY [[DEF]](s32)
-    ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC1:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[COPY2]](s32), [[COPY6]](s32)
+    ; GFX9-NEXT: [[PRED_COPY:%[0-9]+]]:_(s32) = PRED_COPY [[DEF]](s32)
+    ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC1:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[COPY2]](s32), [[PRED_COPY]](s32)
     ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC2:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[COPY3]](s32), [[COPY4]](s32)
     ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC3:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[COPY5]](s32), [[DEF]](s32)
     ; GFX9-NEXT: [[ADD:%[0-9]+]]:_(<2 x s16>) = G_ADD [[BUILD_VECTOR_TRUNC]], [[BUILD_VECTOR_TRUNC2]]

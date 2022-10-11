@@ -265,8 +265,8 @@ body: |
     ; GFX9-NEXT: [[MUL:%[0-9]+]]:_(<2 x s16>) = G_MUL [[BUILD_VECTOR_TRUNC]], [[BUILD_VECTOR_TRUNC1]]
     ; GFX9-NEXT: [[C:%[0-9]+]]:_(s16) = G_CONSTANT i16 8
     ; GFX9-NEXT: [[C1:%[0-9]+]]:_(s32) = G_CONSTANT i32 8
-    ; GFX9-NEXT: [[COPY4:%[0-9]+]]:_(s32) = COPY [[C1]](s32)
-    ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC2:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[COPY4]](s32), [[C1]](s32)
+    ; GFX9-NEXT: [[PRED_COPY:%[0-9]+]]:_(s32) = PRED_COPY [[C1]](s32)
+    ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC2:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[PRED_COPY]](s32), [[C1]](s32)
     ; GFX9-NEXT: [[ASHR:%[0-9]+]]:_(<2 x s16>) = G_ASHR [[MUL]], [[BUILD_VECTOR_TRUNC2]](<2 x s16>)
     ; GFX9-NEXT: [[BITCAST:%[0-9]+]]:_(s32) = G_BITCAST [[ASHR]](<2 x s16>)
     ; GFX9-NEXT: [[TRUNC:%[0-9]+]]:_(s16) = G_TRUNC [[BITCAST]](s32)
@@ -387,9 +387,9 @@ body: |
     ; GFX9-NEXT: [[SEXT_INREG3:%[0-9]+]]:_(s32) = G_SEXT_INREG [[LSHR3]], 8
     ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC1:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[SEXT_INREG2]](s32), [[SEXT_INREG3]](s32)
     ; GFX9-NEXT: [[MUL:%[0-9]+]]:_(<2 x s16>) = G_MUL [[BUILD_VECTOR_TRUNC]], [[BUILD_VECTOR_TRUNC1]]
-    ; GFX9-NEXT: [[COPY2:%[0-9]+]]:_(s32) = COPY [[C]](s32)
-    ; GFX9-NEXT: [[COPY3:%[0-9]+]]:_(s32) = COPY [[C]](s32)
-    ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC2:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[COPY2]](s32), [[COPY3]](s32)
+    ; GFX9-NEXT: [[PRED_COPY:%[0-9]+]]:_(s32) = PRED_COPY [[C]](s32)
+    ; GFX9-NEXT: [[PRED_COPY1:%[0-9]+]]:_(s32) = PRED_COPY [[C]](s32)
+    ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC2:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[PRED_COPY]](s32), [[PRED_COPY1]](s32)
     ; GFX9-NEXT: [[ASHR:%[0-9]+]]:_(<2 x s16>) = G_ASHR [[MUL]], [[BUILD_VECTOR_TRUNC2]](<2 x s16>)
     ; GFX9-NEXT: [[SEXT_INREG4:%[0-9]+]]:_(s32) = G_SEXT_INREG [[LSHR1]], 8
     ; GFX9-NEXT: [[SEXT_INREG5:%[0-9]+]]:_(s32) = G_SEXT_INREG [[LSHR2]], 8
@@ -398,9 +398,9 @@ body: |
     ; GFX9-NEXT: [[SEXT_INREG7:%[0-9]+]]:_(s32) = G_SEXT_INREG [[LSHR5]], 8
     ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC4:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[SEXT_INREG6]](s32), [[SEXT_INREG7]](s32)
     ; GFX9-NEXT: [[MUL1:%[0-9]+]]:_(<2 x s16>) = G_MUL [[BUILD_VECTOR_TRUNC3]], [[BUILD_VECTOR_TRUNC4]]
-    ; GFX9-NEXT: [[COPY4:%[0-9]+]]:_(s32) = COPY [[C]](s32)
-    ; GFX9-NEXT: [[COPY5:%[0-9]+]]:_(s32) = COPY [[C]](s32)
-    ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC5:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[COPY4]](s32), [[COPY5]](s32)
+    ; GFX9-NEXT: [[PRED_COPY2:%[0-9]+]]:_(s32) = PRED_COPY [[C]](s32)
+    ; GFX9-NEXT: [[PRED_COPY3:%[0-9]+]]:_(s32) = PRED_COPY [[C]](s32)
+    ; GFX9-NEXT: [[BUILD_VECTOR_TRUNC5:%[0-9]+]]:_(<2 x s16>) = G_BUILD_VECTOR_TRUNC [[PRED_COPY2]](s32), [[PRED_COPY3]](s32)
     ; GFX9-NEXT: [[ASHR1:%[0-9]+]]:_(<2 x s16>) = G_ASHR [[MUL1]], [[BUILD_VECTOR_TRUNC5]](<2 x s16>)
     ; GFX9-NEXT: [[BITCAST:%[0-9]+]]:_(s32) = G_BITCAST [[ASHR]](<2 x s16>)
     ; GFX9-NEXT: [[LSHR6:%[0-9]+]]:_(s32) = G_LSHR [[BITCAST]], [[C1]](s32)

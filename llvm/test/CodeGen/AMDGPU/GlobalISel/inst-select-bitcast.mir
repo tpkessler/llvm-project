@@ -8,13 +8,13 @@ regBankSelected: true
 tracksRegLiveness: true
 
 # GCN-LABEL: name: bitcast
-# GCN: [[A:%[0-9]+]]:vgpr_32 = COPY $vgpr0
+# GCN: [[A:%[0-9]+]]:vgpr_32 = PRED_COPY $vgpr0
 # GCN: S_ENDPGM 0, implicit [[A]]
 
 body: |
   bb.0:
     liveins: $vgpr0
-    %0:vgpr(s32) = COPY $vgpr0
+    %0:vgpr(s32) = PRED_COPY $vgpr0
     %1:vgpr(<2 x s16>) = G_BITCAST %0
     %2:vgpr(s32) = G_BITCAST %1
     S_ENDPGM 0, implicit %2

@@ -410,8 +410,8 @@ body: |
     ; CHECK-NEXT: [[OR:%[0-9]+]]:_(s32) = G_OR [[AND]], [[SHL]]
     ; CHECK-NEXT: [[BITCAST2:%[0-9]+]]:_(<2 x s16>) = G_BITCAST [[OR]](s32)
     ; CHECK-NEXT: [[AND2:%[0-9]+]]:_(s32) = G_AND [[BITCAST1]], [[C2]]
-    ; CHECK-NEXT: [[COPY3:%[0-9]+]]:_(s32) = COPY [[C]](s32)
-    ; CHECK-NEXT: [[SHL1:%[0-9]+]]:_(s32) = G_SHL [[COPY3]], [[C1]](s32)
+    ; CHECK-NEXT: [[PRED_COPY:%[0-9]+]]:_(s32) = PRED_COPY [[C]](s32)
+    ; CHECK-NEXT: [[SHL1:%[0-9]+]]:_(s32) = G_SHL [[PRED_COPY]], [[C1]](s32)
     ; CHECK-NEXT: [[OR1:%[0-9]+]]:_(s32) = G_OR [[AND2]], [[SHL1]]
     ; CHECK-NEXT: [[BITCAST3:%[0-9]+]]:_(<2 x s16>) = G_BITCAST [[OR1]](s32)
     ; CHECK-NEXT: [[CONCAT_VECTORS:%[0-9]+]]:_(<4 x s16>) = G_CONCAT_VECTORS [[BITCAST2]](<2 x s16>), [[BITCAST3]](<2 x s16>)
@@ -425,8 +425,8 @@ body: |
     ; CHECK-NEXT: [[OR2:%[0-9]+]]:_(s32) = G_OR [[AND3]], [[SHL2]]
     ; CHECK-NEXT: [[BITCAST6:%[0-9]+]]:_(<2 x s16>) = G_BITCAST [[OR2]](s32)
     ; CHECK-NEXT: [[AND5:%[0-9]+]]:_(s32) = G_AND [[BITCAST5]], [[C2]]
-    ; CHECK-NEXT: [[COPY4:%[0-9]+]]:_(s32) = COPY [[C]](s32)
-    ; CHECK-NEXT: [[SHL3:%[0-9]+]]:_(s32) = G_SHL [[COPY4]], [[C1]](s32)
+    ; CHECK-NEXT: [[PRED_COPY1:%[0-9]+]]:_(s32) = PRED_COPY [[C]](s32)
+    ; CHECK-NEXT: [[SHL3:%[0-9]+]]:_(s32) = G_SHL [[PRED_COPY1]], [[C1]](s32)
     ; CHECK-NEXT: [[OR3:%[0-9]+]]:_(s32) = G_OR [[AND5]], [[SHL3]]
     ; CHECK-NEXT: [[BITCAST7:%[0-9]+]]:_(<2 x s16>) = G_BITCAST [[OR3]](s32)
     ; CHECK-NEXT: [[CONCAT_VECTORS1:%[0-9]+]]:_(<4 x s16>) = G_CONCAT_VECTORS [[BITCAST6]](<2 x s16>), [[BITCAST7]](<2 x s16>)

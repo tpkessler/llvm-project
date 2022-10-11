@@ -32,8 +32,8 @@ body: |
     ; CHECK-NEXT: {{  $}}
     ; CHECK-NEXT: [[COPY:%[0-9]+]]:sgpr(<2 x s16>) = COPY $sgpr0
     ; CHECK-NEXT: [[COPY1:%[0-9]+]]:vgpr(<2 x s16>) = COPY $vgpr0
-    ; CHECK-NEXT: [[COPY2:%[0-9]+]]:vgpr(<2 x s16>) = COPY [[COPY]](<2 x s16>)
-    ; CHECK-NEXT: [[SHUF:%[0-9]+]]:vgpr(<2 x s16>) = G_SHUFFLE_VECTOR [[COPY2]](<2 x s16>), [[COPY1]], shufflemask(0, 1)
+    ; CHECK-NEXT: [[PRED_COPY:%[0-9]+]]:vgpr(<2 x s16>) = PRED_COPY [[COPY]](<2 x s16>)
+    ; CHECK-NEXT: [[SHUF:%[0-9]+]]:vgpr(<2 x s16>) = G_SHUFFLE_VECTOR [[PRED_COPY]](<2 x s16>), [[COPY1]], shufflemask(0, 1)
     %0:_(<2 x s16>) = COPY $sgpr0
     %1:_(<2 x s16>) = COPY $vgpr0
     %2:_(<2 x s16>) = G_SHUFFLE_VECTOR %0, %1, shufflemask(0, 1)
@@ -51,8 +51,8 @@ body: |
     ; CHECK-NEXT: {{  $}}
     ; CHECK-NEXT: [[COPY:%[0-9]+]]:vgpr(<2 x s16>) = COPY $vgpr0
     ; CHECK-NEXT: [[COPY1:%[0-9]+]]:sgpr(<2 x s16>) = COPY $sgpr0
-    ; CHECK-NEXT: [[COPY2:%[0-9]+]]:vgpr(<2 x s16>) = COPY [[COPY1]](<2 x s16>)
-    ; CHECK-NEXT: [[SHUF:%[0-9]+]]:vgpr(<2 x s16>) = G_SHUFFLE_VECTOR [[COPY]](<2 x s16>), [[COPY2]], shufflemask(0, 1)
+    ; CHECK-NEXT: [[PRED_COPY:%[0-9]+]]:vgpr(<2 x s16>) = PRED_COPY [[COPY1]](<2 x s16>)
+    ; CHECK-NEXT: [[SHUF:%[0-9]+]]:vgpr(<2 x s16>) = G_SHUFFLE_VECTOR [[COPY]](<2 x s16>), [[PRED_COPY]], shufflemask(0, 1)
     %0:_(<2 x s16>) = COPY $vgpr0
     %1:_(<2 x s16>) = COPY $sgpr0
     %2:_(<2 x s16>) = G_SHUFFLE_VECTOR %0, %1, shufflemask(0, 1)

@@ -11701,6 +11701,7 @@ SDNode *SITargetLowering::adjustWritemask(MachineSDNode *&Node,
 
   MachineSDNode *NewNode = DAG.getMachineNode(NewOpcode, SDLoc(Node),
                                               NewVTList, Ops);
+  const SIInstrInfo *TII = getSubtarget()->getInstrInfo();
 
   if (HasChain) {
     // Update chain.
@@ -11710,9 +11711,9 @@ SDNode *SITargetLowering::adjustWritemask(MachineSDNode *&Node,
 
   if (NewChannels == 1) {
     assert(Node->hasNUsesOfValue(1, 0));
-    SDNode *Copy = DAG.getMachineNode(TargetOpcode::COPY,
-                                      SDLoc(Node), Users[Lane]->getValueType(0),
-                                      SDValue(NewNode, 0));
+    SDNode *Copy =
+        DAG.getMachineNode(TII->getCopyOpcode(), SDLoc(Node),
+                           Users[Lane]->getValueType(0), SDValue(NewNode, 0));
     DAG.ReplaceAllUsesWith(Users[Lane], Copy);
     return nullptr;
   }

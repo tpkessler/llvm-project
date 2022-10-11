@@ -52,7 +52,7 @@ define amdgpu_kernel void @uniform_vec_f16_0(float addrspace(1)* %out, half %a) 
 
 ; GCN-LABEL: name:            divergent_vec_f16_0
 ; GCN: V_CVT_F16_F32_e64 0, %0
-; GCN: COPY %1
+; GCN: PRED_COPY %1
 
 ; GFX9-LABEL: name:            divergent_vec_f16_0
 ; GFX9: V_AND_B32_e64
@@ -217,7 +217,7 @@ define float @divergent_vec_f16_LL(half %a, half %b) {
 
 ; GFX906-LABEL: name:            build_vec_v2i16_undeflo_divergent
 ; GFX906: %[[LOAD:[0-9]+]]:vgpr_32 = DS_READ_U16
-; GFX906: %{{[0-9]+}}:vgpr_32 = COPY %[[LOAD]]
+; GFX906: %{{[0-9]+}}:vgpr_32 = PRED_COPY %[[LOAD]]
 define <2 x i16> @build_vec_v2i16_undeflo_divergent(i16 addrspace(3)* %in) #0 {
 entry:
   %load = load i16, i16 addrspace(3)* %in
@@ -227,7 +227,7 @@ entry:
 
 ; GFX906-LABEL: name:            build_vec_v2i16_undeflo_uniform
 ; GFX906: %[[LOAD:[0-9]+]]:vgpr_32 = DS_READ_U16
-; GFX906: %{{[0-9]+}}:sreg_32 = COPY %[[LOAD]]
+; GFX906: %{{[0-9]+}}:sreg_32 = PRED_COPY %[[LOAD]]
 define amdgpu_kernel void @build_vec_v2i16_undeflo_uniform(i16 addrspace(3)* %in, i32 addrspace(1)* %out) #0 {
 entry:
   %load = load i16, i16 addrspace(3)* %in

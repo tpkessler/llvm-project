@@ -119,7 +119,7 @@ bool AMDGPUInstructionSelector::constrainCopyLikeIntrin(MachineInstr &MI,
 bool AMDGPUInstructionSelector::selectCOPY(MachineInstr &I) const {
   const DebugLoc &DL = I.getDebugLoc();
   MachineBasicBlock *BB = I.getParent();
-  I.setDesc(TII.get(TargetOpcode::COPY));
+  I.setDesc(TII.get(TII.getCopyOpcode()));
 
   const MachineOperand &Src = I.getOperand(1);
   MachineOperand &Dst = I.getOperand(0);
@@ -646,7 +646,7 @@ bool AMDGPUInstructionSelector::selectG_BUILD_VECTOR_TRUNC(
   // (build_vector_trunc $src0, undef -> copy $src0
   MachineInstr *Src1Def = getDefIgnoringCopies(Src1, *MRI);
   if (Src1Def && Src1Def->getOpcode() == AMDGPU::G_IMPLICIT_DEF) {
-    MI.setDesc(TII.get(AMDGPU::COPY));
+    MI.setDesc(TII.get(TII.getCopyOpcode()));
     MI.removeOperand(2);
     return RBI.constrainGenericRegister(Dst, AMDGPU::SReg_32RegClass, *MRI) &&
            RBI.constrainGenericRegister(Src0, AMDGPU::SReg_32RegClass, *MRI);
@@ -2017,7 +2017,7 @@ bool AMDGPUInstructionSelector::selectG_TRUNC(MachineInstr &I) const {
     I.getOperand(1).setSubReg(SubRegIdx);
   }
 
-  I.setDesc(TII.get(TargetOpcode::COPY));
+  I.setDesc(TII.get(TII.getCopyOpcode()));
   return true;
 }
 
@@ -3156,8 +3156,8 @@ bool AMDGPUInstructionSelector::selectBufferLoadLds(MachineInstr &MI) const {
 
   MachineBasicBlock *MBB = MI.getParent();
   const DebugLoc &DL = MI.getDebugLoc();
-  BuildMI(*MBB, &MI, DL, TII.get(AMDGPU::COPY), AMDGPU::M0)
-    .add(MI.getOperand(2));
+  BuildMI(*MBB, &MI, DL, TII.get(TII.getCopyOpcode()), AMDGPU::M0)
+      .add(MI.getOperand(2));
 
   auto MIB = BuildMI(*MBB, &MI, DL, TII.get(Opc));
 
@@ -3245,8 +3245,8 @@ bool AMDGPUInstructionSelector::selectGlobalLoadLds(MachineInstr &MI) const{
 
   MachineBasicBlock *MBB = MI.getParent();
   const DebugLoc &DL = MI.getDebugLoc();
-  BuildMI(*MBB, &MI, DL, TII.get(AMDGPU::COPY), AMDGPU::M0)
-    .add(MI.getOperand(2));
+  BuildMI(*MBB, &MI, DL, TII.get(TII.getCopyOpcode()), AMDGPU::M0)
+      .add(MI.getOperand(2));
 
   Register Addr = MI.getOperand(1).getReg();
   Register VOffset;
@@ -4371,7 +4371,9 @@ AMDGPUInstructionSelector::selectMUBUFScratchOffset(
 
   // FIXME: Copy check is a hack
   Register BasePtr;
-  if (mi_match(Reg, *MRI, m_GPtrAdd(m_Reg(BasePtr), m_Copy(m_ICst(Offset))))) {
+  if (mi_match(Reg, *MRI, m_GPtrAdd(m_Reg(BasePtr), m_Copy(m_ICst(Offset)))) ||
+      mi_match(Reg, *MRI,
+               m_GPtrAdd(m_Reg(BasePtr), m_Pred_Copy(m_ICst(Offset))))) {
     if (!SIInstrInfo::isLegalMUBUFImmOffset(Offset))
       return {};
     const MachineInstr *BasePtrDef = MRI->getVRegDef(BasePtr);

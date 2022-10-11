@@ -282,15 +282,16 @@ static bool foldVGPRCopyIntoRegSequence(MachineInstr &MI,
 
     Register TmpReg = MRI.createVirtualRegister(NewSrcRC);
 
-    BuildMI(*MI.getParent(), &MI, MI.getDebugLoc(), TII->get(AMDGPU::COPY),
-            TmpReg)
+    BuildMI(*MI.getParent(), &MI, MI.getDebugLoc(),
+            TII->get(TII->getCopyOpcode()), TmpReg)
         .add(MI.getOperand(I));
 
     if (IsAGPR) {
       const TargetRegisterClass *NewSrcRC = TRI->getEquivalentAGPRClass(SrcRC);
       Register TmpAReg = MRI.createVirtualRegister(NewSrcRC);
-      unsigned Opc = NewSrcRC == &AMDGPU::AGPR_32RegClass ?
-        AMDGPU::V_ACCVGPR_WRITE_B32_e64 : AMDGPU::COPY;
+      unsigned Opc = NewSrcRC == &AMDGPU::AGPR_32RegClass
+                         ? AMDGPU::V_ACCVGPR_WRITE_B32_e64
+                         : TII->getCopyOpcode();
       BuildMI(*MI.getParent(), &MI, MI.getDebugLoc(), TII->get(Opc),
             TmpAReg)
         .addReg(TmpReg, RegState::Kill);
@@ -596,6 +597,7 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
       default:
         continue;
       case AMDGPU::COPY:
+      case AMDGPU::PRED_COPY:
       case AMDGPU::WQM:
       case AMDGPU::STRICT_WQM:
       case AMDGPU::SOFT_WQM:
@@ -768,7 +770,7 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
             // Haven't managed to resolve by replacing an SGPR with an immediate
             // Move src1 to be in M0
             BuildMI(*MI.getParent(), MI, MI.getDebugLoc(),
-                    TII->get(AMDGPU::COPY), AMDGPU::M0)
+                    TII->get(TII->getCopyOpcode()), AMDGPU::M0)
                 .add(Src1);
             Src1.ChangeToRegister(AMDGPU::M0, false);
           }
@@ -1007,6 +1009,7 @@ void SIFixSGPRCopies::lowerVGPR2SGPRCopies(MachineFunction &MF) {
   auto needProcessing = [](MachineInstr &MI) -> bool {
     switch (MI.getOpcode()) {
     case AMDGPU::COPY:
+    case AMDGPU::PRED_COPY:
     case AMDGPU::WQM:
     case AMDGPU::STRICT_WQM:
     case AMDGPU::SOFT_WQM:
