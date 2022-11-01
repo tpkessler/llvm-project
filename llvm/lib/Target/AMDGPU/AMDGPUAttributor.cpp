@@ -549,32 +549,31 @@ private:
 
   bool funcRetrievesMultigridSyncArg(Attributor &A, unsigned COV) {
     auto Pos = llvm::AMDGPU::getMultigridSyncArgImplicitArgPosition(COV);
-    AA::OffsetAndSize OAS(Pos, 8);
-    return funcRetrievesImplicitKernelArg(A, OAS);
+    AA::RangeTy Range(Pos, 8);
+    return funcRetrievesImplicitKernelArg(A, Range);
   }
 
   bool funcRetrievesHostcallPtr(Attributor &A, unsigned COV) {
     auto Pos = llvm::AMDGPU::getHostcallImplicitArgPosition(COV);
-    AA::OffsetAndSize OAS(Pos, 8);
-    return funcRetrievesImplicitKernelArg(A, OAS);
+    AA::RangeTy Range(Pos, 8);
+    return funcRetrievesImplicitKernelArg(A, Range);
   }
 
   bool funcRetrievesHeapPtr(Attributor &A, unsigned COV) {
     if (COV < 5)
       return false;
-    AA::OffsetAndSize OAS(AMDGPU::ImplicitArg::HEAP_PTR_OFFSET, 8);
-    return funcRetrievesImplicitKernelArg(A, OAS);
+    AA::RangeTy Range(AMDGPU::ImplicitArg::HEAP_PTR_OFFSET, 8);
+    return funcRetrievesImplicitKernelArg(A, Range);
   }
 
   bool funcRetrievesQueuePtr(Attributor &A, unsigned COV) {
     if (COV < 5)
       return false;
-    AA::OffsetAndSize OAS(AMDGPU::ImplicitArg::QUEUE_PTR_OFFSET, 8);
-    return funcRetrievesImplicitKernelArg(A, OAS);
+    AA::RangeTy Range(AMDGPU::ImplicitArg::QUEUE_PTR_OFFSET, 8);
+    return funcRetrievesImplicitKernelArg(A, Range);
   }
 
-  bool funcRetrievesImplicitKernelArg(Attributor &A,
-                                      AA::OffsetAndSize OAS) {
+  bool funcRetrievesImplicitKernelArg(Attributor &A, AA::RangeTy Range) {
     // Check if this is a call to the implicitarg_ptr builtin and it
     // is used to retrieve the hostcall pointer. The implicit arg for
     // hostcall is not used only if every use of the implicitarg_ptr
@@ -590,7 +589,7 @@ private:
           *this, IRPosition::callsite_returned(Call), DepClassTy::REQUIRED);
 
       return PointerInfoAA.forallInterferingAccesses(
-          OAS, [](const AAPointerInfo::Access &Acc, bool IsExact) {
+          Range, [](const AAPointerInfo::Access &Acc, bool IsExact) {
             return Acc.getRemoteInst()->isDroppable();
           });
     };
