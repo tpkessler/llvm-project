@@ -961,17 +961,11 @@ bool SITargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     if (Attr.hasFnAttr(Attribute::ReadNone))
       return false;
 
-    SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
+    // TODO: Should images get their own address space?
+    Info.fallbackAddressSpace = AMDGPUAS::BUFFER_FAT_POINTER;
 
-    const GCNTargetMachine &TM =
-        static_cast<const GCNTargetMachine &>(getTargetMachine());
-
-    if (RsrcIntr->IsImage) {
-      Info.ptrVal = MFI->getImagePSV(TM);
+    if (RsrcIntr->IsImage)
       Info.align.reset();
-    } else {
-      Info.fallbackAddressSpace = AMDGPUAS::BUFFER_FAT_POINTER;
-    }
 
     Info.flags |= MachineMemOperand::MODereferenceable;
     if (Attr.hasFnAttr(Attribute::ReadOnly)) {
@@ -1057,11 +1051,6 @@ bool SITargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     return true;
   }
   case Intrinsic::amdgcn_buffer_atomic_fadd: {
-    SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
-
-    const GCNTargetMachine &TM =
-        static_cast<const GCNTargetMachine &>(getTargetMachine());
-
     Info.opc = ISD::INTRINSIC_W_CHAIN;
     Info.memVT = MVT::getVT(CI.getOperand(0)->getType());
     Info.fallbackAddressSpace = AMDGPUAS::BUFFER_FAT_POINTER;
@@ -1099,14 +1088,10 @@ bool SITargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     return true;
   }
   case Intrinsic::amdgcn_image_bvh_intersect_ray: {
-    SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
     Info.opc = ISD::INTRINSIC_W_CHAIN;
     Info.memVT = MVT::getVT(CI.getType()); // XXX: what is correct VT?
 
-    const GCNTargetMachine &TM =
-        static_cast<const GCNTargetMachine &>(getTargetMachine());
-
-    Info.ptrVal = MFI->getImagePSV(TM);
+    Info.fallbackAddressSpace = AMDGPUAS::BUFFER_FAT_POINTER;
     Info.align.reset();
     Info.flags |= MachineMemOperand::MOLoad |
                   MachineMemOperand::MODereferenceable;
