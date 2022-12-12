@@ -645,7 +645,8 @@ public:
     AMDGPUInformationCache InfoCache(M, AG, Allocator, nullptr, *TM);
     DenseSet<const char *> Allowed(
         {&AAAMDAttributes::ID, &AAUniformWorkGroupSize::ID,
-         &AACallEdges::ID, &AAPointerInfo::ID});
+         &AAPotentialValues::ID, &AACallEdges::ID,
+         &AAPointerInfo::ID, &AAPotentialConstantValues::ID});
 
     AttributorConfig AC(CGUpdater);
     AC.Allowed = &Allowed;
