@@ -7789,7 +7789,7 @@ static void signOutlinedFunction(MachineFunction &MF, MachineBasicBlock &MBB,
           .addReg(AArch64::SP, RegState::InternalRead);
     MI.setMIFlag(MachineInstr::FrameSetup);
 
-    if (MF.getInfo<AArch64FunctionInfo>()->needsDwarfUnwindInfo()) {
+    if (MF.getInfo<AArch64FunctionInfo>()->needsDwarfUnwindInfo(MF)) {
       unsigned CFIIndex =
           MF.addFrameInst(MCCFIInstruction::createNegateRAState(nullptr));
       BuildMI(MBB, MBBPAC, DebugLoc(), TII->get(AArch64::CFI_INSTRUCTION))
@@ -7888,7 +7888,7 @@ void AArch64InstrInfo::buildOutlinedFrame(
                                 .addImm(-16);
     It = MBB.insert(It, STRXpre);
 
-    if (MF.getInfo<AArch64FunctionInfo>()->needsDwarfUnwindInfo()) {
+    if (MF.getInfo<AArch64FunctionInfo>()->needsDwarfUnwindInfo(MF)) {
       const TargetSubtargetInfo &STI = MF.getSubtarget();
       const MCRegisterInfo *MRI = STI.getRegisterInfo();
       unsigned DwarfReg = MRI->getDwarfRegNum(AArch64::LR, true);
