@@ -419,13 +419,23 @@ void VirtRegRewriter::handleIdentityCopy(MachineInstr &MI) {
 
   RewriteRegs.insert(DstReg);
 
+  auto AllReservedImplicitOpnds = [&](MachineInstr &MI) {
+    for (unsigned I = 2, E = MI.getNumOperands(); I != E; ++I) {
+      if (!MRI->isReserved(MI.getOperand(I).getReg()))
+        return false;
+    }
+    return true;
+  };
+
   // Copies like:
   //    %r0 = COPY undef %r0
   //    %al = COPY %al, implicit-def %eax
   // give us additional liveness information: The target (super-)register
   // must not be valid before this point. Replace the COPY with a KILL
-  // instruction to maintain this information.
-  if (MI.getOperand(1).isUndef() || MI.getNumOperands() > 2) {
+  // instruction to maintain this information. Do not insert KILL when the
+  // implicit operands are reserved registers.
+  if (MI.getOperand(1).isUndef() ||
+      ((MI.getNumOperands() > 2) && !AllReservedImplicitOpnds(MI))) {
     MI.setDesc(TII->get(TargetOpcode::KILL));
     LLVM_DEBUG(dbgs() << "  replace by: " << MI);
     return;
