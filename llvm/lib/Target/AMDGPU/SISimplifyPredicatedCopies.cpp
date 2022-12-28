@@ -14,7 +14,10 @@
 /// scalar registers don't carry any such dependency and hence the regular COPY
 /// opcode can be used. AMDGPU by default uses PRED_COPY opcode right from the
 /// instruction selection and this pass would simplify the COPY opcode and the
-/// implicit operand field as mentioned above.
+/// implicit operand field as mentioned above. This pass also implements the
+/// EXEC MASK manipulation around the whole wave vector register copies by
+/// turning all bits of exec to one before the copy and then restore it
+/// immediately afterwards.
 //
 //===----------------------------------------------------------------------===//
 
@@ -52,6 +55,10 @@ public:
   }
 
 private:
+  bool isWWMCopy(const MachineInstr &MI);
+  bool isSCCLiveAtMI(const MachineInstr &MI);
+
+  LiveIntervals *LIS = nullptr;
   const SIRegisterInfo *TRI = nullptr;
   const MachineRegisterInfo *MRI = nullptr;
   SIMachineFunctionInfo *MFI;
@@ -61,6 +68,7 @@ private:
 
 INITIALIZE_PASS_BEGIN(SISimplifyPredicatedCopies, DEBUG_TYPE,
                       "SI Simplify Predicated Copies", false, false)
+INITIALIZE_PASS_DEPENDENCY(LiveIntervals)
 INITIALIZE_PASS_END(SISimplifyPredicatedCopies, DEBUG_TYPE,
                     "SI Simplify Predicated Copies", false, false)
 
@@ -68,11 +76,40 @@ char SISimplifyPredicatedCopies::ID = 0;
 
 char &llvm::SISimplifyPredicatedCopiesID = SISimplifyPredicatedCopies::ID;
 
+// Returns true if \p MI is a whole-wave copy instruction. Iterate
+// recursively skipping the intermediate copies if it maps to any
+// whole-wave operation.
+bool SISimplifyPredicatedCopies::isWWMCopy(const MachineInstr &MI) {
+  Register SrcReg = MI.getOperand(1).getReg();
+
+  if (MFI->checkFlag(SrcReg, AMDGPU::VirtRegFlag::WWM_REG))
+    return true;
+
+  if (SrcReg.isPhysical())
+    return false;
+
+  // Look recursively skipping intermediate copies.
+  const MachineInstr *DefMI = MRI->getUniqueVRegDef(SrcReg);
+  if (!DefMI || !DefMI->isCopy())
+    return false;
+
+  return isWWMCopy(*DefMI);
+}
+
+bool SISimplifyPredicatedCopies::isSCCLiveAtMI(const MachineInstr &MI) {
+  assert(LIS && "LiveIntervals should be valid");
+  LiveRange &LR =
+      LIS->getRegUnit(*MCRegUnitIterator(MCRegister::from(AMDGPU::SCC), TRI));
+  SlotIndex Idx = LIS->getInstructionIndex(MI);
+  return LR.liveAt(Idx);
+}
+
 bool SISimplifyPredicatedCopies::runOnMachineFunction(MachineFunction &MF) {
   const GCNSubtarget &ST = MF.getSubtarget<GCNSubtarget>();
   const SIInstrInfo *TII = ST.getInstrInfo();
 
   MFI = MF.getInfo<SIMachineFunctionInfo>();
+  LIS = getAnalysisIfAvailable<LiveIntervals>();
   TRI = ST.getRegisterInfo();
   MRI = &MF.getRegInfo();
   bool Changed = false;
@@ -93,6 +130,21 @@ bool SISimplifyPredicatedCopies::runOnMachineFunction(MachineFunction &MF) {
             Changed = true;
           }
         } else {
+          if (TII->isVGPRCopy(MI) &&
+              !TRI->isSGPRReg(*MRI, MI.getOperand(1).getReg()) && LIS &&
+              MI.getOperand(0).getReg().isVirtual() && isWWMCopy(MI)) {
+            // For WWM vector copies, manipulate the exec mask around the copy
+            // instruction. LIS is essential to avoid clobbering SCC while
+            // inserting the exec manipulation instructions.
+            DebugLoc DL = MI.getDebugLoc();
+            MachineBasicBlock::iterator InsertPt = MI.getIterator();
+            Register RegForExecCopy = MFI->getSGPRForEXECCopy();
+            TII->insertScratchExecCopy(MF, MBB, InsertPt, DL, RegForExecCopy,
+                                       isSCCLiveAtMI(MI), LIS);
+            TII->restoreExec(MF, MBB, ++InsertPt, DL, RegForExecCopy, LIS);
+            LLVM_DEBUG(dbgs() << "WWM copy manipulation for " << MI);
+          }
+
           // For vector registers, add implicit exec use.
           if (!MI.readsRegister(AMDGPU::EXEC, TRI)) {
             MI.addOperand(MF,
