@@ -657,6 +657,11 @@ BitVector SIRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
     assert(!isSubRegister(ScratchRSrcReg, BasePtrReg));
   }
 
+  // SGPR used to preserve EXEC MASK around WWM spill/copy instructions.
+  Register ExecCopyReg = MFI->getSGPRForEXECCopy();
+  if (ExecCopyReg)
+    reserveRegisterTuples(Reserved, ExecCopyReg);
+
   // Reserve VGPRs/AGPRs.
   //
   unsigned MaxNumVGPRs = ST.getMaxNumVGPRs(MF);
@@ -1068,6 +1073,8 @@ static unsigned getNumSubRegsForSpillOp(unsigned Op) {
   case AMDGPU::SI_SPILL_A32_RESTORE:
   case AMDGPU::SI_SPILL_AV32_SAVE:
   case AMDGPU::SI_SPILL_AV32_RESTORE:
+  case AMDGPU::SI_SPILL_WWM_V32_SAVE:
+  case AMDGPU::SI_SPILL_WWM_V32_RESTORE:
     return 1;
   default: llvm_unreachable("Invalid spill opcode");
   }
@@ -2184,7 +2191,8 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
     case AMDGPU::SI_SPILL_AV128_SAVE:
     case AMDGPU::SI_SPILL_AV96_SAVE:
     case AMDGPU::SI_SPILL_AV64_SAVE:
-    case AMDGPU::SI_SPILL_AV32_SAVE: {
+    case AMDGPU::SI_SPILL_AV32_SAVE:
+    case AMDGPU::SI_SPILL_WWM_V32_SAVE: {
       const MachineOperand *VData = TII->getNamedOperand(*MI,
                                                          AMDGPU::OpName::vdata);
       assert(TII->getNamedOperand(*MI, AMDGPU::OpName::soffset)->getReg() ==
@@ -2193,12 +2201,20 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       unsigned Opc = ST.enableFlatScratch() ? AMDGPU::SCRATCH_STORE_DWORD_SADDR
                                             : AMDGPU::BUFFER_STORE_DWORD_OFFSET;
       auto MBB = MI->getParent();
+      bool IsWWMRegSpill = TII->isWWMRegSpillOpcode(MI->getOpcode());
+      if (IsWWMRegSpill)
+        TII->insertScratchExecCopy(*MF, *MBB, MI, DL, MFI->getSGPRForEXECCopy(),
+                                   RS->isRegUsed(AMDGPU::SCC));
+
       buildSpillLoadStore(
           *MBB, MI, DL, Opc, Index, VData->getReg(), VData->isKill(), FrameReg,
           TII->getNamedOperand(*MI, AMDGPU::OpName::offset)->getImm(),
           *MI->memoperands_begin(), RS, nullptr, NeedsCFI);
 
       MFI->addToSpilledVGPRs(getNumSubRegsForSpillOp(MI->getOpcode()));
+      if (IsWWMRegSpill)
+        TII->restoreExec(*MF, *MBB, MI, DL, MFI->getSGPRForEXECCopy());
+
       MI->eraseFromParent();
       break;
     }
@@ -2231,7 +2247,8 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
     case AMDGPU::SI_SPILL_AV224_RESTORE:
     case AMDGPU::SI_SPILL_AV256_RESTORE:
     case AMDGPU::SI_SPILL_AV512_RESTORE:
-    case AMDGPU::SI_SPILL_AV1024_RESTORE: {
+    case AMDGPU::SI_SPILL_AV1024_RESTORE:
+    case AMDGPU::SI_SPILL_WWM_V32_RESTORE: {
       const MachineOperand *VData = TII->getNamedOperand(*MI,
                                                          AMDGPU::OpName::vdata);
       assert(TII->getNamedOperand(*MI, AMDGPU::OpName::soffset)->getReg() ==
@@ -2240,10 +2257,17 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       unsigned Opc = ST.enableFlatScratch() ? AMDGPU::SCRATCH_LOAD_DWORD_SADDR
                                             : AMDGPU::BUFFER_LOAD_DWORD_OFFSET;
       auto MBB = MI->getParent();
+      bool IsWWMRegSpill = TII->isWWMRegSpillOpcode(MI->getOpcode());
+      if (IsWWMRegSpill)
+        TII->insertScratchExecCopy(*MF, *MBB, MI, DL, MFI->getSGPRForEXECCopy(),
+                                   RS->isRegUsed(AMDGPU::SCC));
       buildSpillLoadStore(
           *MBB, MI, DL, Opc, Index, VData->getReg(), VData->isKill(), FrameReg,
           TII->getNamedOperand(*MI, AMDGPU::OpName::offset)->getImm(),
           *MI->memoperands_begin(), RS);
+      if (IsWWMRegSpill)
+        TII->restoreExec(*MF, *MBB, MI, DL, MFI->getSGPRForEXECCopy());
+
       MI->eraseFromParent();
       break;
     }
