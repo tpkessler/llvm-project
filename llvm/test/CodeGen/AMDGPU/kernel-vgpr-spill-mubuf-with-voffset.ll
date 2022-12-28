@@ -23,8 +23,8 @@ define amdgpu_kernel void @test_kernel(i32 %val) #0 {
 ; CHECK-NEXT:    ;;#ASMSTART
 ; CHECK-NEXT:    ; def vgpr10
 ; CHECK-NEXT:    ;;#ASMEND
-; CHECK-NEXT:    s_add_i32 s34, s33, 0x100100
-; CHECK-NEXT:    buffer_store_dword v10, off, s[0:3], s34 ; 4-byte Folded Spill
+; CHECK-NEXT:    s_add_i32 s36, s33, 0x100100
+; CHECK-NEXT:    buffer_store_dword v10, off, s[0:3], s36 ; 4-byte Folded Spill
 ; CHECK-NEXT:    s_mov_b64 s[16:17], 8
 ; CHECK-NEXT:    s_mov_b32 s8, s6
 ; CHECK-NEXT:    s_mov_b32 s6, s7

@@ -78,8 +78,8 @@ entry:
   ; 0x40000 / 64 = 4096 (for wave64)
   %a = load volatile i32, i32 addrspace(5)* %aptr
 
-  ; MUBUF:   v_mov_b32_e32 [[OFFSET:v[0-9]+]], 0x1004
-  ; MUBUF-NEXT: buffer_store_dword v{{[0-9]+}}, [[OFFSET]], s[{{[0-9]+:[0-9]+}}], s32 offen ; 4-byte Folded Spill
+  ; MUBUF: s_add_i32 [[SOFF:s[0-9]+]], s32, 0x40100
+  ; MUBUF-NEXT: buffer_store_dword v{{[0-9]+}}, off, s[{{[0-9:]+}}], [[SOFF]] ; 4-byte Folded Spill
 
 ; FLATSCR: s_add_i32 [[SOFF:s[0-9]+]], s32, 0x1004
   ; FLATSCR: scratch_store_dword off, v{{[0-9]+}}, [[SOFF]] ; 4-byte Folded Spill
@@ -97,8 +97,8 @@ entry:
 
   call void asm sideeffect "", "~{v0},~{v1},~{v2},~{v3},~{v4},~{v5},~{v6},~{v7}"() #0
 
-  ; MUBUF:   v_mov_b32_e32 [[OFFSET:v[0-9]+]], 0x1004
-  ; MUBUF-NEXT: buffer_load_dword v{{[0-9]+}}, [[OFFSET]], s[{{[0-9]+:[0-9]+}}], s32 offen ; 4-byte Folded Reload
+  ; MUBUF: s_add_i32 [[SOFF:s[0-9]+]], s32, 0x40100
+  ; MUBUF-NEXT: buffer_load_dword v{{[0-9]+}}, off, s[{{[0-9:]+}}], [[SOFF]] ; 4-byte Folded Reload
   ; FLATSCR: s_add_i32 [[SOFF:s[0-9]+]], s32, 0x1004
   ; FLATSCR: scratch_load_dword v{{[0-9]+}}, off, [[SOFF]] ; 4-byte Folded Reload
 
@@ -129,8 +129,8 @@ entry:
   ; 0x40000 / 64 = 4096 (for wave64)
   %a = load volatile i32, i32 addrspace(5)* %aptr
 
-  ; MUBUF: v_mov_b32_e32 [[OFFSET:v[0-9]+]], 0x1004
-  ; MUBUF: buffer_store_dword v{{[0-9]+}}, [[OFFSET]], s[{{[0-9]+:[0-9]+}}], 0 offen ; 4-byte Folded Spill
+  ; MUBUF: s_mov_b32 [[SOFF:s[0-9]+]], 0x40100
+  ; MUBUF-NEXT: buffer_store_dword v{{[0-9]+}}, off, s[{{[0-9:]+}}], [[SOFF]] ; 4-byte Folded Spill
 
   ; FLATSCR: s_movk_i32 [[SOFF:s[0-9]+]], 0x1004
   ; FLATSCR: scratch_store_dword off, v{{[0-9]+}}, [[SOFF]] ; 4-byte Folded Spill
@@ -148,8 +148,8 @@ entry:
 
   call void asm sideeffect "", "~{v0},~{v1},~{v2},~{v3},~{v4},~{v5},~{v6},~{v7}"() #0
 
-  ; MUBUF: v_mov_b32_e32 [[OFFSET:v[0-9]+]], 0x1004
-  ; MUBUF: buffer_load_dword v{{[0-9]+}}, [[OFFSET]], s[{{[0-9]+:[0-9]+}}], 0 offen ; 4-byte Folded Reload
+  ; MUBUF: s_mov_b32 [[SOFF:s[0-9]+]], 0x40100
+  ; MUBUF-NEXT: buffer_load_dword v{{[0-9]+}}, off, s[{{[0-9:]+}}], [[SOFF]] ; 4-byte Folded Reload
   ; FLATSCR: s_movk_i32 [[SOFF:s[0-9]+]], 0x1004
   ; FLATSCR: scratch_load_dword v{{[0-9]+}}, off, [[SOFF]] ; 4-byte Folded Reload
 
@@ -336,5 +336,5 @@ entry:
 
 attributes #0 = { nounwind }
 attributes #1 = { nounwind "amdgpu-num-sgpr"="17" "amdgpu-num-vgpr"="8" }
-attributes #2 = { nounwind "amdgpu-num-sgpr"="14" "amdgpu-num-vgpr"="8" }
-attributes #3 = { nounwind "amdgpu-num-sgpr"="16" "amdgpu-num-vgpr"="8" }
+attributes #2 = { nounwind "amdgpu-num-sgpr"="16" "amdgpu-num-vgpr"="8" }
+attributes #3 = { nounwind "amdgpu-num-sgpr"="18" "amdgpu-num-vgpr"="8" }
