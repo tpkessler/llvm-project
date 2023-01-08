@@ -824,9 +824,7 @@ void ModuloScheduleExpander::splitLifetimes(MachineBasicBlock *KernelBB,
             // We split the lifetime when we find the first use.
             if (SplitReg == 0) {
               SplitReg = MRI.createVirtualRegister(MRI.getRegClass(Def));
-              BuildMI(*KernelBB, MI, MI->getDebugLoc(),
-                      TII->get(TargetOpcode::COPY), SplitReg)
-                  .addReg(Def);
+              TII->buildCopy(*KernelBB, MI, MI->getDebugLoc(), SplitReg, Def);
             }
             BBJ.substituteRegister(Def, SplitReg, 0, *TRI);
           }
@@ -1191,9 +1189,7 @@ void ModuloScheduleExpander::rewriteScheduledInstr(
         UseOp.setReg(ReplaceReg);
       else {
         Register SplitReg = MRI.createVirtualRegister(MRI.getRegClass(OldReg));
-        BuildMI(*BB, UseMI, UseMI->getDebugLoc(), TII->get(TargetOpcode::COPY),
-                SplitReg)
-            .addReg(ReplaceReg);
+        TII->buildCopy(*BB, UseMI, UseMI->getDebugLoc(), SplitReg, ReplaceReg);
         UseOp.setReg(SplitReg);
       }
     }
