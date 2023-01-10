@@ -2323,14 +2323,11 @@ void SITargetLowering::insertCopiesSplitCSR(
     Register NewVR = MRI->createVirtualRegister(RC);
     // Create copy from CSR to a virtual register.
     Entry->addLiveIn(*I);
-    BuildMI(*Entry, MBBI, DebugLoc(), TII->get(TargetOpcode::COPY), NewVR)
-      .addReg(*I);
+    TII->buildCopy(*Entry, MBBI, DebugLoc(), NewVR, *I);
 
     // Insert the copy-back instructions right before the terminator.
     for (auto *Exit : Exits)
-      BuildMI(*Exit, Exit->getFirstTerminator(), DebugLoc(),
-              TII->get(TargetOpcode::COPY), *I)
-        .addReg(NewVR);
+      TII->buildCopy(*Exit, Exit->getFirstTerminator(), DebugLoc(), *I, NewVR);
   }
 }
 
@@ -4242,8 +4239,7 @@ MachineBasicBlock *SITargetLowering::EmitInstrWithCustomInserter(
     const auto *CondRC = TRI->getRegClass(AMDGPU::SReg_1_XEXECRegClassID);
     Register SrcCondCopy = MRI.createVirtualRegister(CondRC);
 
-    BuildMI(*BB, MI, DL, TII->get(AMDGPU::COPY), SrcCondCopy)
-      .addReg(SrcCond);
+    TII->buildCopy(*BB, MI, DL, SrcCondCopy, SrcCond);
     BuildMI(*BB, MI, DL, TII->get(AMDGPU::V_CNDMASK_B32_e64), DstLo)
       .addImm(0)
       .addReg(Src0, 0, AMDGPU::sub0)

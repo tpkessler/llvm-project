@@ -309,7 +309,7 @@ static bool isSafeToFoldImmIntoCopy(const MachineInstr *Copy,
                                     const SIInstrInfo *TII,
                                     unsigned &SMovOp,
                                     int64_t &Imm) {
-  if (Copy->getOpcode() != AMDGPU::COPY)
+  if (!Copy->isCopy())
     return false;
 
   if (!MoveImm->isMoveImmediate())
@@ -617,9 +617,8 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
                         SCCCopy)
                     .addImm(-1)
                     .addImm(0);
-            I = BuildMI(*MI.getParent(), std::next(I), I->getDebugLoc(),
-                        TII->get(AMDGPU::COPY), DstReg)
-                    .addReg(SCCCopy);
+            I = TII->buildCopy(*MI.getParent(), std::next(I), I->getDebugLoc(),
+                               DstReg, SCCCopy);
             MI.eraseFromParent();
             continue;
           } else if (DstReg == AMDGPU::SCC) {

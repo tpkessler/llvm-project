@@ -257,8 +257,8 @@ static bool updateOperand(FoldCandidate &Fold,
     MachineInstr *Inst32 = TII.buildShrunkInst(*MI, Op32);
 
     if (HaveNonDbgCarryUse) {
-      BuildMI(*MBB, MI, MI->getDebugLoc(), TII.get(AMDGPU::COPY), Dst1.getReg())
-        .addReg(AMDGPU::VCC, RegState::Kill);
+      TII.buildCopy(*MBB, MI, MI->getDebugLoc(), Dst1.getReg(), AMDGPU::VCC,
+                    RegState::Kill);
     }
 
     // Keep the old instruction around to avoid breaking iterators, but
@@ -1638,9 +1638,8 @@ bool SIFoldOperands::tryFoldLCSSAPhi(MachineInstr &PHI) {
   PHI.getOperand(0).setReg(NewReg);
 
   MachineBasicBlock *MBB = PHI.getParent();
-  BuildMI(*MBB, MBB->getFirstNonPHI(), Copy->getDebugLoc(),
-          TII->get(AMDGPU::COPY), PhiOut)
-    .addReg(NewReg, RegState::Kill);
+  TII->buildCopy(*MBB, MBB->getFirstNonPHI(), Copy->getDebugLoc(), PhiOut,
+                 NewReg, RegState::Kill);
   Copy->eraseFromParent(); // We know this copy had a single use.
 
   LLVM_DEBUG(dbgs() << "Folded " << PHI);
