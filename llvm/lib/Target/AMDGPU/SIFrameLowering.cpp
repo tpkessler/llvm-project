@@ -30,6 +30,85 @@ static cl::opt<bool> EnableSpillVGPRToAGPR(
   cl::ReallyHidden,
   cl::init(true));
 
+static constexpr unsigned SGPRBitSize = 32;
+static constexpr unsigned SGPRByteSize = SGPRBitSize / 8;
+static constexpr unsigned VGPRLaneBitSize = 32;
+// FIXME: should be replaced by a constant defined elsewhere
+static constexpr unsigned DW_ASPACE_AMDGPU_private_wave = 6;
+
+// Find a scratch register matching \p RC which is unused and available
+// throughout the function. On failure, returns a null register.
+static MCRegister findUnusedRegister(MachineRegisterInfo &MRI,
+                                     LivePhysRegs &LiveRegs,
+                                     const TargetRegisterClass &RC) {
+  for (MCRegister Reg : RC) {
+    if (!MRI.isPhysRegUsed(Reg) && LiveRegs.available(MRI, Reg))
+      return Reg;
+  }
+  return MCRegister();
+}
+
+static void encodeDwarfRegisterLocation(int DwarfReg, raw_ostream &OS) {
+  assert(DwarfReg >= 0);
+  if (DwarfReg < 32) {
+    OS << uint8_t(dwarf::DW_OP_reg0 + DwarfReg);
+  } else {
+    OS << uint8_t(dwarf::DW_OP_regx);
+    encodeULEB128(DwarfReg, OS);
+  }
+}
+
+static MCCFIInstruction
+createScaledCFAInPrivateWave(const GCNSubtarget &ST,
+                             MCRegister DwarfStackPtrReg) {
+  assert(ST.enableFlatScratch());
+
+  // When flat scratch is used, the cfa is expressed in terms of private_lane
+  // (address space 5), but the debugger only accepts addresses in terms of
+  // private_wave (6). Override the cfa value using the expression
+  // (wave_size*cfa_reg), which is equivalent to (cfa_reg << wave_size_log2)
+  const unsigned WavefrontSizeLog2 = ST.getWavefrontSizeLog2();
+  assert(WavefrontSizeLog2 < 32);
+
+  SmallString<20> Block;
+  raw_svector_ostream OSBlock(Block);
+  encodeDwarfRegisterLocation(DwarfStackPtrReg, OSBlock);
+  OSBlock << uint8_t(dwarf::DW_OP_deref_size) << uint8_t(4)
+          << uint8_t(dwarf::DW_OP_lit0 + WavefrontSizeLog2)
+          << uint8_t(dwarf::DW_OP_shl)
+          << uint8_t(dwarf::DW_OP_lit0 + DW_ASPACE_AMDGPU_private_wave)
+          << uint8_t(dwarf::DW_OP_LLVM_form_aspace_address);
+
+  SmallString<20> CFIInst;
+  raw_svector_ostream OSCFIInst(CFIInst);
+  OSCFIInst << uint8_t(dwarf::DW_CFA_def_cfa_expression);
+  encodeULEB128(Block.size(), OSCFIInst);
+  OSCFIInst << Block;
+
+  return MCCFIInstruction::createEscape(nullptr, OSCFIInst.str());
+}
+
+void SIFrameLowering::emitDefCFA(MachineBasicBlock &MBB,
+                                 MachineBasicBlock::iterator MBBI,
+                                 DebugLoc const &DL, Register StackPtrReg,
+                                 bool AspaceAlreadyDefined,
+                                 MachineInstr::MIFlag Flags) const {
+  MachineFunction &MF = *MBB.getParent();
+  const GCNSubtarget &ST = MF.getSubtarget<GCNSubtarget>();
+  const MCRegisterInfo *MCRI = MF.getMMI().getContext().getRegisterInfo();
+
+  MCRegister DwarfStackPtrReg = MCRI->getDwarfRegNum(StackPtrReg, false);
+  MCCFIInstruction CFIInst =
+      ST.enableFlatScratch()
+          ? createScaledCFAInPrivateWave(ST, DwarfStackPtrReg)
+          : (AspaceAlreadyDefined ? MCCFIInstruction::createLLVMDefAspaceCfa(
+                                        nullptr, DwarfStackPtrReg, 0,
+                                        DW_ASPACE_AMDGPU_private_wave)
+                                  : MCCFIInstruction::createDefCfaRegister(
+                                        nullptr, DwarfStackPtrReg));
+  buildCFI(MBB, MBBI, DL, CFIInst, Flags);
+}
+
 // Find a scratch register that we can use in the prologue. We avoid using
 // callee-save registers since they may appear to be free when this is called
 // from canUseAsPrologue (during shrink wrapping), but then no longer be free
@@ -456,9 +535,7 @@ void SIFrameLowering::emitEntryFunctionPrologue(MachineFunction &MF,
         dwarf::DW_CFA_def_cfa_expression,
         3, // length
         static_cast<char>(dwarf::DW_OP_lit0),
-        static_cast<char>(
-            dwarf::DW_OP_lit6), // DW_ASPACE_AMDGPU_private_wave FIXME:
-                                // should be defined elsewhere
+        static_cast<char>(dwarf::DW_OP_lit0 + DW_ASPACE_AMDGPU_private_wave),
         static_cast<char>(dwarf::DW_OP_LLVM_form_aspace_address)};
     buildCFI(MBB, I, DL,
              MCCFIInstruction::createEscape(
@@ -752,10 +829,8 @@ void SIFrameLowering::emitPrologueEntryCFI(MachineBasicBlock &MBB,
   Register StackPtrReg =
       MF.getInfo<SIMachineFunctionInfo>()->getStackPtrOffsetReg();
 
-  // DW_ASPACE_AMDGPU_private_wave FIXME: should be defined elsewhere
-  buildCFI(MBB, MBBI, DL,
-           MCCFIInstruction::createLLVMDefAspaceCfa(
-               nullptr, MCRI->getDwarfRegNum(StackPtrReg, false), 0, 6));
+  emitDefCFA(MBB, MBBI, DL, StackPtrReg, /*AspaceAlreadyDefined=*/true,
+             MachineInstr::FrameSetup);
 
   buildCFIForRegToSGPRPairSpill(MBB, MBBI, DL, AMDGPU::PC_REG,
                                 TRI.getReturnAddressReg(MF));
@@ -1176,9 +1251,8 @@ void SIFrameLowering::emitPrologue(MachineFunction &MF,
 
   if (HasFP) {
     if (needsFrameMoves)
-      buildCFI(MBB, MBBI, DL,
-               MCCFIInstruction::createDefCfaRegister(
-                   nullptr, MCRI->getDwarfRegNum(FramePtrReg, false)));
+      emitDefCFA(MBB, MBBI, DL, FramePtrReg, /*AspaceAlreadyDefined=*/false,
+                 MachineInstr::FrameSetup);
   }
 
   if (HasFP && RoundedSize != 0) {
@@ -1296,10 +1370,8 @@ void SIFrameLowering::emitEpilogue(MachineFunction &MF,
   const bool needsFrameMoves = true;
   if (hasFP(MF)) {
     if (needsFrameMoves)
-      buildCFI(MBB, MBBI, DL,
-               MCCFIInstruction::createDefCfaRegister(
-                   nullptr, MCRI->getDwarfRegNum(StackPtrReg, false)),
-               MachineInstr::FrameDestroy);
+      emitDefCFA(MBB, MBBI, DL, StackPtrReg, /*AspaceAlreadyDefined=*/false,
+                 MachineInstr::FrameDestroy);
   }
 
   if (BPSaveIndex) {
@@ -1888,19 +1960,6 @@ MachineInstr *SIFrameLowering::buildCFIForRegToRegSpill(
       MCCFIInstruction::createRegister(nullptr, MCRI.getDwarfRegNum(Reg, false),
                                        MCRI.getDwarfRegNum(RegCopy, false)));
 }
-
-static void encodeDwarfRegisterLocation(int DwarfReg, raw_ostream &OS) {
-  if (DwarfReg < 32) {
-    OS << uint8_t(dwarf::DW_OP_reg0 + DwarfReg);
-  } else {
-    OS << uint8_t(dwarf::DW_OP_regx);
-    encodeULEB128(DwarfReg, OS);
-  }
-}
-
-static constexpr unsigned SGPRBitSize = 32;
-static constexpr unsigned SGPRByteSize = SGPRBitSize / 8;
-static constexpr unsigned VGPRLaneBitSize = 32;
 
 MachineInstr *SIFrameLowering::buildCFIForSGPRToVGPRSpill(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
