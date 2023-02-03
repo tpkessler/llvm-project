@@ -12,6 +12,7 @@
 #include "SIDefines.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/Alignment.h"
 #include <array>
 #include <functional>
@@ -60,13 +61,16 @@ bool isHsaAbiVersion5(const MCSubtargetInfo *STI);
 bool isHsaAbiVersion3AndAbove(const MCSubtargetInfo *STI);
 
 /// \returns The offset of the multigrid_sync_arg argument from implicitarg_ptr
-unsigned getMultigridSyncArgImplicitArgPosition();
+unsigned getMultigridSyncArgImplicitArgPosition(unsigned COV);
 
 /// \returns The offset of the hostcall pointer argument from implicitarg_ptr
-unsigned getHostcallImplicitArgPosition();
+unsigned getHostcallImplicitArgPosition(unsigned COV);
 
 /// \returns Code object version.
 unsigned getAmdhsaCodeObjectVersion();
+
+/// \returns Code object version.
+unsigned getCodeObjectVersion(const Module &M);
 
 struct GcnBufferFormatInfo {
   unsigned Format;

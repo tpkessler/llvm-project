@@ -149,8 +149,18 @@ unsigned getAmdhsaCodeObjectVersion() {
   return AmdhsaCodeObjectVersion;
 }
 
-unsigned getMultigridSyncArgImplicitArgPosition() {
-  switch (AmdhsaCodeObjectVersion) {
+unsigned getCodeObjectVersion(const Module &M) {
+  if (auto Ver = mdconst::extract_or_null<ConstantInt>(
+      M.getModuleFlag("amdgpu_code_object_version"))) {
+    return (unsigned)Ver->getZExtValue() / 100;
+  }
+
+  // Default code object version.
+  return 5;
+}
+
+unsigned getMultigridSyncArgImplicitArgPosition(unsigned COV) {
+  switch (COV) {
   case 2:
   case 3:
   case 4:
@@ -166,8 +176,8 @@ unsigned getMultigridSyncArgImplicitArgPosition() {
 
 // FIXME: All such magic numbers about the ABI should be in a
 // central TD file.
-unsigned getHostcallImplicitArgPosition() {
-  switch (AmdhsaCodeObjectVersion) {
+unsigned getHostcallImplicitArgPosition(unsigned COV) {
+  switch (COV) {
   case 2:
   case 3:
   case 4:

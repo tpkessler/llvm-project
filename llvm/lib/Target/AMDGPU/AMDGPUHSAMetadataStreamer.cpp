@@ -865,7 +865,8 @@ void MetadataStreamerMsgPackV3::emitHiddenKernelArgs(
 }
 
 msgpack::MapDocNode MetadataStreamerMsgPackV3::getHSAKernelProps(
-    const MachineFunction &MF, const SIProgramInfo &ProgramInfo) const {
+    const MachineFunction &MF, const SIProgramInfo &ProgramInfo,
+    unsigned CodeObjectVersion) const {
   const GCNSubtarget &STM = MF.getSubtarget<GCNSubtarget>();
   const SIMachineFunctionInfo &MFI = *MF.getInfo<SIMachineFunctionInfo>();
   const Function &F = MF.getFunction();
@@ -879,7 +880,7 @@ msgpack::MapDocNode MetadataStreamerMsgPackV3::getHSAKernelProps(
       Kern.getDocument()->getNode(ProgramInfo.LDSSize);
   Kern[".private_segment_fixed_size"] =
       Kern.getDocument()->getNode(ProgramInfo.ScratchSize);
-  if (AMDGPU::getAmdhsaCodeObjectVersion() >= 5)
+  if (CodeObjectVersion >= 5)
     Kern[".uses_dynamic_stack"] =
         Kern.getDocument()->getNode(ProgramInfo.DynamicCallStack);
 
@@ -931,7 +932,8 @@ void MetadataStreamerMsgPackV3::end() {
 void MetadataStreamerMsgPackV3::emitKernel(const MachineFunction &MF,
                                            const SIProgramInfo &ProgramInfo) {
   auto &Func = MF.getFunction();
-  auto Kern = getHSAKernelProps(MF, ProgramInfo);
+  auto CodeObjectVersion = AMDGPU::getCodeObjectVersion(*Func.getParent());
+  auto Kern = getHSAKernelProps(MF, ProgramInfo, CodeObjectVersion);
 
   assert(Func.getCallingConv() == CallingConv::AMDGPU_KERNEL ||
          Func.getCallingConv() == CallingConv::SPIR_KERNEL);
