@@ -2666,14 +2666,7 @@ struct DeviceEnvironment {
 
         hsa_signal_t Signal;
         bool UserLocked;
-        Err = DeviceInfo().freesignalpoolMemcpyH2D(StatePtr, &HostDeviceEnv,
-                                                 StatePtrSize, DeviceId,
-                                                 Signal, UserLocked);
-        if (Err == HSA_STATUS_ERROR)
-          return Err;
-        AMDGPUAsyncInfoDataTy AsyncInfo(Signal, &HostDeviceEnv, &HostDeviceEnv,
-                                        StatePtrSize, UserLocked);
-        Err = AsyncInfo.waitToComplete(/*RetrieveToHost*/ true);
+        Err = hsa_memory_copy(StatePtr, &HostDeviceEnv, StatePtrSize);
         return Err;
       }
     }
@@ -3381,19 +3374,11 @@ __tgt_target_table *__tgt_rtl_load_binary_locked(int32_t DeviceId,
         }
 
         // write ptr to device memory so it can be used by later kernels
-        hsa_signal_t Signal;
-        bool UserLocked;
-        Err = DeviceInfo().freesignalpoolMemcpyH2D(StatePtr, &Ptr, sizeof(void *),
-                                                 DeviceId, Signal, UserLocked);
+        Err = hsa_memory_copy(StatePtr, &Ptr, sizeof(void *));
         if (Err != HSA_STATUS_SUCCESS) {
-          DP("memcpy install of state_ptr failed\n");
+          DP("Error when copying the device state from host to device\n");
           return NULL;
         }
-        AMDGPUAsyncInfoDataTy AsyncInfo(Signal, &Ptr, &Ptr, sizeof(void *),
-                                        UserLocked);
-        Err = AsyncInfo.waitToComplete(/*RetrieveToHost*/ true);
-        if (Err != HSA_STATUS_SUCCESS)
-          return NULL;
       }
     }
   }
@@ -3452,17 +3437,11 @@ __tgt_target_table *__tgt_rtl_load_binary_locked(int32_t DeviceId,
         // If unified memory is present any target link variables
         // can access host addresses directly. There is no longer a
         // need for device copies.
-        hsa_signal_t Signal;
-        bool UserLocked;
-        Err = DeviceInfo().freesignalpoolMemcpyH2D(Varptr, E->addr,
-                                                 sizeof(void *), DeviceId, Signal, UserLocked);
-        if (Err != HSA_STATUS_SUCCESS)
-          DP("Error when copying USM\n");
-
-        AMDGPUAsyncInfoDataTy AsyncInfo(Signal, E->addr, E->addr,
-                                        sizeof(void *), UserLocked);
-        AsyncInfo.waitToComplete(/*RetrieveToHost*/ true);
-
+        Err = hsa_memory_copy(Varptr, E->addr, sizeof(void *));
+        if (Err != HSA_STATUS_SUCCESS) {
+          DP("Error when copying linked variables in USM mode\n");
+          return NULL;
+        }
         DP("Copy linked variable host address (" DPxMOD ")"
            "to device address (" DPxMOD ")\n",
            DPxPTR(*((void **)E->addr)), DPxPTR(Varptr));
@@ -3705,10 +3684,18 @@ int32_t __tgt_rtl_data_submit(int DeviceId, void *tgt_ptr, void *hst_ptr,
   if (rc != OFFLOAD_SUCCESS)
     return OFFLOAD_FAIL;
 
-  AsyncData.waitToComplete(/*RetrieveToHost*/ false);
-  AsyncData.releaseResources();
+  hsa_status_t Err = AsyncData.waitToComplete(/*RetrieveToHost*/ false);
+  if (Err != HSA_STATUS_SUCCESS) {
+    DP("Error while submitting data: waiting memory copy to complete\n");
+    return OFFLOAD_FAIL;
+  }
+  Err = AsyncData.releaseResources();
+  if (Err != HSA_STATUS_SUCCESS) {
+    DP("Error while submitting data: releasing completion signal\n");
+    return OFFLOAD_FAIL;
+  }
 
-  return rc;
+  return OFFLOAD_SUCCESS;
 }
 
 int32_t __tgt_rtl_data_submit_async(int DeviceId, void *TgtPtr, void *HstPtr,
@@ -3735,9 +3722,18 @@ int32_t __tgt_rtl_data_retrieve(int DeviceId, void *hst_ptr, void *tgt_ptr,
   if (rc != OFFLOAD_SUCCESS)
     return OFFLOAD_FAIL;
 
-  AsyncData.waitToComplete(/*RetrieveToHost*/ true);
-  AsyncData.releaseResources();
-  return rc;
+  hsa_status_t err = AsyncData.waitToComplete(/*RetrieveToHost*/ true);
+  if (err != HSA_STATUS_SUCCESS) {
+    DP("Error while retrieving data: waiting memory copy to complete\n");
+    return OFFLOAD_FAIL;
+  }
+  err = AsyncData.releaseResources();
+  if (err != HSA_STATUS_SUCCESS) {
+    DP("Error while retrieving data: releasing completion signal\n");
+    return OFFLOAD_FAIL;
+  }
+
+  return OFFLOAD_SUCCESS;
 }
 
 int32_t __tgt_rtl_data_retrieve_async(int DeviceId, void *HstPtr, void *TgtPtr,
