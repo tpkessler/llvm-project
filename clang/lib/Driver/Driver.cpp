@@ -6007,15 +6007,16 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
        !C.getArgs().hasArg(options::OPT__SLASH_Fo)) ||
       CCGenDiagnostics) {
     StringRef Name = llvm::sys::path::filename(BaseInput);
-    std::pair<StringRef, StringRef> Split = Name.split('.');
-    SmallString<128> fname(Split.first.str().c_str());
+    size_t pos = Name.find_last_of(".");
+    StringRef PrefixName = Name.substr(0, pos);
+    SmallString<128> fname(PrefixName.str().c_str());
     if (!BoundArch.empty()) {
       fname += "-";
       fname.append(BoundArch);
     }
     SmallString<128> TmpName;
     const char *Suffix = nullptr;
-    if (Split.second == "a")
+    if (Name.ends_with(".a"))
       Suffix = "a";
     else
       Suffix = types::getTypeTempSuffix(JA.getType(), IsCLMode());
@@ -6035,11 +6036,11 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
       }
     } else {
       if (MultipleArchs && !BoundArch.empty()) {
-        TmpName = GetTemporaryDirectory(Split.first);
+        TmpName = GetTemporaryDirectory(PrefixName);
         llvm::sys::path::append(TmpName,
-                                Split.first + "-" + BoundArch + "." + Suffix);
+                                PrefixName + "-" + BoundArch + "." + Suffix);
       } else {
-        TmpName = GetTemporaryPath(Split.first, Suffix);
+        TmpName = GetTemporaryPath(PrefixName, Suffix);
       }
     }
     return C.addTempFile(C.getArgs().MakeArgString(TmpName));
@@ -6123,7 +6124,11 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
     NamedOutput =
         MakeCLOutputFilename(C.getArgs(), Val, BaseName, types::TY_Object);
   } else {
-    const char *Suffix = types::getTypeTempSuffix(JA.getType(), IsCLMode());
+    const char *Suffix = nullptr;
+    if (BaseName.ends_with(".a"))
+      Suffix = "a";
+    else
+      Suffix = types::getTypeTempSuffix(JA.getType(), IsCLMode());
     assert(Suffix && "All types used for output should have a suffix.");
 
     std::string::size_type End = std::string::npos;
@@ -6179,9 +6184,10 @@ const char *Driver::GetNamedOutputPath(Compilation &C, const JobAction &JA,
     // Must share the same path to conflict.
     if (SameFile) {
       StringRef Name = llvm::sys::path::filename(BaseInput);
-      std::pair<StringRef, StringRef> Split = Name.split('.');
+      size_t pos = Name.find_last_of(".");
+      StringRef PrefixName = Name.substr(0, pos);
       std::string TmpName = GetTemporaryPath(
-          Split.first, types::getTypeTempSuffix(JA.getType(), IsCLMode()));
+          PrefixName, types::getTypeTempSuffix(JA.getType(), IsCLMode()));
       return C.addTempFile(C.getArgs().MakeArgString(TmpName));
     }
   }
