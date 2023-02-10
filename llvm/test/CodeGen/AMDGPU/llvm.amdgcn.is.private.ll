@@ -1,5 +1,5 @@
-; RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=hawaii -verify-machineinstrs --amdhsa-code-object-version=4 < %s | FileCheck -enable-var-scope -check-prefixes=GCN,CI %s
-; RUN: llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx900 -verify-machineinstrs < %s | FileCheck -enable-var-scope -check-prefixes=GCN,GFX9 %s
+; RUN: sed 's/CODE_OBJECT_VERSION/400/g' %s | llc -mtriple=amdgcn-amd-amdhsa -mcpu=hawaii -verify-machineinstrs | FileCheck -enable-var-scope -check-prefixes=GCN,CI %s
+; RUN: sed 's/CODE_OBJECT_VERSION/500/g' %s | llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx900 -verify-machineinstrs | FileCheck -enable-var-scope -check-prefixes=GCN,GFX9 %s
 
 ; GCN-LABEL: {{^}}is_private_vgpr:
 ; GCN-DAG: {{flat|global}}_load_dwordx2 v{{\[[0-9]+}}:[[PTR_HI:[0-9]+]]]
@@ -47,3 +47,6 @@ declare i32 @llvm.amdgcn.workitem.id.x() #0
 declare i1 @llvm.amdgcn.is.private(i8* nocapture) #0
 
 attributes #0 = { nounwind readnone speculatable }
+
+!llvm.module.flags = !{!0}
+!0 = !{i32 1, !"amdgpu_code_object_version", i32 CODE_OBJECT_VERSION}

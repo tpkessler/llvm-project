@@ -121,7 +121,7 @@ void AMDGPUAsmPrinter::initTargetStreamer(Module &M) {
       TM.getTargetTriple().getOS() != Triple::AMDPAL)
     return;
 
-  if (CodeObjectVersion >= 3)
+  if (CodeObjectVersion >= AMDGPU::AMDHSA_COV3)
     getTargetStreamer()->EmitDirectiveAMDGCNTarget();
 
   if (TM.getTargetTriple().getOS() == Triple::AMDHSA)
@@ -130,7 +130,7 @@ void AMDGPUAsmPrinter::initTargetStreamer(Module &M) {
   if (TM.getTargetTriple().getOS() == Triple::AMDPAL)
     getTargetStreamer()->getPALMetadata()->readFromIR(M);
 
-  if (CodeObjectVersion >= 3)
+  if (CodeObjectVersion >= AMDGPU::AMDHSA_COV3)
     return;
 
   // HSA emits NT_AMD_HSA_CODE_OBJECT_VERSION for code objects v2.
@@ -152,7 +152,8 @@ void AMDGPUAsmPrinter::emitEndOfAsmFile(Module &M) {
   if (!getTargetStreamer())
     return;
 
-  if (TM.getTargetTriple().getOS() != Triple::AMDHSA || CodeObjectVersion == 2)
+  if (TM.getTargetTriple().getOS() != Triple::AMDHSA ||
+      CodeObjectVersion == AMDGPU::AMDHSA_COV2)
     getTargetStreamer()->EmitISAVersion();
 
   // Emit HSA Metadata (NT_AMD_AMDGPU_HSA_METADATA).
@@ -212,7 +213,7 @@ void AMDGPUAsmPrinter::emitFunctionBodyStart() {
   if (!MFI.isEntryFunction())
     return;
 
-  if ((STM.isMesaKernel(F) || CodeObjectVersion == 2) &&
+  if ((STM.isMesaKernel(F) || CodeObjectVersion == AMDGPU::AMDHSA_COV2) &&
       (F.getCallingConv() == CallingConv::AMDGPU_KERNEL ||
        F.getCallingConv() == CallingConv::SPIR_KERNEL)) {
     amd_kernel_code_t KernelCode;
@@ -229,7 +230,8 @@ void AMDGPUAsmPrinter::emitFunctionBodyEnd() {
   if (!MFI.isEntryFunction())
     return;
 
-  if (TM.getTargetTriple().getOS() != Triple::AMDHSA || CodeObjectVersion == 2)
+  if (TM.getTargetTriple().getOS() != Triple::AMDHSA ||
+      CodeObjectVersion == AMDGPU::AMDHSA_COV2)
     return;
 
   auto &Streamer = getTargetStreamer()->getStreamer();
@@ -265,7 +267,7 @@ void AMDGPUAsmPrinter::emitFunctionBodyEnd() {
 
 void AMDGPUAsmPrinter::emitFunctionEntryLabel() {
   if (TM.getTargetTriple().getOS() == Triple::AMDHSA &&
-      CodeObjectVersion >=3) {
+      CodeObjectVersion >= AMDGPU::AMDHSA_COV3) {
     AsmPrinter::emitFunctionEntryLabel();
     return;
   }
@@ -340,16 +342,16 @@ bool AMDGPUAsmPrinter::doInitialization(Module &M) {
 
   if (TM.getTargetTriple().getOS() == Triple::AMDHSA) {
     switch (CodeObjectVersion) {
-    case 2:
+    case AMDGPU::AMDHSA_COV2:
       HSAMetadataStream.reset(new HSAMD::MetadataStreamerYamlV2());
       break;
-    case 3:
+    case AMDGPU::AMDHSA_COV3:
       HSAMetadataStream.reset(new HSAMD::MetadataStreamerMsgPackV3());
       break;
-    case 4:
+    case AMDGPU::AMDHSA_COV4:
       HSAMetadataStream.reset(new HSAMD::MetadataStreamerMsgPackV4());
       break;
-    case 5:
+    case AMDGPU::AMDHSA_COV5:
       HSAMetadataStream.reset(new HSAMD::MetadataStreamerMsgPackV5());
       break;
     default:
@@ -409,7 +411,7 @@ uint16_t AMDGPUAsmPrinter::getAmdhsaKernelCodeProperties(
     KernelCodeProperties |=
         amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_PTR;
   }
-  if (MFI.hasQueuePtr() && CodeObjectVersion < 5) {
+  if (MFI.hasQueuePtr() && CodeObjectVersion < AMDGPU::AMDHSA_COV5) {
     KernelCodeProperties |=
         amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_QUEUE_PTR;
   }
@@ -430,7 +432,8 @@ uint16_t AMDGPUAsmPrinter::getAmdhsaKernelCodeProperties(
         amdhsa::KERNEL_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32;
   }
 
-  if (CurrentProgramInfo.DynamicCallStack && CodeObjectVersion >= 5)
+  if (CurrentProgramInfo.DynamicCallStack &&
+      CodeObjectVersion >= AMDGPU::AMDHSA_COV5)
     KernelCodeProperties |= amdhsa::KERNEL_CODE_PROPERTY_USES_DYNAMIC_STACK;
 
   return KernelCodeProperties;
@@ -652,7 +655,7 @@ void AMDGPUAsmPrinter::initializeTargetID(const Module &M) {
   // In the beginning all features are either 'Any' or 'NotSupported',
   // depending on global target features. This will cover empty modules.
   getTargetStreamer()->initializeTargetID(
-      *getGlobalSTI(), getGlobalSTI()->getFeatureString());
+      *getGlobalSTI(), getGlobalSTI()->getFeatureString(), CodeObjectVersion);
 
   // If module is empty, we are done.
   if (M.empty())
@@ -1129,7 +1132,7 @@ void AMDGPUAsmPrinter::getAmdKernelCode(amd_kernel_code_t &Out,
   if (MFI->hasDispatchPtr())
     Out.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_PTR;
 
-  if (MFI->hasQueuePtr() && CodeObjectVersion < 5)
+  if (MFI->hasQueuePtr() && CodeObjectVersion < AMDGPU::AMDHSA_COV5)
     Out.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_QUEUE_PTR;
 
   if (MFI->hasKernargSegmentPtr())
