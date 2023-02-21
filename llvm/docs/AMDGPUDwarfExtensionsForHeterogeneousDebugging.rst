@@ -383,9 +383,7 @@ address space. A ``DW_OP_LLVM_aspace_bregx`` (see
 to allow the address space of the address held in a register to be specified.
 
 Similarly, ``DW_OP_implicit_pointer`` treats its implicit pointer value as being
-in the default address space. A ``DW_OP_LLVM_aspace_implicit_pointer``
-(:ref:`amdgpu-dwarf-implicit-location-description-operations`) operation is
-added to allow the address space to be specified.
+in the default address space.
 
 Almost all uses of addresses in DWARF are limited to defining location
 descriptions, or to be dereferenced to read memory. The exception is
@@ -724,8 +722,11 @@ A. Changes Relative to DWARF Version 5
   spaces and multiple places.
 
   The names for the new operations, attributes, and constants include "\
-  ``LLVM``\ " and are encoded with vendor specific codes so these extensions can
-  be implemented as an LLVM vendor extension to DWARF Version 5.
+  ``LLVM``\ " and are encoded with vendor specific codes so these extensions
+  can be implemented as an LLVM vendor extension to DWARF Version 5. New
+  operations other than ``DW_OP_LLVM_user`` are "prefixed" by
+  ``DW_OP_LLVM_user`` to make enough encoding space available for their
+  implementation.
 
   .. note::
 
@@ -1062,11 +1063,9 @@ size, encoding, and endianity of the literal value.
   It may be desirable to add an implicit pointer base type encoding. It would be
   used for the type of the value that is produced when the ``DW_OP_deref*``
   operation retrieves the full contents of an implicit pointer location storage
-  created by the ``DW_OP_implicit_pointer`` or
-  ``DW_OP_LLVM_aspace_implicit_pointer`` operations. The literal value would
+  created by the ``DW_OP_implicit_pointer`` operation. The literal value would
   record the debugging information entry and byte displacement specified by the
-  associated ``DW_OP_implicit_pointer`` or
-  ``DW_OP_LLVM_aspace_implicit_pointer`` operations.
+  associated ``DW_OP_implicit_pointer`` operation.
 
 There is a distinguished base type termed the generic type, which is an integral
 type that has the size of an address in the target architecture default address
@@ -1137,9 +1136,8 @@ There are five kinds of location storage:
 .. note::
 
   It may be better to add an implicit pointer location storage kind used by the
-  ``DW_OP_implicit_pointer`` and ``DW_OP_LLVM_aspace_implicit_pointer``
-  operations. It would specify the debugger information entry and byte offset
-  provided by the operations.
+  ``DW_OP_implicit_pointer`` operation. It would specify the debugger
+  information entry and byte offset provided by the operations.
 
 *Location descriptions are a language independent representation of addressing
 rules.*
@@ -1319,6 +1317,24 @@ specifies the byte count. It can be used:
 * and in location list entries (see
   :ref:`amdgpu-dwarf-location-list-expressions`).
 
+.. _amdgpu-dwarf-vendor-extensions-operations:
+
+A.2.5.4.0 Vendor Extension Operations
+#####################################
+
+1.  ``DW_OP_LLVM_user``
+
+  ``DW_OP_LLVM_user`` encodes a vendor extension operation. It has at least one
+  operand: a ULEB128 constant identifying a vendor extension operation. The
+  remaining operands are defined by the vendor extension. The vendor extension
+  opcode 0 is reserved and cannot be used by any vendor extension.
+
+  .. note::
+
+    The DW_OP_user encoding space can be understood to supplement the space
+    defined by DW_OP_lo_user and DW_OP_hi_user that is allocated by the standard
+    for the same purpose.
+
 .. _amdgpu-dwarf-stack-operations:
 
 A.2.5.4.1 Stack Operations
@@ -1478,8 +1494,7 @@ expression.
       GDB only interprets DR as an offset in the ``.debug_info`` section that
       contains the current compilation unit.
 
-      This comment also applies to ``DW_OP_implicit_pointer`` and
-      ``DW_OP_LLVM_aspace_implicit_pointer``.
+      This comment also applies to ``DW_OP_implicit_pointer``.
 
     *Operand interpretation of* ``DW_OP_call2``\ *,* ``DW_OP_call4``\ *, and*
     ``DW_OP_call_ref`` *is exactly like that for* ``DW_FORM_ref2``\ *,
@@ -1897,8 +1912,7 @@ There are these special value operations currently defined:
 
     See :ref:`amdgpu-dwarf-implicit-location-description-operations` for special
     rules concerning implicit location descriptions created by the
-    ``DW_OP_implicit_pointer`` and ``DW_OP_LLVM_aspace_implicit_pointer``
-    operations.
+    ``DW_OP_implicit_pointer`` operation.
 
 5.  ``DW_OP_xderef`` *Deprecated*
 
@@ -2309,8 +2323,7 @@ type.
 
     See :ref:`amdgpu-dwarf-implicit-location-description-operations` for special
     rules concerning implicit pointer values produced by dereferencing implicit
-    location descriptions created by the ``DW_OP_implicit_pointer`` and
-    ``DW_OP_LLVM_aspace_implicit_pointer`` operations.
+    location descriptions created by the ``DW_OP_implicit_pointer`` operation.
 
 4.  ``DW_OP_form_tls_address``
 
@@ -2531,8 +2544,7 @@ implicit storage value starting at the bit offset.
 
     See ``DW_OP_implicit_pointer`` (following) for special rules concerning
     implicit pointer values produced by dereferencing implicit location
-    descriptions created by the ``DW_OP_implicit_pointer`` and
-    ``DW_OP_LLVM_aspace_implicit_pointer`` operations.
+    descriptions created by the ``DW_OP_implicit_pointer`` operation.
 
     Note: Since location descriptions are allowed on the stack, the
     ``DW_OP_stack_value`` operation no longer terminates the DWARF operation
@@ -2614,8 +2626,7 @@ implicit storage value starting at the bit offset.
 
       *Note that E is evaluated with the context of the expression accessing
       IPV, and not the context of the expression that contained the*
-      ``DW_OP_implicit_pointer`` *or* ``DW_OP_LLVM_aspace_implicit_pointer``
-      *operation that created L.*
+      ``DW_OP_implicit_pointer`` *operation that created L.*
 
     * If D has a ``DW_AT_const_value`` attribute, then an implicit location
       storage RLS is created from the ``DW_AT_const_value`` attribute's value
@@ -2640,37 +2651,15 @@ implicit storage value starting at the bit offset.
     It is an evaluation error if LS or IPV is accessed in any other manner.
 
     *The restrictions on how an implicit pointer location description created
-    by* ``DW_OP_implicit_pointer`` *and* ``DW_OP_LLVM_aspace_implicit_pointer``
-    *can be used are to simplify the DWARF consumer. Similarly, for an implicit
-    pointer value created by* ``DW_OP_deref*`` *and* ``DW_OP_stack_value``\ *.*
+    by* ``DW_OP_implicit_pointer`` *can be used are to simplify the DWARF
+    consumer. Similarly, for an implicit pointer value created by*
+    ``DW_OP_deref*`` *and* ``DW_OP_stack_value``\ *.*
 
-4.  ``DW_OP_LLVM_aspace_implicit_pointer`` *New*
-
-    ``DW_OP_LLVM_aspace_implicit_pointer`` has two operands that are the same as
-    for ``DW_OP_implicit_pointer``.
-
-    It pops one stack entry that must be an integral type value that represents
-    a target architecture specific address space identifier AS.
-
-    The location description L that is pushed on the stack is the same as for
-    ``DW_OP_implicit_pointer``, except that the address space identifier used is
-    AS.
-
-    The DWARF expression is ill-formed if AS is not one of the values defined by
-    the target architecture specific ``DW_ASPACE_LLVM_*`` values.
-
-    .. note::
-
-      This definition of ``DW_OP_LLVM_aspace_implicit_pointer`` may change when
-      full support for address classes is added as required for languages such
-      as OpenCL/SyCL.
-
-*Typically a* ``DW_OP_implicit_pointer`` *or*
-``DW_OP_LLVM_aspace_implicit_pointer`` *operation is used in a DWARF expression
-E*\ :sub:`1` *of a* ``DW_TAG_variable`` *or* ``DW_TAG_formal_parameter``
-*debugging information entry D*\ :sub:`1`\ *'s* ``DW_AT_location`` *attribute.
-The debugging information entry referenced by the* ``DW_OP_implicit_pointer``
-*or* ``DW_OP_LLVM_aspace_implicit_pointer`` *operations is typically itself a*
+*Typically a* ``DW_OP_implicit_pointer`` *operation is used in a DWARF
+expression E*\ :sub:`1` *of a* ``DW_TAG_variable`` *or*
+``DW_TAG_formal_parameter`` *debugging information entry D*\ :sub:`1`\ *'s*
+``DW_AT_location`` *attribute. The debugging information entry referenced by
+the* ``DW_OP_implicit_pointer`` *operations is typically itself a*
 ``DW_TAG_variable`` *or* ``DW_TAG_formal_parameter`` *debugging information
 entry D*\ :sub:`2` *whose* ``DW_AT_location`` *attribute gives a second DWARF
 expression E*\ :sub:`2`\ *.*
@@ -2683,8 +2672,8 @@ object pointed to by that pointer object.*
 ``DW_AT_location`` *or* ``DW_AT_const_value`` *attribute (for example,*
 ``DW_TAG_dwarf_procedure``\ *). By using E*\ :sub:`2`\ *, a consumer can
 reconstruct the value of the object when asked to dereference the pointer
-described by E*\ :sub:`1` *which contains the* ``DW_OP_implicit_pointer`` *or*
-``DW_OP_LLVM_aspace_implicit_pointer`` *operation.*
+described by E*\ :sub:`1` *which contains the* ``DW_OP_implicit_pointer``
+*operation.*
 
 .. _amdgpu-dwarf-composite-location-description-operations:
 
@@ -3123,8 +3112,7 @@ DWARF address space identifiers are used by:
 * The ``DW_AT_LLVM_address_space`` attribute.
 
 * The DWARF expression operations: ``DW_OP_aspace_bregx``,
-  ``DW_OP_form_aspace_address``, ``DW_OP_aspace_implicit_pointer``, and
-  ``DW_OP_xderef*``.
+  ``DW_OP_form_aspace_address``, and ``DW_OP_xderef*``.
 
 * The CFI instructions: ``DW_CFA_def_aspace_cfa`` and
   ``DW_CFA_def_aspace_cfa_sf``.
@@ -4675,19 +4663,6 @@ A.7 Data Representation
 A.7.4 32-Bit and 64-Bit DWARF Formats
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. note::
-
-  This augments DWARF Version 5 section 7.4 list item 3's table.
-
-.. table:: ``.debug_info`` section attribute form roles
-  :name: amdgpu-dwarf-debug-info-section-attribute-form-roles-table
-
-  ================================== ===================================
-  Form                               Role
-  ================================== ===================================
-  DW_OP_LLVM_aspace_implicit_pointer offset in ``.debug_info``
-  ================================== ===================================
-
 A.7.5 Format of Debugging Information
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -4771,13 +4746,16 @@ A.7.7.1 Operation Expressions
   Rename DWARF Version 5 section 7.7.1 and delete section 7.7.2 to reflect the
   unification of location descriptions into DWARF expressions.
 
-  This augments DWARF Version 5 section 7.7.1 and Table 7.9.
+  This augments DWARF Version 5 section 7.7.1 and Table 7.9, and adds a new
+  table describing vendor extension operations for ``DW_OP_LLVM_user``.
 
 A DWARF operation expression is stored in a block of contiguous bytes. The bytes
 form a sequence of operations. Each operation is a 1-byte code that identifies
-that operation, followed by zero or more bytes of additional data. The encodings
-for the operations are described in
-:ref:`amdgpu-dwarf-operation-encodings-table`.
+that operation, followed by zero or more bytes of additional data. The encoding
+for the operation ``DW_OP_LLVM_user`` is described in
+:ref:`amdgpu-dwarf-operation-encodings-table`, and all other operations are
+encoded as ``DW_OP_LLVM_user`` vendor extension operations as described in
+:ref:`amdgpu-dwarf-vendor-extension-operation-encodings-table`.
 
 .. table:: DWARF Operation Encodings
    :name: amdgpu-dwarf-operation-encodings-table
@@ -4787,26 +4765,38 @@ for the operations are described in
                                                 of
                                                 Operands
    ====================================== ===== ======== ===============================
-   ``DW_OP_LLVM_form_aspace_address``     0xe1     0
-   ``DW_OP_LLVM_push_lane``               0xe2     0
-   ``DW_OP_LLVM_offset``                  0xe3     0
-   ``DW_OP_LLVM_offset_uconst``           0xe4     1     ULEB128 byte displacement
-   ``DW_OP_LLVM_bit_offset``              0xe5     0
-   ``DW_OP_LLVM_call_frame_entry_reg``    0xe6     1     ULEB128 register number
-   ``DW_OP_LLVM_undefined``               0xe7     0
-   ``DW_OP_LLVM_aspace_bregx``            0xe8     2     ULEB128 register number,
-                                                         ULEB128 byte displacement
-   ``DW_OP_LLVM_aspace_implicit_pointer`` 0xe9     2     4-byte or 8-byte offset of DIE,
-                                                         SLEB128 byte displacement
-   ``DW_OP_LLVM_piece_end``               0xea     0
-   ``DW_OP_LLVM_extend``                  0xeb     2     ULEB128 bit size,
-                                                         ULEB128 count
-   ``DW_OP_LLVM_select_bit_piece``        0xec     2     ULEB128 bit size,
-                                                         ULEB128 count
-   ``DW_OP_LLVM_push_iteration``          TBA      0
-   ``DW_OP_LLVM_overlay``                 TBA      0
-   ``DW_OP_LLVM_bit_overlay``             TBA      0
+   ``DW_OP_LLVM_user``                    0xe9     1+    ULEB128 vendor extension
+                                                         opcode, followed by
+                                                         vendor-extension-defined
+                                                         operands
    ====================================== ===== ======== ===============================
+
+.. table:: DWARF Vendor Extension Operation Encodings
+   :name: amdgpu-dwarf-vendor-extension-operation-encodings-table
+
+   ====================================== ====================================== ===== ======== ===============================
+   Operation                              Vendor Extension Operation             Code  Number   Notes
+                                                                                       of
+                                                                                       Operands
+   ====================================== ====================================== ===== ======== ===============================
+   ``DW_OP_LLVM_form_aspace_address``     ``DW_LLVM_SUBOP_form_aspace_address``  0x02     0
+   ``DW_OP_LLVM_push_lane``               ``DW_LLVM_SUBOP_push_lane``            0x03     0
+   ``DW_OP_LLVM_offset``                  ``DW_LLVM_SUBOP_offset``               0x04     0
+   ``DW_OP_LLVM_offset_uconst``           ``DW_LLVM_SUBOP_offset_uconst``        0x05     1     ULEB128 byte displacement
+   ``DW_OP_LLVM_bit_offset``              ``DW_LLVM_SUBOP_bit_offset``           0x06     0
+   ``DW_OP_LLVM_call_frame_entry_reg``    ``DW_LLVM_SUBOP_call_frame_entry_reg`` 0x07     1     ULEB128 register number
+   ``DW_OP_LLVM_undefined``               ``DW_LLVM_SUBOP_undefined``            0x08     0
+   ``DW_OP_LLVM_aspace_bregx``            ``DW_LLVM_SUBOP_aspace_bregx``         0x09     2     ULEB128 register number,
+                                                                                                ULEB128 byte displacement
+   ``DW_OP_LLVM_piece_end``               ``DW_LLVM_SUBOP_piece_end``            0x0a     0
+   ``DW_OP_LLVM_extend``                  ``DW_LLVM_SUBOP_extend``               0x0b     2     ULEB128 bit size,
+                                                                                                ULEB128 count
+   ``DW_OP_LLVM_select_bit_piece``        ``DW_LLVM_SUBOP_select_bit_piece``     0x0c     2     ULEB128 bit size,
+                                                                                                ULEB128 count
+   ``DW_OP_LLVM_push_iteration``          ``DW_LLVM_SUBOP_push_iteration``       TBA      0
+   ``DW_OP_LLVM_overlay``                 ``DW_LLVM_SUBOP_overlay``              TBA      0
+   ``DW_OP_LLVM_bit_overlay``             ``DW_LLVM_SUBOP_bit_overlay``          TBA      0
+   ====================================== ====================================== ===== ======== ===============================
 
 A.7.7.3 Location List Expressions
 +++++++++++++++++++++++++++++++++
