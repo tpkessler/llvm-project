@@ -39,6 +39,9 @@
 
 #include <atomic>
 #include <mutex>
+#include <string>
+#include <cstdint>
+#include <cstdlib>
 
 /// 32-Bit field data attributes controlling information presented to the user.
 enum OpenMPInfoType : uint32_t {
